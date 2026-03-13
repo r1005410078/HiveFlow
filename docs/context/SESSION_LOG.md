@@ -21,3 +21,4 @@
 - 完成 M4 Chunk 0：新增 `market-data template / validate`，冻结行情输入契约并提供校验能力。
 - 完成 M4 Chunk 1：新增 `backtest run / list`，实现最小回测引擎与结果落库。
 - 增加行情落库能力：新增 `market-data import / list / summary`，支持行情数据沉淀与查询。
+- 协作规范补充：在 `AGENTS.md` 增加约定式提交说明与推荐类型列表，统一中文提交格式。
