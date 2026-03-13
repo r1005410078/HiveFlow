@@ -17,6 +17,7 @@
 3. 自定义策略发布流程缺失：没有“策略定义 -> 校验 -> 激活 -> 回滚”的完整链路。
 4. AI/Skills 接口仍是预备层：已有 `--envelope/--json-schema`，但缺少 schema 版本治理与兼容策略。
 5. 发布流程未收口：缺少固定的冒烟脚本、版本发布清单与回归门禁。
+6. 行情来源仍偏手工：缺少从交易平台/数据源自动拉取并入库的能力。
 
 ## 二、实施前约束（避免返工）
 
@@ -48,6 +49,48 @@
 - [x] **Step 4: Run tests**
 - [ ] **Step 5: Commit**
   - `feat: 冻结行情输入契约并提供模板校验`
+
+---
+
+## Chunk 0.5：平台行情同步 v1（从“手工导入”走向“自动拉取”）
+
+### Task 0.5.1：定义数据提供方接口与本地实现
+
+**Files:**
+- Create: `src/hiveflow/infrastructure/market_data/providers/base.py`
+- Create: `src/hiveflow/infrastructure/market_data/providers/csv_provider.py`
+- Create: `src/hiveflow/infrastructure/market_data/providers/okx_provider.py`
+- Create: `src/hiveflow/application/market_data_sync.py`
+- Modify: `src/hiveflow/config.py`
+- Test: `tests/test_market_data_sync.py`
+
+- [ ] **Step 1: Write failing tests**
+  - 统一接口：`fetch_ohlcv(symbol, interval, start, end)`。
+  - CSV provider 与 OKX provider 返回同一结构。
+- [ ] **Step 2: Run failing tests**
+- [ ] **Step 3: Implement minimal providers**
+  - OKX 先实现“最小可用 K 线拉取 + 错误处理”。
+- [ ] **Step 4: Run tests**
+- [ ] **Step 5: Commit**
+  - `feat: 增加行情provider接口与最小实现`
+
+### Task 0.5.2：开放同步命令与入库流程
+
+**Files:**
+- Modify: `src/hiveflow/cli.py`
+- Modify: `src/hiveflow/application/market_data.py`
+- Test: `tests/test_cli_market_data.py`
+- Docs: `docs/cli/README.md`
+
+- [ ] **Step 1: Write failing CLI tests**
+  - `hiveflow market-data sync --provider okx --symbols BTC,ETH --interval 1h --days 30`
+- [ ] **Step 2: Run failing tests**
+- [ ] **Step 3: Implement commands**
+  - 同步后自动去重入库，写决策日志。
+  - 无网络或 provider 错误时给可读错误。
+- [ ] **Step 4: Run tests**
+- [ ] **Step 5: Commit**
+  - `feat: 增加平台行情同步命令`
 
 ---
 
@@ -250,6 +293,7 @@
 ## 验收标准（M4 Done）
 
 - [ ] 行情输入契约已冻结并可由命令校验。
+- [ ] 可从至少 1 个平台自动拉取行情并入库（不依赖手工 CSV）。
 - [ ] 可运行回测命令，并可查询历史回测结果。
 - [ ] 风险可由计算引擎产出，不再只依赖手工导入。
 - [ ] 可生成资产配比偏离与建议（席位层）。
@@ -262,10 +306,11 @@
 ## 执行顺序建议
 
 1. Chunk 0（行情输入契约）  
-2. Chunk 1（回测）  
-3. Chunk 2（风险计算）  
-4. Chunk 3（资产配比建议）  
-5. Chunk 4（策略发布）  
-6. Chunk 5（契约与发布）  
+2. Chunk 0.5（平台行情同步）  
+3. Chunk 1（回测）  
+4. Chunk 2（风险计算）  
+5. Chunk 3（资产配比建议）  
+6. Chunk 4（策略发布）  
+7. Chunk 5（契约与发布）  
 
 这样可以保证每一步都直接提升主线能力，不会陷入“先做边角再补核心”。
