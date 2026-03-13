@@ -71,6 +71,12 @@ def test_slots_command_group_is_available() -> None:
     assert result.exit_code == 0
 
 
+def test_current_command_group_is_available() -> None:
+    # 验证当前策略命令组已在 CLI 中暴露。
+    result = CliRunner().invoke(app, ["current", "--help"])
+    assert result.exit_code == 0
+
+
 def test_positions_add_and_list_work_with_real_data(tmp_path, monkeypatch) -> None:
     # 验证可以写入持仓并在 list 中看到真实数据。
     db_path = tmp_path / "cli-test.db"
@@ -799,3 +805,91 @@ def test_summary_json_includes_slot_metrics(tmp_path, monkeypatch) -> None:
     payload = json.loads(result.stdout)
     assert payload["slots_count"] >= 3
     assert payload["enabled_slots_count"] >= 3
+
+
+def test_current_strategy_set_and_show_support_json_output(tmp_path, monkeypatch) -> None:
+    # 验证可设置并读取当前策略（JSON 输出）。
+    db_path = tmp_path / "current-strategy.db"
+    strategies_path = tmp_path / "current-strategy.csv"
+    strategies_path.write_text(
+        (
+            "name,category,thesis,market_regime,backtest_summary\n"
+            "进攻突破策略,进攻型,顺势突破+风控,趋势市,年化 18%\n"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+    runner.invoke(app, ["strategies", "import", "--file", str(strategies_path), "--mode", "replace"])
+
+    set_result = runner.invoke(
+        app,
+        ["current", "set-strategy", "--name", "进攻突破策略", "--output", "json"],
+    )
+    assert set_result.exit_code == 0
+    set_payload = json.loads(set_result.stdout)
+    assert set_payload["current_strategy"] == "进攻突破策略"
+
+    show_result = runner.invoke(app, ["current", "show", "--output", "json"])
+    assert show_result.exit_code == 0
+    show_payload = json.loads(show_result.stdout)
+    assert show_payload["current_strategy"] == "进攻突破策略"
+
+
+def test_current_strategy_set_rejects_unknown_strategy(tmp_path, monkeypatch) -> None:
+    # 验证设置不存在的策略会报错。
+    db_path = tmp_path / "current-strategy-unknown.db"
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        ["current", "set-strategy", "--name", "不存在策略"],
+    )
+    assert result.exit_code != 0
+    assert "策略不存在" in (result.stdout + result.stderr)
+
+
+def test_summary_json_includes_current_strategy(tmp_path, monkeypatch) -> None:
+    # 验证 summary JSON 包含当前策略。
+    db_path = tmp_path / "summary-current-strategy.db"
+    strategies_path = tmp_path / "summary-current.csv"
+    strategies_path.write_text(
+        (
+            "name,category,thesis,market_regime,backtest_summary\n"
+            "防守轮动策略,防守型,低波动防守轮动,震荡市,最大回撤 8%\n"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+    runner.invoke(app, ["strategies", "import", "--file", str(strategies_path), "--mode", "replace"])
+    runner.invoke(app, ["current", "set-strategy", "--name", "防守轮动策略"])
+
+    result = runner.invoke(app, ["summary", "--output", "json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["current_strategy"] == "防守轮动策略"
+
+
+def test_current_strategy_set_auto_records_decision_log(tmp_path, monkeypatch) -> None:
+    # 验证设置当前策略后会自动写入决策日志。
+    db_path = tmp_path / "current-strategy-log.db"
+    strategies_path = tmp_path / "current-log.csv"
+    strategies_path.write_text(
+        (
+            "name,category,thesis,market_regime,backtest_summary\n"
+            "长期配置策略,长期型,长期资产配置,宽幅震荡,年化 12%\n"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+    runner.invoke(app, ["strategies", "import", "--file", str(strategies_path), "--mode", "replace"])
+
+    set_result = runner.invoke(app, ["current", "set-strategy", "--name", "长期配置策略"])
+    assert set_result.exit_code == 0
+
+    logs_result = runner.invoke(app, ["logs", "list", "--output", "json"])
+    logs = json.loads(logs_result.stdout)
+    assert any(item["decision_type"] == "current-strategy-set" for item in logs)

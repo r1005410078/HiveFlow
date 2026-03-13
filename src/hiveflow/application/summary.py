@@ -7,6 +7,7 @@ from sqlmodel import select
 from hiveflow.db import create_all_tables, get_session
 from hiveflow.domain.allocations import TargetAllocation
 from hiveflow.domain.decision_logs import DecisionLog
+from hiveflow.domain.decision_logs import UserPreference
 from hiveflow.domain.positions import Position
 from hiveflow.domain.risk import RiskSignal
 from hiveflow.domain.slots import StrategySlot
@@ -24,6 +25,8 @@ class SummaryStats:
     slots_count: int
     # 启用席位数量。
     enabled_slots_count: int
+    # 当前策略名称（可选）。
+    current_strategy: str | None
     # 持仓总市值。
     total_market_value: float
     # 目标持仓条目数量。
@@ -41,13 +44,14 @@ class SummaryStats:
     # 决策日志数量。
     decision_logs_count: int
 
-    def to_dict(self) -> dict[str, int | float]:
+    def to_dict(self) -> dict[str, int | float | str | None]:
         """转换为字典，便于 JSON 输出。"""
         return {
             "positions_count": self.positions_count,
             "strategies_count": self.strategies_count,
             "slots_count": self.slots_count,
             "enabled_slots_count": self.enabled_slots_count,
+            "current_strategy": self.current_strategy,
             "total_market_value": round(self.total_market_value, 2),
             "target_allocations_count": self.target_allocations_count,
             "risk_signals_count": self.risk_signals_count,
@@ -70,6 +74,9 @@ def get_summary_stats() -> SummaryStats:
         risk_signals = session.exec(select(RiskSignal)).all()
         rebalance_suggestions = session.exec(select(RebalanceSuggestion)).all()
         decision_logs = session.exec(select(DecisionLog)).all()
+        current_strategy_pref = session.exec(
+            select(UserPreference).where(UserPreference.key == "current_strategy")
+        ).first()
 
     total_market_value = sum(position.market_value for position in positions)
     risk_high_count = sum(
@@ -85,6 +92,7 @@ def get_summary_stats() -> SummaryStats:
         strategies_count=len(strategies),
         slots_count=len(slots),
         enabled_slots_count=sum(1 for slot in slots if slot.enabled),
+        current_strategy=(current_strategy_pref.value if current_strategy_pref else None),
         total_market_value=total_market_value,
         target_allocations_count=len(target_allocations),
         risk_signals_count=len(risk_signals),

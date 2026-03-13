@@ -16,7 +16,8 @@
 - 增量层面：已完成 Chunk 12（`strategies list/import/template` + `summary` 策略数量联动）。
 - 增量层面：已完成 Chunk 13（`targets generate` 自动生成目标持仓 + 决策日志联动）。
 - 增量层面：已完成 Chunk 14（`slots list/set-weight` + `summary` 席位统计联动）。
-- 验证层面：当前测试集通过（`uv run python -m pytest -q` -> `51 passed`）。
+- 增量层面：已完成 Chunk 15（`current show/set-strategy` + `summary` 当前策略联动）。
+- 验证层面：当前测试集通过（`uv run python -m pytest -q` -> `56 passed`）。
 - 文档层面：已补充 CLI 使用文档与测试使用文档。
 - 与原计划差异：计划要求“每任务单独提交”，实际执行为集中开发后一次性提交。
  - 回填说明：后续增量按“实现后即时回填”方式维护本计划。
@@ -910,6 +911,33 @@ git commit -m "feat: add hiveflow summary command"
 - [x] `summary --output json` 新增 `slots_count` 和 `enabled_slots_count` 字段。
 - [x] `summary` 终端输出新增“席位数量/启用席位数量”。
 - [x] 测试通过：席位更新后统计正确。
+
+## Chunk 15：当前策略闭环
+
+### 任务 31：增加 current 命令组
+
+**文件：**
+- 新增：`src/hiveflow/application/current.py`
+- 修改：`src/hiveflow/cli.py`
+- 修改：`docs/cli/README.md`
+- 测试：`tests/test_cli.py`
+
+- [x] 新增 `current` 命令组。
+- [x] 新增 `current show`（pretty/json）。
+- [x] 新增 `current set-strategy`（设置当前策略）。
+- [x] 设置成功自动写入决策日志（`current-strategy-set`）。
+- [x] 测试通过：命令可用、JSON 结构正确、异常路径正确。
+
+### 任务 32：summary 与当前策略联动
+
+**文件：**
+- 修改：`src/hiveflow/application/summary.py`
+- 修改：`src/hiveflow/cli.py`
+- 测试：`tests/test_cli.py`
+
+- [x] `summary --output json` 新增 `current_strategy` 字段。
+- [x] `summary` 终端输出新增“当前策略”。
+- [x] 测试通过：设置当前策略后统计正确。
 
 ## 计划说明
 

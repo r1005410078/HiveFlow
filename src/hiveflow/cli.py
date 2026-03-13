@@ -10,6 +10,8 @@ from rich.table import Table
 from hiveflow.application.decision_logs import export_decision_logs
 from hiveflow.application.decision_logs import list_decision_logs
 from hiveflow.application.decision_logs import record_decision_log
+from hiveflow.application.current import set_current_strategy
+from hiveflow.application.current import show_current_strategy
 from hiveflow.application.positions import add_position
 from hiveflow.application.positions import export_positions_template
 from hiveflow.application.positions import import_positions_from_csv
@@ -38,6 +40,7 @@ rebalance_app = typer.Typer(help="调仓建议命令。")
 logs_app = typer.Typer(help="决策日志命令。")
 strategies_app = typer.Typer(help="策略管理命令。")
 slots_app = typer.Typer(help="席位管理命令。")
+current_app = typer.Typer(help="当前策略命令。")
 console = Console()
 
 
@@ -352,6 +355,44 @@ def set_slot_weight_command(
     typer.echo(f"席位权重更新成功：{result.name} -> {result.weight:.2%}")
 
 
+@current_app.command("show")
+def show_current_strategy_command(
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+) -> None:
+    """查看当前策略。"""
+    output_format = _validate_output_format(output)
+    result = show_current_strategy()
+    payload = result.to_dict()
+    if output_format == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    typer.echo(f"当前策略：{result.current_strategy or '未设置'}")
+
+
+@current_app.command("set-strategy")
+def set_current_strategy_command(
+    name: str = typer.Option(..., "--name", help="策略名称"),
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+) -> None:
+    """设置当前策略。"""
+    output_format = _validate_output_format(output)
+    try:
+        result = set_current_strategy(name=name)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    record_decision_log(
+        summary=f"设置当前策略：{name}",
+        decision_type="current-strategy-set",
+        notes=f"strategy={name}",
+    )
+    payload = result.to_dict()
+    if output_format == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    typer.echo(f"当前策略已设置为：{name}")
+
+
 @app.command("summary")
 def summary_command(
     output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
@@ -376,6 +417,7 @@ def summary_command(
             f"- 策略数量: {stats.strategies_count}",
             f"- 席位数量: {stats.slots_count}",
             f"- 启用席位数量: {stats.enabled_slots_count}",
+            f"- 当前策略: {stats.current_strategy or '未设置'}",
             f"- 持仓总市值: {stats.total_market_value:.2f}",
             f"- 目标持仓数量: {stats.target_allocations_count}",
             f"- 风险信号数量: {risk_count}",
@@ -397,6 +439,10 @@ def summary_command(
         (
             f"[#5f875f]- 启用席位数量:[/#5f875f] "
             f"[bold #87ff87]{stats.enabled_slots_count}[/bold #87ff87]"
+        ),
+        (
+            f"[#5f875f]- 当前策略:[/#5f875f] "
+            f"[bold #87ff87]{stats.current_strategy or '未设置'}[/bold #87ff87]"
         ),
         (
             f"[#5f875f]- 持仓总市值:[/#5f875f] "
@@ -835,6 +881,7 @@ app.add_typer(rebalance_app, name="rebalance")
 app.add_typer(logs_app, name="logs")
 app.add_typer(strategies_app, name="strategies")
 app.add_typer(slots_app, name="slots")
+app.add_typer(current_app, name="current")
 
 
 def run() -> None:

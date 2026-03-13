@@ -321,7 +321,33 @@ JSON 输出示例：
 uv run hiveflow strategies template --output json
 ```
 
-### 3.16 查看策略席位列表
+### 3.16 查看当前策略
+
+```bash
+uv run hiveflow current show
+```
+
+JSON 输出示例：
+
+```bash
+uv run hiveflow current show --output json
+```
+
+### 3.17 设置当前策略
+
+```bash
+uv run hiveflow current set-strategy --name "进攻突破策略"
+```
+
+说明：设置成功后会自动写入一条 `decision_logs` 记录（类型：`current-strategy-set`）。
+
+JSON 输出示例：
+
+```bash
+uv run hiveflow current set-strategy --name "进攻突破策略" --output json
+```
+
+### 3.18 查看策略席位列表
 
 ```bash
 uv run hiveflow slots list
@@ -333,7 +359,7 @@ JSON 输出示例：
 uv run hiveflow slots list --output json
 ```
 
-### 3.17 更新席位权重
+### 3.19 更新席位权重
 
 ```bash
 uv run hiveflow slots set-weight --name "进攻席位" --weight 0.55
@@ -347,7 +373,7 @@ JSON 输出示例：
 uv run hiveflow slots set-weight --name "进攻席位" --weight 0.55 --output json
 ```
 
-### 3.18 查看目标持仓列表
+### 3.20 查看目标持仓列表
 
 ```bash
 uv run hiveflow targets list
@@ -365,7 +391,7 @@ uv run hiveflow targets list --output json
 uv run hiveflow targets list --theme minimal
 ```
 
-### 3.19 从 CSV 导入目标持仓
+### 3.21 从 CSV 导入目标持仓
 
 ```bash
 uv run hiveflow targets import --file ./target-allocations.csv
@@ -394,7 +420,7 @@ strategy_name,symbol,target_weight
 进攻型默认策略,USDT,0.20
 ```
 
-### 3.20 下载（生成）目标持仓 CSV 模板
+### 3.22 下载（生成）目标持仓 CSV 模板
 
 ```bash
 uv run hiveflow targets template
@@ -413,7 +439,7 @@ JSON 输出示例：
 uv run hiveflow targets template --output json
 ```
 
-### 3.21 基于策略自动生成目标持仓
+### 3.23 基于策略自动生成目标持仓
 
 ```bash
 uv run hiveflow targets generate --strategy "进攻突破策略"
@@ -428,7 +454,7 @@ JSON 输出示例：
 uv run hiveflow targets generate --strategy "进攻突破策略" --output json
 ```
 
-### 3.22 预览调仓建议
+### 3.24 预览调仓建议
 
 ```bash
 uv run hiveflow rebalance preview
