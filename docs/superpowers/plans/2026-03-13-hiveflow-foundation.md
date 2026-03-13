@@ -8,7 +8,8 @@
 - 本文复选框已按当前代码状态统一回填为完成。
 - 代码层面：Chunk 1 ~ Chunk 5 的功能性目标已落地（项目骨架、领域模型、bootstrap、allocation/rebalance/risk、CLI）。
 - 增量层面：已完成 Chunk 6（真实持仓闭环最小版：`positions add/list` + `summary` 读取真实数据库）。
-- 验证层面：当前测试集通过（`uv run python -m pytest -q` -> `15 passed`）。
+- 增量层面：已完成 Chunk 7（`positions import`：CSV 导入持仓，支持 `append/replace` 与 JSON 输出）。
+- 验证层面：当前测试集通过（`uv run python -m pytest -q` -> `19 passed`）。
 - 文档层面：已补充 CLI 使用文档与测试使用文档。
 - 与原计划差异：计划要求“每任务单独提交”，实际执行为集中开发后一次性提交。
  - 回填说明：后续增量按“实现后即时回填”方式维护本计划。

@@ -1,4 +1,6 @@
 from hiveflow.domain.suggestions import RebalanceSuggestion
+from hiveflow.domain.value_objects import PriorityLevel
+from hiveflow.domain.value_objects import RebalanceAction
 
 
 def compare_actual_to_target(
@@ -26,18 +28,18 @@ def generate_rebalance_suggestions(
         delta = deltas[symbol]
         abs_delta = abs(delta)
         if delta > 0:
-            action = "sell"
+            action = RebalanceAction.SELL
         elif delta < 0:
-            action = "buy"
+            action = RebalanceAction.BUY
         else:
-            action = "hold"
+            action = RebalanceAction.HOLD
 
         if abs_delta >= 0.1:
-            priority = "high"
+            priority = PriorityLevel.HIGH
         elif abs_delta >= 0.05:
-            priority = "medium"
+            priority = PriorityLevel.MEDIUM
         else:
-            priority = "low"
+            priority = PriorityLevel.LOW
 
         suggestions.append(
             RebalanceSuggestion(

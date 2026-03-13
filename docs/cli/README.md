@@ -106,6 +106,52 @@ JSON 输出示例：
 uv run hiveflow positions list --output json
 ```
 
+### 3.6 从 CSV 导入持仓
+
+```bash
+uv run hiveflow positions import --file ./positions.csv
+```
+
+可选参数：
+
+- `--mode append`：追加导入（默认）
+- `--mode replace`：清空旧持仓后导入
+- `--output json`：输出结构化导入结果
+
+CSV 列要求（必须包含）：
+
+- `symbol`
+- `quantity`
+- `market_value`
+- `weight`
+
+CSV 示例：
+
+```csv
+symbol,quantity,market_value,weight
+BTC,1.5,120000,0.6
+ETH,2,20000,0.2
+```
+
+### 3.7 下载（生成）CSV 模板
+
+```bash
+uv run hiveflow positions template
+```
+
+默认会在当前目录生成 `positions.csv`。  
+也可以指定路径：
+
+```bash
+uv run hiveflow positions template --file ./data/positions.csv
+```
+
+JSON 输出示例：
+
+```bash
+uv run hiveflow positions template --output json
+```
+
 ## 4. 数据库路径
 
 默认数据库路径：

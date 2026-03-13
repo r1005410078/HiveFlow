@@ -1,13 +1,10 @@
 """调仓建议模型。"""
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlmodel import Field, SQLModel
 
-
-def utc_now() -> datetime:
-    """返回当前 UTC 时间，用于默认时间戳。"""
-    return datetime.now(timezone.utc)
+from hiveflow.domain.common import utc_now
 
 
 class RebalanceSuggestion(SQLModel, table=True):

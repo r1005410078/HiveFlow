@@ -146,3 +146,105 @@ def test_summary_supports_json_output(tmp_path, monkeypatch) -> None:
     payload = json.loads(result.stdout)
     assert payload["positions_count"] == 1
     assert payload["total_market_value"] == 20000.0
+
+
+def test_positions_import_from_csv_supports_json_output(tmp_path, monkeypatch) -> None:
+    # 验证 CSV 导入持仓成功，并支持 JSON 结果输出。
+    db_path = tmp_path / "import-json.db"
+    csv_path = tmp_path / "positions.csv"
+    csv_path.write_text(
+        "symbol,quantity,market_value,weight\nBTC,1.5,120000,0.6\nETH,2,20000,0.2\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+
+    import_result = runner.invoke(
+        app,
+        [
+            "positions",
+            "import",
+            "--file",
+            str(csv_path),
+            "--output",
+            "json",
+        ],
+    )
+    assert import_result.exit_code == 0
+    payload = json.loads(import_result.stdout)
+    assert payload["imported"] == 2
+    assert payload["mode"] == "append"
+
+    list_result = runner.invoke(app, ["positions", "list", "--output", "json"])
+    assert list_result.exit_code == 0
+    positions = json.loads(list_result.stdout)
+    assert len(positions) == 2
+
+
+def test_positions_import_replace_mode_overwrites_existing_positions(
+    tmp_path, monkeypatch
+) -> None:
+    # 验证 replace 模式会先清空旧持仓再导入新数据。
+    db_path = tmp_path / "import-replace.db"
+    csv_path = tmp_path / "positions-replace.csv"
+    csv_path.write_text(
+        "symbol,quantity,market_value,weight\nBTC,1,100000,0.5\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+
+    runner.invoke(
+        app,
+        [
+            "positions",
+            "add",
+            "--symbol",
+            "ETH",
+            "--quantity",
+            "2",
+            "--market-value",
+            "20000",
+            "--weight",
+            "0.2",
+        ],
+    )
+    import_result = runner.invoke(
+        app,
+        ["positions", "import", "--file", str(csv_path), "--mode", "replace"],
+    )
+    assert import_result.exit_code == 0
+
+    list_result = runner.invoke(app, ["positions", "list", "--output", "json"])
+    positions = json.loads(list_result.stdout)
+    assert len(positions) == 1
+    assert positions[0]["symbol"] == "BTC"
+
+
+def test_positions_template_generates_csv_file(tmp_path) -> None:
+    # 验证可以生成可导入的 CSV 模板文件。
+    template_path = tmp_path / "positions-template.csv"
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["positions", "template", "--file", str(template_path)],
+    )
+    assert result.exit_code == 0
+    assert template_path.exists()
+    content = template_path.read_text(encoding="utf-8")
+    assert "symbol,quantity,market_value,weight" in content
+    assert "BTC,1.5,120000,0.6" in content
+
+
+def test_positions_template_supports_json_output(tmp_path) -> None:
+    # 验证模板生成命令支持 JSON 输出。
+    template_path = tmp_path / "positions-template-json.csv"
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["positions", "template", "--file", str(template_path), "--output", "json"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["file"] == str(template_path)
+    assert payload["rows"] == 2

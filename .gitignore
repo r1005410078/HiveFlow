@@ -24,6 +24,7 @@ venv/
 data/*.db
 data/*.sqlite
 data/*.sqlite3
+positions.csv
 
 # OS / editor
 .DS_Store
