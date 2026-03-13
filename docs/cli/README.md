@@ -40,6 +40,13 @@ uv run hiveflow --help
 uv run hiveflow log --help
 ```
 
+主题切换（仅 pretty 输出生效）：
+
+```bash
+uv run hiveflow summary --theme hacker
+uv run hiveflow summary --theme minimal
+```
+
 ## 3. 核心命令
 
 ### 3.1 初始化本地数据库与基础数据
@@ -106,6 +113,12 @@ JSON 输出示例：
 uv run hiveflow positions list --output json
 ```
 
+主题切换示例：
+
+```bash
+uv run hiveflow positions list --theme minimal
+```
+
 ### 3.6 从 CSV 导入持仓
 
 ```bash
@@ -164,6 +177,12 @@ JSON 输出示例：
 uv run hiveflow risk list --output json
 ```
 
+主题切换示例：
+
+```bash
+uv run hiveflow risk list --theme minimal
+```
+
 ### 3.9 从 CSV 导入风险信号
 
 ```bash
@@ -220,6 +239,12 @@ JSON 输出示例：
 
 ```bash
 uv run hiveflow targets list --output json
+```
+
+主题切换示例：
+
+```bash
+uv run hiveflow targets list --theme minimal
 ```
 
 ### 3.12 从 CSV 导入目标持仓
