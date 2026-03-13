@@ -35,6 +35,12 @@ def test_positions_command_group_is_available() -> None:
     assert result.exit_code == 0
 
 
+def test_risk_command_group_is_available() -> None:
+    # 验证风险命令组已在 CLI 中暴露。
+    result = CliRunner().invoke(app, ["risk", "--help"])
+    assert result.exit_code == 0
+
+
 def test_positions_add_and_list_work_with_real_data(tmp_path, monkeypatch) -> None:
     # 验证可以写入持仓并在 list 中看到真实数据。
     db_path = tmp_path / "cli-test.db"
@@ -146,6 +152,9 @@ def test_summary_supports_json_output(tmp_path, monkeypatch) -> None:
     payload = json.loads(result.stdout)
     assert payload["positions_count"] == 1
     assert payload["total_market_value"] == 20000.0
+    assert payload["risk_high_count"] == 0
+    assert payload["risk_medium_count"] == 0
+    assert payload["risk_low_count"] == 0
 
 
 def test_positions_import_from_csv_supports_json_output(tmp_path, monkeypatch) -> None:
@@ -243,6 +252,67 @@ def test_positions_template_supports_json_output(tmp_path) -> None:
     result = runner.invoke(
         app,
         ["positions", "template", "--file", str(template_path), "--output", "json"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["file"] == str(template_path)
+    assert payload["rows"] == 2
+
+
+def test_risk_import_and_list_support_json_output(tmp_path, monkeypatch) -> None:
+    # 验证风险信号支持 CSV 导入并可 JSON 列出。
+    db_path = tmp_path / "risk-import.db"
+    csv_path = tmp_path / "risk.csv"
+    csv_path.write_text(
+        "symbol,waterline,score,note\nBTC,high,0.82,波动加大\nETH,medium,0.55,震荡\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+
+    import_result = runner.invoke(
+        app,
+        ["risk", "import", "--file", str(csv_path), "--output", "json"],
+    )
+    assert import_result.exit_code == 0
+    payload = json.loads(import_result.stdout)
+    assert payload["imported"] == 2
+
+    list_result = runner.invoke(app, ["risk", "list", "--output", "json"])
+    assert list_result.exit_code == 0
+    signals = json.loads(list_result.stdout)
+    assert len(signals) == 2
+    assert signals[0]["symbol"] in {"BTC", "ETH"}
+
+
+def test_summary_json_includes_risk_distribution_after_import(tmp_path, monkeypatch) -> None:
+    # 验证 summary JSON 包含风险分布统计（高/中/低）。
+    db_path = tmp_path / "summary-risk.db"
+    csv_path = tmp_path / "risk-summary.csv"
+    csv_path.write_text(
+        "symbol,waterline,score,note\nBTC,high,0.82,波动加大\nETH,medium,0.55,震荡\nXRP,low,0.21,稳定\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+    runner.invoke(app, ["risk", "import", "--file", str(csv_path)])
+
+    result = runner.invoke(app, ["summary", "--output", "json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["risk_signals_count"] == 3
+    assert payload["risk_high_count"] == 1
+    assert payload["risk_medium_count"] == 1
+    assert payload["risk_low_count"] == 1
+
+
+def test_risk_template_supports_json_output(tmp_path) -> None:
+    # 验证风险模板生成命令支持 JSON 输出。
+    template_path = tmp_path / "risk-template.csv"
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["risk", "template", "--file", str(template_path), "--output", "json"],
     )
     assert result.exit_code == 0
     payload = json.loads(result.stdout)

@@ -152,6 +152,64 @@ JSON 输出示例：
 uv run hiveflow positions template --output json
 ```
 
+### 3.8 查看风险信号列表
+
+```bash
+uv run hiveflow risk list
+```
+
+JSON 输出示例：
+
+```bash
+uv run hiveflow risk list --output json
+```
+
+### 3.9 从 CSV 导入风险信号
+
+```bash
+uv run hiveflow risk import --file ./risk-signals.csv
+```
+
+可选参数：
+
+- `--mode append`：追加导入（默认）
+- `--mode replace`：清空旧风险信号后导入
+- `--output json`：输出结构化导入结果
+
+CSV 列要求（必须包含）：
+
+- `symbol`
+- `waterline`
+- `score`
+- `note`
+
+CSV 示例：
+
+```csv
+symbol,waterline,score,note
+BTC,high,0.82,波动放大且接近阻力位
+ETH,medium,0.55,短期震荡
+```
+
+### 3.10 下载（生成）风险 CSV 模板
+
+```bash
+uv run hiveflow risk template
+```
+
+默认会在当前目录生成 `risk-signals.csv`。  
+也可以指定路径：
+
+```bash
+uv run hiveflow risk template --file ./data/risk-signals.csv
+```
+
+JSON 输出示例：
+
+```bash
+uv run hiveflow risk template --output json
+```
+
 ## 4. 数据库路径
 
 默认数据库路径：

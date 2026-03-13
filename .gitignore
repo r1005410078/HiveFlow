@@ -25,6 +25,7 @@ data/*.db
 data/*.sqlite
 data/*.sqlite3
 positions.csv
+risk-signals.csv
 
 # OS / editor
 .DS_Store

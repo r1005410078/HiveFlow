@@ -9,7 +9,8 @@
 - 代码层面：Chunk 1 ~ Chunk 5 的功能性目标已落地（项目骨架、领域模型、bootstrap、allocation/rebalance/risk、CLI）。
 - 增量层面：已完成 Chunk 6（真实持仓闭环最小版：`positions add/list` + `summary` 读取真实数据库）。
 - 增量层面：已完成 Chunk 7（`positions import`：CSV 导入持仓，支持 `append/replace` 与 JSON 输出）。
-- 验证层面：当前测试集通过（`uv run python -m pytest -q` -> `19 passed`）。
+- 增量层面：已完成 Chunk 8（`risk import/list/template` + `summary` 风险分布统计与展示）。
+- 验证层面：当前测试集通过（`uv run python -m pytest -q` -> `27 passed`）。
 - 文档层面：已补充 CLI 使用文档与测试使用文档。
 - 与原计划差异：计划要求“每任务单独提交”，实际执行为集中开发后一次性提交。
  - 回填说明：后续增量按“实现后即时回填”方式维护本计划。
@@ -667,6 +668,93 @@ def test_summary_command_is_available() -> None:
 git add src/hiveflow/cli.py tests/test_cli.py
 git commit -m "feat: add hiveflow summary command"
 ```
+
+## Chunk 6：真实持仓闭环（最小版）
+
+### 任务 13：新增持仓命令组
+
+**文件：**
+- 修改：`src/hiveflow/cli.py`
+- 测试：`tests/test_cli.py`
+
+- [x] 增加 `positions` 命令组并暴露 `add/list` 子命令。
+- [x] `positions add` 支持写入 `symbol/quantity/market_value/weight`。
+- [x] `positions list` 支持终端表格输出。
+- [x] 测试通过：命令暴露、写入后可读。
+
+### 任务 14：将 summary 从 demo 改为真实数据
+
+**文件：**
+- 修改：`src/hiveflow/cli.py`
+- 测试：`tests/test_cli.py`
+
+- [x] `summary` 读取数据库真实记录。
+- [x] 输出持仓数量、总市值、目标持仓数量、风险信号数量、调仓建议数量。
+- [x] 测试通过：不再包含 `demo data`。
+
+### 任务 15：支持机器可读 JSON 输出
+
+**文件：**
+- 修改：`src/hiveflow/cli.py`
+- 测试：`tests/test_cli.py`
+
+- [x] `summary --output json`
+- [x] `positions list --output json`
+- [x] 测试通过：JSON 可被解析并含关键字段。
+
+## Chunk 7：持仓导入闭环
+
+### 任务 16：增加 CSV 持仓导入
+
+**文件：**
+- 修改：`src/hiveflow/cli.py`
+- 修改：`src/hiveflow/application/positions.py`
+- 测试：`tests/test_cli.py`
+
+- [x] 新增 `positions import --file ...`。
+- [x] 支持 `--mode append|replace`。
+- [x] 支持 `--output json`。
+- [x] CSV 列校验：`symbol,quantity,market_value,weight`。
+- [x] 测试通过：append 与 replace 行为正确。
+
+### 任务 17：增加模板生成能力
+
+**文件：**
+- 修改：`src/hiveflow/cli.py`
+- 修改：`src/hiveflow/application/positions.py`
+- 测试：`tests/test_cli.py`
+
+- [x] 新增 `positions template`。
+- [x] 支持 `--file` 指定输出路径。
+- [x] 支持 `--output json`。
+- [x] 测试通过：模板文件可生成且含标准列头。
+
+## Chunk 8：风险信号闭环
+
+### 任务 18：增加风险信号命令组
+
+**文件：**
+- 新增：`src/hiveflow/application/risk.py`
+- 修改：`src/hiveflow/cli.py`
+- 测试：`tests/test_cli.py`
+
+- [x] 新增 `risk` 命令组。
+- [x] 新增 `risk list`（pretty/json）。
+- [x] 新增 `risk import`（append/replace/json）。
+- [x] 新增 `risk template`（模板导出/json）。
+- [x] 测试通过：命令可用、导入与列表正确。
+
+### 任务 19：在 summary 增加风险分布统计
+
+**文件：**
+- 修改：`src/hiveflow/application/summary.py`
+- 修改：`src/hiveflow/cli.py`
+- 测试：`tests/test_cli.py`
+
+- [x] 新增风险分布字段：`risk_high_count/risk_medium_count/risk_low_count`。
+- [x] `summary` 终端输出展示高/中/低分布。
+- [x] `summary --output json` 返回新增字段。
+- [x] 测试通过：风险分布统计正确。
 
 ## 计划说明
 

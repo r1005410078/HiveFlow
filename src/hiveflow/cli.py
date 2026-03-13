@@ -11,11 +11,15 @@ from hiveflow.application.positions import add_position
 from hiveflow.application.positions import export_positions_template
 from hiveflow.application.positions import import_positions_from_csv
 from hiveflow.application.positions import list_positions
+from hiveflow.application.risk import export_risk_template
+from hiveflow.application.risk import import_risk_signals_from_csv
+from hiveflow.application.risk import list_risk_signals
 from hiveflow.application.summary import get_summary_stats
 from hiveflow.services.bootstrap import bootstrap_all
 
 app = typer.Typer(help="HiveFlow 本地资产决策系统。")
 positions_app = typer.Typer(help="持仓管理命令。")
+risk_app = typer.Typer(help="风险信号管理命令。")
 console = Console()
 
 
@@ -91,6 +95,12 @@ def summary_command(
         f"[green]- 持仓总市值:[/green] [bold]{stats.total_market_value:.2f}[/bold]",
         f"[yellow]- 目标持仓数量:[/yellow] [bold]{stats.target_allocations_count}[/bold]",
         f"[magenta]- 风险信号数量:[/magenta] [{risk_style}]{risk_count}[/{risk_style}]",
+        (
+            "[magenta]- 风险分布:[/magenta] "
+            f"[bold red]高 {stats.risk_high_count}[/bold red] / "
+            f"[bold yellow]中 {stats.risk_medium_count}[/bold yellow] / "
+            f"[bold green]低 {stats.risk_low_count}[/bold green]"
+        ),
         f"[red]- 调仓建议数量:[/red] [{suggestion_style}]{suggestion_count}[/{suggestion_style}]",
     ]
     console.print(
@@ -201,7 +211,91 @@ def export_positions_template_command(
     typer.echo(f"模板已生成：{result.file}")
 
 
+@risk_app.command("list")
+def list_risk_signals_command(
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+) -> None:
+    """列出当前所有风险信号记录。"""
+    output_format = _validate_output_format(output)
+    signals = list_risk_signals()
+    if not signals:
+        if output_format == "json":
+            typer.echo("[]")
+        else:
+            typer.echo("暂无风险信号记录。")
+        return
+
+    if output_format == "json":
+        payload = [signal.to_dict() for signal in signals]
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    table = Table(
+        title="[bold magenta]风险信号[/bold magenta]",
+        show_lines=False,
+        header_style="bold white",
+        border_style="magenta",
+    )
+    table.add_column("标的", justify="left", style="bold yellow")
+    table.add_column("风险水位", justify="left", style="magenta")
+    table.add_column("风险评分", justify="right", style="bright_blue")
+    table.add_column("备注", justify="left", style="green")
+
+    for signal in signals:
+        table.add_row(
+            signal.symbol,
+            signal.waterline,
+            f"{signal.score:.4f}",
+            signal.note or "-",
+        )
+    console.print(table)
+
+
+@risk_app.command("import")
+def import_risk_signals_command(
+    file: Path = typer.Option(..., "--file", "-f", help="CSV 文件路径"),
+    mode: str = typer.Option("append", "--mode", "-m", help="导入模式：append/replace"),
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+) -> None:
+    """从 CSV 导入风险信号。"""
+    output_format = _validate_output_format(output)
+    import_mode = _validate_import_mode(mode)
+    try:
+        result = import_risk_signals_from_csv(file=file, mode=import_mode)
+    except FileNotFoundError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    payload = result.to_dict()
+    if output_format == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    typer.echo(f"风险导入完成：{result.imported} 条（模式：{result.mode}）。")
+
+
+@risk_app.command("template")
+def export_risk_template_command(
+    file: Path = typer.Option(
+        Path("risk-signals.csv"),
+        "--file",
+        "-f",
+        help="模板输出路径（默认：./risk-signals.csv）",
+    ),
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+) -> None:
+    """导出风险信号 CSV 模板。"""
+    output_format = _validate_output_format(output)
+    result = export_risk_template(file=file)
+    payload = result.to_dict()
+    if output_format == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    typer.echo(f"风险模板已生成：{result.file}")
+
+
 app.add_typer(positions_app, name="positions")
+app.add_typer(risk_app, name="risk")
 
 
 def run() -> None:

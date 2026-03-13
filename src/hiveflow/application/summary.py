@@ -17,6 +17,9 @@ class SummaryStats:
     total_market_value: float
     target_allocations_count: int
     risk_signals_count: int
+    risk_high_count: int
+    risk_medium_count: int
+    risk_low_count: int
     rebalance_suggestions_count: int
 
     def to_dict(self) -> dict[str, int | float]:
@@ -25,6 +28,9 @@ class SummaryStats:
             "total_market_value": round(self.total_market_value, 2),
             "target_allocations_count": self.target_allocations_count,
             "risk_signals_count": self.risk_signals_count,
+            "risk_high_count": self.risk_high_count,
+            "risk_medium_count": self.risk_medium_count,
+            "risk_low_count": self.risk_low_count,
             "rebalance_suggestions_count": self.rebalance_suggestions_count,
         }
 
@@ -39,11 +45,21 @@ def get_summary_stats() -> SummaryStats:
         rebalance_suggestions = session.exec(select(RebalanceSuggestion)).all()
 
     total_market_value = sum(position.market_value for position in positions)
+    risk_high_count = sum(
+        1 for signal in risk_signals if signal.waterline.strip().lower() in {"high", "extreme"}
+    )
+    risk_medium_count = sum(
+        1 for signal in risk_signals if signal.waterline.strip().lower() in {"medium", "mid"}
+    )
+    risk_low_count = max(len(risk_signals) - risk_high_count - risk_medium_count, 0)
+
     return SummaryStats(
         positions_count=len(positions),
         total_market_value=total_market_value,
         target_allocations_count=len(target_allocations),
         risk_signals_count=len(risk_signals),
+        risk_high_count=risk_high_count,
+        risk_medium_count=risk_medium_count,
+        risk_low_count=risk_low_count,
         rebalance_suggestions_count=len(rebalance_suggestions),
     )
-
