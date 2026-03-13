@@ -12,6 +12,7 @@ from hiveflow.application.positions import add_position
 from hiveflow.application.positions import export_positions_template
 from hiveflow.application.positions import import_positions_from_csv
 from hiveflow.application.positions import list_positions
+from hiveflow.application.rebalance import preview_rebalance
 from hiveflow.application.risk import export_risk_template
 from hiveflow.application.risk import import_risk_signals_from_csv
 from hiveflow.application.risk import list_risk_signals
@@ -25,6 +26,7 @@ app = typer.Typer(help="HiveFlow 本地资产决策系统。")
 positions_app = typer.Typer(help="持仓管理命令。")
 risk_app = typer.Typer(help="风险信号管理命令。")
 targets_app = typer.Typer(help="目标持仓管理命令。")
+rebalance_app = typer.Typer(help="调仓建议命令。")
 console = Console()
 
 
@@ -445,9 +447,66 @@ def export_targets_template_command(
     typer.echo(f"目标持仓模板已生成：{result.file}")
 
 
+@rebalance_app.command("preview")
+def preview_rebalance_command(
+    strategy: str | None = typer.Option(
+        None,
+        "--strategy",
+        "-s",
+        help="只预览指定策略的目标持仓（默认使用全部目标持仓）",
+    ),
+    save: bool = typer.Option(False, "--save", help="是否保存本次调仓建议到数据库"),
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+    theme: str = typer.Option("hacker", "--theme", help="显示主题：hacker/minimal"),
+) -> None:
+    """预览调仓建议。"""
+    output_format = _validate_output_format(output)
+    ui_theme = _validate_theme(theme)
+    result = preview_rebalance(strategy=strategy, save=save)
+    payload = result.to_dict()
+
+    if output_format == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    if not result.suggestions:
+        typer.echo("暂无调仓建议。")
+        return
+
+    if ui_theme == "minimal":
+        table = Table(title="调仓建议预览", show_lines=False, box=box.SIMPLE)
+        table.add_column("标的", justify="left")
+        table.add_column("偏差", justify="right")
+        table.add_column("动作", justify="left")
+        table.add_column("优先级", justify="left")
+    else:
+        table = Table(
+            title="[bold #5fd75f]:: REBALANCE PREVIEW ::[/bold #5fd75f]",
+            show_lines=False,
+            header_style="bold #5f875f",
+            border_style="#5f875f",
+            box=box.SIMPLE_HEAVY,
+        )
+        table.add_column("标的", justify="left", style="#87ff87")
+        table.add_column("偏差", justify="right", style="#5f875f")
+        table.add_column("动作", justify="left", style="#87ff87")
+        table.add_column("优先级", justify="left", style="#5f875f")
+
+    for item in result.suggestions:
+        table.add_row(
+            item.symbol,
+            f"{item.delta:+.2%}",
+            item.action,
+            item.priority,
+        )
+    console.print(table)
+    typer.echo(f"建议数量：{len(result.suggestions)}；已保存：{'是' if result.saved else '否'}")
+
+
 app.add_typer(positions_app, name="positions")
 app.add_typer(risk_app, name="risk")
 app.add_typer(targets_app, name="targets")
+app.add_typer(rebalance_app, name="rebalance")
 
 
 def run() -> None:

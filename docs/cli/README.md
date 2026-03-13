@@ -293,6 +293,36 @@ JSON 输出示例：
 uv run hiveflow targets template --output json
 ```
 
+### 3.14 预览调仓建议
+
+```bash
+uv run hiveflow rebalance preview
+```
+
+只预览某个策略：
+
+```bash
+uv run hiveflow rebalance preview --strategy "进攻型默认策略"
+```
+
+写入数据库（用于 summary 联动）：
+
+```bash
+uv run hiveflow rebalance preview --strategy "进攻型默认策略" --save
+```
+
+JSON 输出示例：
+
+```bash
+uv run hiveflow rebalance preview --strategy "进攻型默认策略" --output json
+```
+
+主题切换示例：
+
+```bash
+uv run hiveflow rebalance preview --theme minimal
+```
+
 ## 4. 数据库路径
 
 默认数据库路径：

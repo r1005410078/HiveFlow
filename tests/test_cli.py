@@ -47,6 +47,12 @@ def test_targets_command_group_is_available() -> None:
     assert result.exit_code == 0
 
 
+def test_rebalance_command_group_is_available() -> None:
+    # 验证调仓建议命令组已在 CLI 中暴露。
+    result = CliRunner().invoke(app, ["rebalance", "--help"])
+    assert result.exit_code == 0
+
+
 def test_positions_add_and_list_work_with_real_data(tmp_path, monkeypatch) -> None:
     # 验证可以写入持仓并在 list 中看到真实数据。
     db_path = tmp_path / "cli-test.db"
@@ -389,3 +395,60 @@ def test_targets_template_supports_json_output(tmp_path) -> None:
     payload = json.loads(result.stdout)
     assert payload["file"] == str(template_path)
     assert payload["rows"] == 3
+
+
+def test_rebalance_preview_supports_json_output(tmp_path, monkeypatch) -> None:
+    # 验证调仓预览支持 JSON 输出。
+    db_path = tmp_path / "rebalance-preview.db"
+    positions_path = tmp_path / "positions.csv"
+    targets_path = tmp_path / "targets.csv"
+    positions_path.write_text(
+        "symbol,quantity,market_value,weight\nBTC,1,100000,0.60\nETH,2,20000,0.20\nUSDT,1,20000,0.20\n",
+        encoding="utf-8",
+    )
+    targets_path.write_text(
+        "strategy_name,symbol,target_weight\n进攻型默认策略,BTC,0.50\n进攻型默认策略,ETH,0.30\n进攻型默认策略,USDT,0.20\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+    runner.invoke(app, ["positions", "import", "--file", str(positions_path), "--mode", "replace"])
+    runner.invoke(app, ["targets", "import", "--file", str(targets_path), "--mode", "replace"])
+
+    result = runner.invoke(
+        app,
+        ["rebalance", "preview", "--strategy", "进攻型默认策略", "--output", "json"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["strategy"] == "进攻型默认策略"
+    assert payload["suggestions_count"] >= 1
+
+
+def test_rebalance_preview_save_updates_summary_suggestion_count(tmp_path, monkeypatch) -> None:
+    # 验证 --save 会把调仓建议写入数据库，并反映到 summary。
+    db_path = tmp_path / "rebalance-save.db"
+    positions_path = tmp_path / "positions-save.csv"
+    targets_path = tmp_path / "targets-save.csv"
+    positions_path.write_text(
+        "symbol,quantity,market_value,weight\nBTC,1,100000,0.70\nETH,2,20000,0.10\nUSDT,1,20000,0.20\n",
+        encoding="utf-8",
+    )
+    targets_path.write_text(
+        "strategy_name,symbol,target_weight\n进攻型默认策略,BTC,0.50\n进攻型默认策略,ETH,0.30\n进攻型默认策略,USDT,0.20\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+    runner.invoke(app, ["positions", "import", "--file", str(positions_path), "--mode", "replace"])
+    runner.invoke(app, ["targets", "import", "--file", str(targets_path), "--mode", "replace"])
+
+    preview_result = runner.invoke(
+        app,
+        ["rebalance", "preview", "--strategy", "进攻型默认策略", "--save"],
+    )
+    assert preview_result.exit_code == 0
+
+    summary_result = runner.invoke(app, ["summary", "--output", "json"])
+    payload = json.loads(summary_result.stdout)
+    assert payload["rebalance_suggestions_count"] >= 1

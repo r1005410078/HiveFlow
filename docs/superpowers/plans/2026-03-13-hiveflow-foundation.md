@@ -11,7 +11,8 @@
 - 增量层面：已完成 Chunk 7（`positions import`：CSV 导入持仓，支持 `append/replace` 与 JSON 输出）。
 - 增量层面：已完成 Chunk 8（`risk import/list/template` + `summary` 风险分布统计与展示）。
 - 增量层面：已完成 Chunk 9（`targets import/list/template` + `summary` 目标持仓数量联动）。
-- 验证层面：当前测试集通过（`uv run python -m pytest -q` -> `31 passed`）。
+- 增量层面：已完成 Chunk 10（`rebalance preview` 预览闭环，支持 `strategy/save/json/theme`）。
+- 验证层面：当前测试集通过（`uv run python -m pytest -q` -> `34 passed`）。
 - 文档层面：已补充 CLI 使用文档与测试使用文档。
 - 与原计划差异：计划要求“每任务单独提交”，实际执行为集中开发后一次性提交。
  - 回填说明：后续增量按“实现后即时回填”方式维护本计划。
@@ -780,6 +781,31 @@ git commit -m "feat: add hiveflow summary command"
 
 - [x] 导入目标持仓后，`summary --output json` 的 `target_allocations_count` 可正确反映。
 - [x] 测试通过：目标数量统计正确。
+
+## Chunk 10：调仓建议预览闭环
+
+### 任务 22：增加调仓预览命令组
+
+**文件：**
+- 新增：`src/hiveflow/application/rebalance.py`
+- 修改：`src/hiveflow/cli.py`
+- 测试：`tests/test_cli.py`
+
+- [x] 新增 `rebalance` 命令组。
+- [x] 新增 `rebalance preview`（pretty/json）。
+- [x] 支持 `--strategy`（按策略过滤目标持仓）。
+- [x] 支持 `--save`（落库调仓建议）。
+- [x] 支持 `--theme`（hacker/minimal）。
+- [x] 测试通过：命令可用、JSON 结构正确。
+
+### 任务 23：summary 与建议落库联动
+
+**文件：**
+- 修改：`src/hiveflow/application/summary.py`
+- 测试：`tests/test_cli.py`
+
+- [x] `rebalance preview --save` 后，`summary --output json` 的 `rebalance_suggestions_count` 正确更新。
+- [x] 测试通过：建议数量联动正确。
 
 ## 计划说明
 

@@ -12,8 +12,11 @@ from hiveflow.domain.allocations import TargetAllocation
 
 @dataclass(frozen=True)
 class TargetAllocationView:
+    # 策略名称。
     strategy_name: str
+    # 标的代码。
     symbol: str
+    # 目标权重（0~1）。
     target_weight: float
 
     def to_dict(self) -> dict[str, str | float]:
@@ -26,8 +29,11 @@ class TargetAllocationView:
 
 @dataclass(frozen=True)
 class TargetImportResult:
+    # 实际导入条数。
     imported: int
+    # 导入模式：append/replace。
     mode: str
+    # 导入文件路径。
     file: str
 
     def to_dict(self) -> dict[str, int | str]:
@@ -36,7 +42,9 @@ class TargetImportResult:
 
 @dataclass(frozen=True)
 class TargetTemplateResult:
+    # 模板文件输出路径。
     file: str
+    # 模板示例行数（不含表头）。
     rows: int
 
     def to_dict(self) -> dict[str, int | str]:
@@ -44,7 +52,11 @@ class TargetTemplateResult:
 
 
 def list_target_allocations() -> list[TargetAllocationView]:
-    """读取并返回目标持仓（按策略名和标的排序）。"""
+    """读取并返回目标持仓（按策略名和标的排序）。
+
+    Returns:
+        list[TargetAllocationView]: 目标持仓视图列表。
+    """
     create_all_tables()
     with get_session() as session:
         rows = session.exec(select(TargetAllocation)).all()
@@ -59,7 +71,15 @@ def list_target_allocations() -> list[TargetAllocationView]:
 
 
 def import_target_allocations_from_csv(file: Path, mode: str) -> TargetImportResult:
-    """从 CSV 导入目标持仓。"""
+    """从 CSV 导入目标持仓。
+
+    Args:
+        file: CSV 文件路径。
+        mode: 导入模式，仅支持 append 或 replace。
+
+    Returns:
+        TargetImportResult: 导入结果摘要。
+    """
     if mode not in {"append", "replace"}:
         raise ValueError("导入模式仅支持 append 或 replace。")
     if not file.exists() or not file.is_file():
@@ -96,7 +116,14 @@ def import_target_allocations_from_csv(file: Path, mode: str) -> TargetImportRes
 
 
 def export_target_template(file: Path) -> TargetTemplateResult:
-    """导出目标持仓 CSV 模板。"""
+    """导出目标持仓 CSV 模板。
+
+    Args:
+        file: 模板输出路径。
+
+    Returns:
+        TargetTemplateResult: 模板生成结果。
+    """
     file.parent.mkdir(parents=True, exist_ok=True)
     template = (
         "strategy_name,symbol,target_weight\n"
@@ -106,4 +133,3 @@ def export_target_template(file: Path) -> TargetTemplateResult:
     )
     file.write_text(template, encoding="utf-8")
     return TargetTemplateResult(file=str(file), rows=3)
-
