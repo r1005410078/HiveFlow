@@ -47,8 +47,8 @@
 - [x] **Step 3: Write minimal implementation**
   - 增加 `market-data template/validate` 能力。
 - [x] **Step 4: Run tests**
-- [ ] **Step 5: Commit**
-  - `feat: 冻结行情输入契约并提供模板校验`
+- [x] **Step 5: Commit**
+  - 已在 `775c335` 中合并提交（与 Chunk 1 首批能力同次提交）。
 
 ---
 
@@ -111,8 +111,8 @@
 - [x] **Step 3: Write minimal implementation**
   - 增加 `BacktestResult` SQLModel。
 - [x] **Step 4: Run test to verify it passes**
-- [ ] **Step 5: Commit**
-  - `feat: 增加回测结果领域模型`
+- [x] **Step 5: Commit**
+  - 已在 `775c335` 中合并提交。
 
 ### Task 1.2：实现回测服务（单策略单窗口）
 
@@ -127,8 +127,8 @@
 - [x] **Step 3: Implement minimal engine**
   - 支持固定费率、固定滑点（v1 常量参数）。
 - [x] **Step 4: Run tests**
-- [ ] **Step 5: Commit**
-  - `feat: 实现回测引擎v1`
+- [x] **Step 5: Commit**
+  - 已在 `775c335` 中合并提交。
 
 ### Task 1.3：开放 CLI 命令
 
@@ -145,8 +145,8 @@
   - `backtest run --strategy --from --to --fee-bps --slippage-bps`
   - `backtest list --strategy --output`
 - [x] **Step 4: Run tests**
-- [ ] **Step 5: Commit**
-  - `feat: 增加回测命令闭环`
+- [x] **Step 5: Commit**
+  - 已在 `775c335` 中合并提交。
 
 ---
 
