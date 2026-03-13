@@ -8,5 +8,6 @@
 - 完成 Chunk 17：`targets list` 支持 `--strategy` 过滤；`targets import append` 改为同策略同标的覆盖写入，避免重复堆积。
 - 完成 Chunk 18：策略模型落地 `strategy_type + dimension`，并补旧库轻量迁移（自动加 `strategy.dimension` 列）。
 - 统一输出口径：涉及策略输出的命令逐步从“分类”统一为“类型”，并补充维度展示。
+- 完成 Chunk 19：`targets generate` 支持“维度优先、类型回退”的模板选择，并输出模板来源。
+- 完成 Chunk 20：目标模板支持外部配置文件 `config/target-templates.json`，可通过 `HIVEFLOW_TARGET_TEMPLATE_FILE` 切换。
 - 提交约定确认：后续 git 提交信息使用中文。
-

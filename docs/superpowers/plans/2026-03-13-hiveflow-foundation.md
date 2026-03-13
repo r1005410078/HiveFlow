@@ -20,7 +20,9 @@
 - 增量层面：已完成 Chunk 16（`targets/rebalance` 默认跟随当前策略）。
 - 增量层面：已完成 Chunk 17（`targets` 去重写入 + 按策略过滤）。
 - 增量层面：已完成 Chunk 18（策略类型与维度字段落地，兼容旧库）。
-- 验证层面：当前测试集通过（`uv run python -m pytest -q` -> `62 passed`）。
+- 增量层面：已完成 Chunk 19（维度驱动目标持仓模板）。
+- 增量层面：已完成 Chunk 20（目标模板配置文件化与可切换）。
+- 验证层面：当前测试集通过（`uv run python -m pytest -q` -> `65 passed`）。
 - 文档层面：已补充 CLI 使用文档与测试使用文档。
 - 与原计划差异：计划要求“每任务单独提交”，实际执行为集中开发后一次性提交。
  - 回填说明：后续增量按“实现后即时回填”方式维护本计划。
@@ -1016,6 +1018,46 @@ git commit -m "feat: add hiveflow summary command"
 - [x] `create_all_tables` 后执行轻量迁移。
 - [x] 旧库缺少 `strategy.dimension` 时自动 `ALTER TABLE` 增列。
 - [x] 测试通过：全量回归通过。
+
+## Chunk 19：维度驱动目标持仓模板
+
+### 任务 39：targets generate 优先匹配维度模板
+
+**文件：**
+- 修改：`src/hiveflow/application/targets.py`
+- 修改：`src/hiveflow/cli.py`
+- 修改：`tests/test_cli.py`
+- 修改：`docs/cli/README.md`
+
+- [x] 增加维度模板配置，支持“趋势|动量”等维度专属权重。
+- [x] `targets generate` 先匹配维度模板，匹配不到再回退到策略类型模板。
+- [x] JSON 输出增加 `dimension` 与 `template_source`。
+- [x] 终端输出增加“模板来源”说明。
+- [x] 测试通过：维度命中与类型回退路径均覆盖。
+
+## Chunk 20：目标模板配置文件化
+
+### 任务 40：支持外部模板配置文件
+
+**文件：**
+- 修改：`src/hiveflow/config.py`
+- 修改：`src/hiveflow/application/targets.py`
+- 新增：`config/target-templates.json`
+- 测试：`tests/test_cli.py`
+
+- [x] 新增配置项 `target_template_file`。
+- [x] 默认读取 `./config/target-templates.json`。
+- [x] 支持通过 `HIVEFLOW_TARGET_TEMPLATE_FILE` 覆盖配置路径。
+- [x] 配置读取失败自动回退内置模板，不中断主流程。
+- [x] 测试通过：外部配置生效、维度模板与类型模板路径正确。
+
+### 任务 41：文档补充模板配置说明
+
+**文件：**
+- 修改：`docs/cli/README.md`
+
+- [x] 补充默认模板配置路径说明。
+- [x] 补充环境变量覆盖示例。
 
 ## 计划说明
 

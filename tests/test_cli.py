@@ -799,6 +799,116 @@ def test_targets_generate_from_strategy_supports_json_output(tmp_path, monkeypat
     assert {item["symbol"] for item in targets} == {"BTC", "ETH", "USDT"}
 
 
+def test_targets_generate_prefers_dimension_template(tmp_path, monkeypatch) -> None:
+    # 验证存在匹配维度模板时，优先使用维度模板生成目标持仓。
+    db_path = tmp_path / "targets-generate-dimension.db"
+    strategies_path = tmp_path / "strategies-dimension-template.csv"
+    strategies_path.write_text(
+        (
+            "name,strategy_type,thesis,dimension,market_regime,backtest_summary\n"
+            "趋势动量策略,进攻型,趋势跟随+动量确认,趋势|动量,趋势市,年化 20%\n"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+    runner.invoke(app, ["strategies", "import", "--file", str(strategies_path), "--mode", "replace"])
+
+    generate_result = runner.invoke(
+        app,
+        ["targets", "generate", "--strategy", "趋势动量策略", "--output", "json"],
+    )
+    assert generate_result.exit_code == 0
+    payload = json.loads(generate_result.stdout)
+    assert payload["strategy_type"] == "进攻型"
+    assert payload["dimension"] == "趋势|动量"
+    assert payload["template_source"] == "dimension"
+
+    list_result = runner.invoke(
+        app, ["targets", "list", "--strategy", "趋势动量策略", "--output", "json"]
+    )
+    targets = json.loads(list_result.stdout)
+    weights = {item["symbol"]: item["target_weight"] for item in targets}
+    assert weights == {"BTC": 0.45, "ETH": 0.45, "USDT": 0.1}
+
+
+def test_targets_generate_falls_back_to_type_template(tmp_path, monkeypatch) -> None:
+    # 验证维度没有专属模板时，回退到策略类型模板。
+    db_path = tmp_path / "targets-generate-fallback.db"
+    strategies_path = tmp_path / "strategies-fallback.csv"
+    strategies_path.write_text(
+        (
+            "name,strategy_type,thesis,dimension,market_regime,backtest_summary\n"
+            "进攻新维度策略,进攻型,新维度实验,未知维度,趋势市,年化 15%\n"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+    runner.invoke(app, ["strategies", "import", "--file", str(strategies_path), "--mode", "replace"])
+
+    generate_result = runner.invoke(
+        app,
+        ["targets", "generate", "--strategy", "进攻新维度策略", "--output", "json"],
+    )
+    assert generate_result.exit_code == 0
+    payload = json.loads(generate_result.stdout)
+    assert payload["template_source"] == "type"
+
+    list_result = runner.invoke(
+        app, ["targets", "list", "--strategy", "进攻新维度策略", "--output", "json"]
+    )
+    targets = json.loads(list_result.stdout)
+    weights = {item["symbol"]: item["target_weight"] for item in targets}
+    assert weights == {"BTC": 0.5, "ETH": 0.3, "USDT": 0.2}
+
+
+def test_targets_generate_supports_external_template_config(tmp_path, monkeypatch) -> None:
+    # 验证可通过外部模板配置文件驱动目标持仓生成。
+    db_path = tmp_path / "targets-generate-config.db"
+    config_path = tmp_path / "target-templates.json"
+    strategies_path = tmp_path / "strategies-config.csv"
+    config_path.write_text(
+        json.dumps(
+            {
+                "dimension_presets": {
+                    "趋势|动量": {"BTC": 0.60, "ETH": 0.30, "USDT": 0.10}
+                },
+                "type_presets": {"进攻型": {"BTC": 0.50, "ETH": 0.30, "USDT": 0.20}},
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    strategies_path.write_text(
+        (
+            "name,strategy_type,thesis,dimension,market_regime,backtest_summary\n"
+            "趋势动量策略,进攻型,趋势跟随+动量确认,趋势|动量,趋势市,年化 20%\n"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    monkeypatch.setenv("HIVEFLOW_TARGET_TEMPLATE_FILE", str(config_path))
+    runner = CliRunner()
+    runner.invoke(app, ["strategies", "import", "--file", str(strategies_path), "--mode", "replace"])
+
+    generate_result = runner.invoke(
+        app,
+        ["targets", "generate", "--strategy", "趋势动量策略", "--output", "json"],
+    )
+    assert generate_result.exit_code == 0
+    payload = json.loads(generate_result.stdout)
+    assert payload["template_source"] == "dimension"
+
+    list_result = runner.invoke(
+        app, ["targets", "list", "--strategy", "趋势动量策略", "--output", "json"]
+    )
+    targets = json.loads(list_result.stdout)
+    weights = {item["symbol"]: item["target_weight"] for item in targets}
+    assert weights == {"BTC": 0.6, "ETH": 0.3, "USDT": 0.1}
+
+
 def test_targets_generate_auto_records_decision_log(tmp_path, monkeypatch) -> None:
     # 验证自动生成目标持仓后，会自动写入决策日志。
     db_path = tmp_path / "targets-generate-log.db"

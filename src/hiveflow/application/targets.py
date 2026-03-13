@@ -1,11 +1,13 @@
 """目标持仓应用服务。"""
 
+import json
 from csv import DictReader
 from dataclasses import dataclass
 from pathlib import Path
 
 from sqlmodel import delete, select
 
+from hiveflow.config import Settings
 from hiveflow.db import create_all_tables, get_session
 from hiveflow.domain.allocations import TargetAllocation
 from hiveflow.domain.strategies import Strategy
@@ -65,6 +67,10 @@ class TargetGenerateResult:
     strategy: str
     # 策略类型。
     strategy_type: str
+    # 策略维度。
+    dimension: str | None
+    # 模板来源：dimension / type。
+    template_source: str
     # 生成条数。
     generated: int
 
@@ -72,6 +78,8 @@ class TargetGenerateResult:
         return {
             "strategy": self.strategy,
             "strategy_type": self.strategy_type,
+            "dimension": self.dimension,
+            "template_source": self.template_source,
             # 兼容旧字段，后续可逐步移除。
             "category": self.strategy_type,
             "generated": self.generated,
@@ -182,15 +190,85 @@ def export_target_template(file: Path) -> TargetTemplateResult:
     return TargetTemplateResult(file=str(file), rows=3)
 
 
-def _default_allocations_for_category(category: str) -> dict[str, float]:
-    """按策略分类返回默认目标权重配置。"""
-    normalized = category.strip()
-    presets: dict[str, dict[str, float]] = {
-        "进攻型": {"BTC": 0.50, "ETH": 0.30, "USDT": 0.20},
-        "防守型": {"BTC": 0.20, "ETH": 0.20, "USDT": 0.60},
-        "长期型": {"BTC": 0.40, "ETH": 0.40, "USDT": 0.20},
+_TYPE_PRESETS: dict[str, dict[str, float]] = {
+    "进攻型": {"BTC": 0.50, "ETH": 0.30, "USDT": 0.20},
+    "防守型": {"BTC": 0.20, "ETH": 0.20, "USDT": 0.60},
+    "长期型": {"BTC": 0.40, "ETH": 0.40, "USDT": 0.20},
+}
+
+_DIMENSION_PRESETS: dict[str, dict[str, float]] = {
+    "趋势|动量": {"BTC": 0.45, "ETH": 0.45, "USDT": 0.10},
+    "波动|防守": {"BTC": 0.15, "ETH": 0.15, "USDT": 0.70},
+}
+
+
+def _load_template_presets_from_config() -> tuple[dict[str, dict[str, float]], dict[str, dict[str, float]]]:
+    """从外部配置读取模板；读取失败时回退到内置模板。"""
+    settings = Settings()
+    config_file = Path(settings.target_template_file)
+    if not config_file.exists() or not config_file.is_file():
+        return _TYPE_PRESETS, _DIMENSION_PRESETS
+
+    try:
+        payload = json.loads(config_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return _TYPE_PRESETS, _DIMENSION_PRESETS
+
+    raw_type = payload.get("type_presets", {})
+    raw_dimension = payload.get("dimension_presets", {})
+    if not isinstance(raw_type, dict) or not isinstance(raw_dimension, dict):
+        return _TYPE_PRESETS, _DIMENSION_PRESETS
+
+    type_presets: dict[str, dict[str, float]] = dict(_TYPE_PRESETS)
+    dimension_presets: dict[str, dict[str, float]] = dict(_DIMENSION_PRESETS)
+
+    for key, value in raw_type.items():
+        if isinstance(key, str) and isinstance(value, dict):
+            try:
+                type_presets[key] = {str(k).upper(): float(v) for k, v in value.items()}
+            except (TypeError, ValueError):
+                continue
+    for key, value in raw_dimension.items():
+        if isinstance(key, str) and isinstance(value, dict):
+            try:
+                dimension_presets[key] = {str(k).upper(): float(v) for k, v in value.items()}
+            except (TypeError, ValueError):
+                continue
+
+    return type_presets, dimension_presets
+
+
+def _normalize_dimension(value: str | None) -> str:
+    """将维度字符串规范化，避免顺序和空格影响匹配。"""
+    if not value:
+        return ""
+    parts = sorted({item.strip() for item in value.split("|") if item.strip()})
+    return "|".join(parts)
+
+
+def _select_template_allocations(strategy_type: str, dimension: str | None) -> tuple[dict[str, float], str]:
+    """根据策略类型与维度选择目标持仓模板。"""
+    type_presets, dimension_presets_raw = _load_template_presets_from_config()
+    normalized_dimension = _normalize_dimension(dimension)
+    dimension_templates = {
+        _normalize_dimension(key): value for key, value in dimension_presets_raw.items()
     }
-    return presets.get(normalized, {"BTC": 0.34, "ETH": 0.33, "USDT": 0.33})
+    if normalized_dimension and normalized_dimension in dimension_templates:
+        return dimension_templates[normalized_dimension], "dimension"
+
+    normalized_type = strategy_type.strip()
+    if normalized_type in type_presets:
+        return type_presets[normalized_type], "type"
+
+    return {"BTC": 0.34, "ETH": 0.33, "USDT": 0.33}, "type"
+
+
+def _default_allocations_for_category(category: str) -> dict[str, float]:
+    """按策略类型返回默认目标权重配置。"""
+    normalized = category.strip()
+    if normalized in _TYPE_PRESETS:
+        return _TYPE_PRESETS[normalized]
+    return {"BTC": 0.34, "ETH": 0.33, "USDT": 0.33}
 
 
 def generate_targets_for_strategy(strategy_name: str) -> TargetGenerateResult:
@@ -204,7 +282,10 @@ def generate_targets_for_strategy(strategy_name: str) -> TargetGenerateResult:
         session.exec(
             delete(TargetAllocation).where(TargetAllocation.strategy_name == strategy_name)
         )
-        allocations = _default_allocations_for_category(strategy.category)
+        allocations, template_source = _select_template_allocations(
+            strategy_type=strategy.category,
+            dimension=strategy.dimension,
+        )
         targets = generate_target_allocations(strategy_name=strategy_name, allocations=allocations)
         for item in targets:
             session.add(item)
@@ -213,5 +294,7 @@ def generate_targets_for_strategy(strategy_name: str) -> TargetGenerateResult:
         return TargetGenerateResult(
             strategy=strategy_name,
             strategy_type=strategy.category,
+            dimension=strategy.dimension,
+            template_source=template_source,
             generated=len(targets),
         )

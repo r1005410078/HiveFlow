@@ -838,7 +838,9 @@ def generate_targets_command(
         typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
         return
     typer.echo(
-        f"目标持仓已生成：策略={result.strategy}，类型={result.strategy_type}，条数={result.generated}"
+        "目标持仓已生成："
+        f"策略={result.strategy}，类型={result.strategy_type}，维度={result.dimension or '-'}，"
+        f"模板来源={result.template_source}，条数={result.generated}"
     )
 
 

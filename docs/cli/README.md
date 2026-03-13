@@ -459,6 +459,15 @@ uv run hiveflow targets generate --strategy "进攻突破策略"
 如果不传 `--strategy`，会自动使用当前策略（`hiveflow current show` 的值）。  
 导入成功后会自动写入一条 `decision_logs` 记录（类型：`targets-generate`）。
 
+说明补充：当策略维度匹配专属模板时，优先使用维度模板；否则回退到策略类型模板。
+模板配置默认读取：`./config/target-templates.json`。
+
+如果你想切换模板文件，可用环境变量覆盖：
+
+```bash
+HIVEFLOW_TARGET_TEMPLATE_FILE=./config/my-target-templates.json uv run hiveflow targets generate --strategy "趋势动量策略"
+```
+
 JSON 输出示例：
 
 ```bash
