@@ -72,6 +72,40 @@ uv run hiveflow log --summary "减仓 BTC 5%" --decision-type "rebalance" --note
 uv run hiveflow summary
 ```
 
+说明：
+
+- 现在会读取数据库里的真实数据（持仓数量、总市值等）
+- 支持 JSON 输出（给脚本/大模型使用）：
+
+```bash
+uv run hiveflow summary --output json
+```
+
+### 3.4 新增持仓
+
+```bash
+uv run hiveflow positions add --symbol "BTC" --quantity 1.5 --market-value 120000 --weight 0.6
+```
+
+参数说明：
+
+- `--symbol`：标的代码（如 BTC / ETH / AAPL）
+- `--quantity`：持仓数量
+- `--market-value`：当前持仓市值
+- `--weight`：持仓权重（0~1）
+
+### 3.5 查看持仓列表
+
+```bash
+uv run hiveflow positions list
+```
+
+JSON 输出示例：
+
+```bash
+uv run hiveflow positions list --output json
+```
+
 ## 4. 数据库路径
 
 默认数据库路径：
@@ -87,8 +121,10 @@ HIVEFLOW_DATABASE_URL="sqlite:////Users/rongts/strat-flow/data/dev.db" uv run hi
 ## 5. 推荐日常流程
 
 1. `uv run hiveflow bootstrap`（第一次或切换新库时执行）
-2. `uv run hiveflow summary`（查看当前状态）
-3. `uv run hiveflow log ...`（记录关键决策）
+2. `uv run hiveflow positions add ...`（录入持仓）
+3. `uv run hiveflow positions list`（核对持仓）
+4. `uv run hiveflow summary`（查看状态摘要）
+5. `uv run hiveflow log ...`（记录关键决策）
 
 ## 6. 常见问题
 

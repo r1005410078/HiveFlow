@@ -13,6 +13,7 @@ dependencies = [
   "pydantic>=2.7.0",
   "pydantic-settings>=2.3.0",
   "sqlmodel>=0.0.22",
+  "rich>=13.7.0",
 ]
 
 [project.optional-dependencies]
