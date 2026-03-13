@@ -262,7 +262,66 @@ JSON 输出示例：
 uv run hiveflow risk template --output json
 ```
 
-### 3.13 查看目标持仓列表
+### 3.13 查看策略列表
+
+```bash
+uv run hiveflow strategies list
+```
+
+JSON 输出示例：
+
+```bash
+uv run hiveflow strategies list --output json
+```
+
+主题切换示例：
+
+```bash
+uv run hiveflow strategies list --theme minimal
+```
+
+### 3.14 从 CSV 导入策略
+
+```bash
+uv run hiveflow strategies import --file ./strategies.csv
+```
+
+说明：导入成功后会自动写入一条 `decision_logs` 记录（类型：`strategies-import`）。
+
+可选参数：
+
+- `--mode append`：追加导入（默认）
+- `--mode replace`：清空旧策略后导入
+- `--output json`：输出结构化导入结果
+
+CSV 列要求（必须包含）：
+
+- `name`
+- `category`
+- `thesis`
+- `market_regime`
+- `backtest_summary`
+
+### 3.15 下载（生成）策略 CSV 模板
+
+```bash
+uv run hiveflow strategies template
+```
+
+默认会在当前目录生成 `strategies.csv`。  
+也可以指定路径：
+
+```bash
+uv run hiveflow strategies template --file ./data/strategies.csv
+```
+
+JSON 输出示例：
+
+```bash
+uv run hiveflow strategies template --output json
+```
+
+### 3.16 查看目标持仓列表
 
 ```bash
 uv run hiveflow targets list
@@ -280,7 +339,7 @@ uv run hiveflow targets list --output json
 uv run hiveflow targets list --theme minimal
 ```
 
-### 3.14 从 CSV 导入目标持仓
+### 3.17 从 CSV 导入目标持仓
 
 ```bash
 uv run hiveflow targets import --file ./target-allocations.csv
@@ -309,7 +368,7 @@ strategy_name,symbol,target_weight
 进攻型默认策略,USDT,0.20
 ```
 
-### 3.15 下载（生成）目标持仓 CSV 模板
+### 3.18 下载（生成）目标持仓 CSV 模板
 
 ```bash
 uv run hiveflow targets template
@@ -328,7 +387,7 @@ JSON 输出示例：
 uv run hiveflow targets template --output json
 ```
 
-### 3.16 预览调仓建议
+### 3.19 预览调仓建议
 
 ```bash
 uv run hiveflow rebalance preview

@@ -18,6 +18,9 @@ from hiveflow.application.rebalance import preview_rebalance
 from hiveflow.application.risk import export_risk_template
 from hiveflow.application.risk import import_risk_signals_from_csv
 from hiveflow.application.risk import list_risk_signals
+from hiveflow.application.strategies import export_strategy_template
+from hiveflow.application.strategies import import_strategies_from_csv
+from hiveflow.application.strategies import list_strategies
 from hiveflow.application.summary import get_summary_stats
 from hiveflow.application.targets import export_target_template
 from hiveflow.application.targets import import_target_allocations_from_csv
@@ -30,6 +33,7 @@ risk_app = typer.Typer(help="风险信号管理命令。")
 targets_app = typer.Typer(help="目标持仓管理命令。")
 rebalance_app = typer.Typer(help="调仓建议命令。")
 logs_app = typer.Typer(help="决策日志命令。")
+strategies_app = typer.Typer(help="策略管理命令。")
 console = Console()
 
 
@@ -170,6 +174,108 @@ def export_logs_command(
     typer.echo(f"决策日志导出完成：{result.rows} 条 -> {result.file}")
 
 
+@strategies_app.command("list")
+def list_strategies_command(
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+    theme: str = typer.Option("hacker", "--theme", help="显示主题：hacker/minimal"),
+) -> None:
+    """列出当前所有策略记录。"""
+    output_format = _validate_output_format(output)
+    ui_theme = _validate_theme(theme)
+    strategies = list_strategies()
+    if not strategies:
+        if output_format == "json":
+            typer.echo("[]")
+        else:
+            typer.echo("暂无策略记录。")
+        return
+
+    if output_format == "json":
+        payload = [item.to_dict() for item in strategies]
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    if ui_theme == "minimal":
+        table = Table(title="策略列表", show_lines=False, box=box.SIMPLE)
+        table.add_column("策略名称", justify="left")
+        table.add_column("分类", justify="left")
+        table.add_column("理念", justify="left")
+        table.add_column("适用市场", justify="left")
+        table.add_column("回测摘要", justify="left")
+    else:
+        table = Table(
+            title="[bold #5fd75f]:: STRATEGIES ::[/bold #5fd75f]",
+            show_lines=False,
+            header_style="bold #5f875f",
+            border_style="#5f875f",
+            box=box.SIMPLE_HEAVY,
+        )
+        table.add_column("策略名称", justify="left", style="#87ff87")
+        table.add_column("分类", justify="left", style="#5f875f")
+        table.add_column("理念", justify="left", style="#5f875f")
+        table.add_column("适用市场", justify="left", style="#5f875f")
+        table.add_column("回测摘要", justify="left", style="#5f875f")
+
+    for item in strategies:
+        table.add_row(
+            item.name,
+            item.category,
+            item.thesis,
+            item.market_regime or "-",
+            item.backtest_summary or "-",
+        )
+    console.print(table)
+
+
+@strategies_app.command("import")
+def import_strategies_command(
+    file: Path = typer.Option(..., "--file", "-f", help="CSV 文件路径"),
+    mode: str = typer.Option("append", "--mode", "-m", help="导入模式：append/replace"),
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+) -> None:
+    """从 CSV 导入策略。"""
+    output_format = _validate_output_format(output)
+    import_mode = _validate_import_mode(mode)
+    try:
+        result = import_strategies_from_csv(file=file, mode=import_mode)
+    except FileNotFoundError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    record_decision_log(
+        summary=f"导入策略 {result.imported} 条（模式：{result.mode}）",
+        decision_type="strategies-import",
+        notes=f"file={file}",
+    )
+
+    payload = result.to_dict()
+    if output_format == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    typer.echo(f"策略导入完成：{result.imported} 条（模式：{result.mode}）。")
+
+
+@strategies_app.command("template")
+def export_strategies_template_command(
+    file: Path = typer.Option(
+        Path("strategies.csv"),
+        "--file",
+        "-f",
+        help="模板输出路径（默认：./strategies.csv）",
+    ),
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+) -> None:
+    """导出策略 CSV 模板。"""
+    output_format = _validate_output_format(output)
+    result = export_strategy_template(file=file)
+    payload = result.to_dict()
+    if output_format == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    typer.echo(f"策略模板已生成：{result.file}")
+
+
 @app.command("summary")
 def summary_command(
     output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
@@ -191,6 +297,7 @@ def summary_command(
         lines = [
             "HiveFlow 状态摘要",
             f"- 持仓数量: {stats.positions_count}",
+            f"- 策略数量: {stats.strategies_count}",
             f"- 持仓总市值: {stats.total_market_value:.2f}",
             f"- 目标持仓数量: {stats.target_allocations_count}",
             f"- 风险信号数量: {risk_count}",
@@ -207,6 +314,7 @@ def summary_command(
     lines = [
         "[bold #5fd75f]>> HIVEFLOW SYSTEM STATUS[/bold #5fd75f]",
         f"[#5f875f]- 持仓数量:[/#5f875f] [bold #87ff87]{stats.positions_count}[/bold #87ff87]",
+        f"[#5f875f]- 策略数量:[/#5f875f] [bold #87ff87]{stats.strategies_count}[/bold #87ff87]",
         (
             f"[#5f875f]- 持仓总市值:[/#5f875f] "
             f"[bold #87ff87]{stats.total_market_value:.2f}[/bold #87ff87]"
@@ -615,6 +723,7 @@ app.add_typer(risk_app, name="risk")
 app.add_typer(targets_app, name="targets")
 app.add_typer(rebalance_app, name="rebalance")
 app.add_typer(logs_app, name="logs")
+app.add_typer(strategies_app, name="strategies")
 
 
 def run() -> None:

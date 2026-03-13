@@ -9,6 +9,7 @@ from hiveflow.domain.allocations import TargetAllocation
 from hiveflow.domain.decision_logs import DecisionLog
 from hiveflow.domain.positions import Position
 from hiveflow.domain.risk import RiskSignal
+from hiveflow.domain.strategies import Strategy
 from hiveflow.domain.suggestions import RebalanceSuggestion
 
 
@@ -16,6 +17,8 @@ from hiveflow.domain.suggestions import RebalanceSuggestion
 class SummaryStats:
     # 持仓条目数量。
     positions_count: int
+    # 策略条目数量。
+    strategies_count: int
     # 持仓总市值。
     total_market_value: float
     # 目标持仓条目数量。
@@ -37,6 +40,7 @@ class SummaryStats:
         """转换为字典，便于 JSON 输出。"""
         return {
             "positions_count": self.positions_count,
+            "strategies_count": self.strategies_count,
             "total_market_value": round(self.total_market_value, 2),
             "target_allocations_count": self.target_allocations_count,
             "risk_signals_count": self.risk_signals_count,
@@ -53,6 +57,7 @@ def get_summary_stats() -> SummaryStats:
     create_all_tables()
     with get_session() as session:
         positions = session.exec(select(Position)).all()
+        strategies = session.exec(select(Strategy)).all()
         target_allocations = session.exec(select(TargetAllocation)).all()
         risk_signals = session.exec(select(RiskSignal)).all()
         rebalance_suggestions = session.exec(select(RebalanceSuggestion)).all()
@@ -69,6 +74,7 @@ def get_summary_stats() -> SummaryStats:
 
     return SummaryStats(
         positions_count=len(positions),
+        strategies_count=len(strategies),
         total_market_value=total_market_value,
         target_allocations_count=len(target_allocations),
         risk_signals_count=len(risk_signals),

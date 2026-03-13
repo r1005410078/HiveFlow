@@ -59,6 +59,12 @@ def test_logs_command_group_is_available() -> None:
     assert result.exit_code == 0
 
 
+def test_strategies_command_group_is_available() -> None:
+    # 验证策略命令组已在 CLI 中暴露。
+    result = CliRunner().invoke(app, ["strategies", "--help"])
+    assert result.exit_code == 0
+
+
 def test_positions_add_and_list_work_with_real_data(tmp_path, monkeypatch) -> None:
     # 验证可以写入持仓并在 list 中看到真实数据。
     db_path = tmp_path / "cli-test.db"
@@ -572,3 +578,93 @@ def test_targets_import_auto_records_decision_log(tmp_path, monkeypatch) -> None
     assert len(logs) == 1
     assert logs[0]["decision_type"] == "targets-import"
     assert "导入目标持仓" in logs[0]["summary"]
+
+
+def test_strategies_import_and_list_support_json_output(tmp_path, monkeypatch) -> None:
+    # 验证策略支持 CSV 导入并可 JSON 列出。
+    db_path = tmp_path / "strategies-import.db"
+    csv_path = tmp_path / "strategies.csv"
+    csv_path.write_text(
+        (
+            "name,category,thesis,market_regime,backtest_summary\n"
+            "进攻突破策略,进攻型,顺势突破+风控,趋势市,年化 18%\n"
+            "防守轮动策略,防守型,低波动防守轮动,震荡市,最大回撤 8%\n"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+
+    import_result = runner.invoke(
+        app,
+        ["strategies", "import", "--file", str(csv_path), "--output", "json"],
+    )
+    assert import_result.exit_code == 0
+    import_payload = json.loads(import_result.stdout)
+    assert import_payload["imported"] == 2
+
+    list_result = runner.invoke(app, ["strategies", "list", "--output", "json"])
+    assert list_result.exit_code == 0
+    items = json.loads(list_result.stdout)
+    assert len(items) == 2
+    assert items[0]["name"] in {"进攻突破策略", "防守轮动策略"}
+
+
+def test_strategies_template_supports_json_output(tmp_path) -> None:
+    # 验证策略模板生成命令支持 JSON 输出。
+    template_path = tmp_path / "strategies-template.csv"
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["strategies", "template", "--file", str(template_path), "--output", "json"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["file"] == str(template_path)
+    assert payload["rows"] == 2
+
+
+def test_summary_json_includes_strategies_count_after_import(tmp_path, monkeypatch) -> None:
+    # 验证导入策略后，summary 的策略数量会更新。
+    db_path = tmp_path / "summary-strategies.db"
+    csv_path = tmp_path / "strategies-summary.csv"
+    csv_path.write_text(
+        (
+            "name,category,thesis,market_regime,backtest_summary\n"
+            "长期配置策略,长期型,长期资产配置,宽幅震荡,年化 12%\n"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+    runner.invoke(app, ["strategies", "import", "--file", str(csv_path)])
+
+    result = runner.invoke(app, ["summary", "--output", "json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["strategies_count"] == 1
+
+
+def test_strategies_import_auto_records_decision_log(tmp_path, monkeypatch) -> None:
+    # 验证导入策略后，会自动写入一条决策日志。
+    db_path = tmp_path / "strategies-import-log.db"
+    csv_path = tmp_path / "strategies-import-log.csv"
+    csv_path.write_text(
+        (
+            "name,category,thesis,market_regime,backtest_summary\n"
+            "进攻突破策略,进攻型,顺势突破+风控,趋势市,年化 18%\n"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+
+    import_result = runner.invoke(app, ["strategies", "import", "--file", str(csv_path)])
+    assert import_result.exit_code == 0
+
+    logs_result = runner.invoke(app, ["logs", "list", "--output", "json"])
+    assert logs_result.exit_code == 0
+    logs = json.loads(logs_result.stdout)
+    assert len(logs) == 1
+    assert logs[0]["decision_type"] == "strategies-import"
+    assert "导入策略" in logs[0]["summary"]

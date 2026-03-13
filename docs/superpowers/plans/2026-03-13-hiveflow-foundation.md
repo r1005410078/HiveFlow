@@ -13,7 +13,8 @@
 - 增量层面：已完成 Chunk 9（`targets import/list/template` + `summary` 目标持仓数量联动）。
 - 增量层面：已完成 Chunk 10（`rebalance preview` 预览闭环，支持 `strategy/save/json/theme`）。
 - 增量层面：已完成 Chunk 11（`logs list/export` + `summary` 决策日志数量联动）。
-- 验证层面：当前测试集通过（`uv run python -m pytest -q` -> `38 passed`）。
+- 增量层面：已完成 Chunk 12（`strategies list/import/template` + `summary` 策略数量联动）。
+- 验证层面：当前测试集通过（`uv run python -m pytest -q` -> `44 passed`）。
 - 文档层面：已补充 CLI 使用文档与测试使用文档。
 - 与原计划差异：计划要求“每任务单独提交”，实际执行为集中开发后一次性提交。
  - 回填说明：后续增量按“实现后即时回填”方式维护本计划。
@@ -834,6 +835,34 @@ git commit -m "feat: add hiveflow summary command"
 - [x] `summary --output json` 新增 `decision_logs_count` 字段。
 - [x] `summary` 终端输出新增“决策日志数量”。
 - [x] 测试通过：写入日志后统计数量正确。
+
+## Chunk 12：策略池闭环
+
+### 任务 26：增加策略命令组
+
+**文件：**
+- 新增：`src/hiveflow/application/strategies.py`
+- 修改：`src/hiveflow/cli.py`
+- 修改：`docs/cli/README.md`
+- 测试：`tests/test_cli.py`
+
+- [x] 新增 `strategies` 命令组。
+- [x] 新增 `strategies list`（pretty/json）。
+- [x] 新增 `strategies import`（append/replace/json）。
+- [x] 新增 `strategies template`（模板导出/json）。
+- [x] 导入成功自动写入决策日志（`strategies-import`）。
+- [x] 测试通过：命令可用、JSON 结构正确、自动日志可用。
+
+### 任务 27：summary 与策略数量联动
+
+**文件：**
+- 修改：`src/hiveflow/application/summary.py`
+- 修改：`src/hiveflow/cli.py`
+- 测试：`tests/test_cli.py`
+
+- [x] `summary --output json` 新增 `strategies_count` 字段。
+- [x] `summary` 终端输出新增“策略数量”。
+- [x] 测试通过：导入策略后统计数量正确。
 
 ## 计划说明
 
