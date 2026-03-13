@@ -7,6 +7,7 @@ from sqlmodel import delete, select
 from hiveflow.db import create_all_tables, get_session
 from hiveflow.domain.allocations import TargetAllocation
 from hiveflow.domain.positions import Position
+from hiveflow.domain.strategies import Strategy
 from hiveflow.domain.suggestions import RebalanceSuggestion
 from hiveflow.services.rebalance_engine import generate_rebalance_suggestions
 
@@ -38,6 +39,10 @@ class RebalanceSuggestionView:
 class RebalancePreviewResult:
     # 本次预览使用的策略名；None 表示使用所有目标持仓。
     strategy: str | None
+    # 策略类型。
+    strategy_type: str | None
+    # 策略维度。
+    dimension: str | None
     # 结构化建议列表。
     suggestions: list[RebalanceSuggestionView]
     # 是否已落库保存。
@@ -46,6 +51,8 @@ class RebalancePreviewResult:
     def to_dict(self) -> dict[str, object]:
         return {
             "strategy": self.strategy,
+            "strategy_type": self.strategy_type,
+            "dimension": self.dimension,
             "suggestions_count": len(self.suggestions),
             "saved": self.saved,
             "suggestions": [item.to_dict() for item in self.suggestions],
@@ -142,8 +149,19 @@ def preview_rebalance(
     if save:
         _save_suggestions(suggestion_views)
 
+    strategy_type: str | None = None
+    dimension: str | None = None
+    if strategy:
+        with get_session() as session:
+            strategy_row = session.exec(select(Strategy).where(Strategy.name == strategy)).first()
+        if strategy_row:
+            strategy_type = strategy_row.category
+            dimension = strategy_row.dimension
+
     return RebalancePreviewResult(
         strategy=strategy,
+        strategy_type=strategy_type,
+        dimension=dimension,
         saved=save,
         suggestions=suggestion_views,
     )

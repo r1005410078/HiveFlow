@@ -205,7 +205,8 @@ def list_strategies_command(
     if ui_theme == "minimal":
         table = Table(title="策略列表", show_lines=False, box=box.SIMPLE)
         table.add_column("策略名称", justify="left")
-        table.add_column("分类", justify="left")
+        table.add_column("类型", justify="left")
+        table.add_column("维度", justify="left")
         table.add_column("理念", justify="left")
         table.add_column("适用市场", justify="left")
         table.add_column("回测摘要", justify="left")
@@ -218,7 +219,8 @@ def list_strategies_command(
             box=box.SIMPLE_HEAVY,
         )
         table.add_column("策略名称", justify="left", style="#87ff87")
-        table.add_column("分类", justify="left", style="#5f875f")
+        table.add_column("类型", justify="left", style="#5f875f")
+        table.add_column("维度", justify="left", style="#5f875f")
         table.add_column("理念", justify="left", style="#5f875f")
         table.add_column("适用市场", justify="left", style="#5f875f")
         table.add_column("回测摘要", justify="left", style="#5f875f")
@@ -227,6 +229,7 @@ def list_strategies_command(
         table.add_row(
             item.name,
             item.category,
+            item.dimension or "-",
             item.thesis,
             item.market_regime or "-",
             item.backtest_summary or "-",
@@ -301,7 +304,7 @@ def list_slots_command(
         table = Table(title="策略席位", show_lines=False, box=box.SIMPLE)
         table.add_column("席位", justify="left")
         table.add_column("用途", justify="left")
-        table.add_column("分类", justify="left")
+        table.add_column("类型", justify="left")
         table.add_column("权重", justify="right")
         table.add_column("启用", justify="left")
     else:
@@ -314,7 +317,7 @@ def list_slots_command(
         )
         table.add_column("席位", justify="left", style="#87ff87")
         table.add_column("用途", justify="left", style="#5f875f")
-        table.add_column("分类", justify="left", style="#5f875f")
+        table.add_column("类型", justify="left", style="#5f875f")
         table.add_column("权重", justify="right", style="#5f875f")
         table.add_column("启用", justify="left", style="#5f875f")
 
@@ -697,13 +700,19 @@ def export_risk_template_command(
 
 @targets_app.command("list")
 def list_targets_command(
+    strategy: str | None = typer.Option(
+        None,
+        "--strategy",
+        "-s",
+        help="按策略名称过滤（可选）",
+    ),
     output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
     theme: str = typer.Option("hacker", "--theme", help="显示主题：hacker/minimal"),
 ) -> None:
     """列出当前所有目标持仓记录。"""
     output_format = _validate_output_format(output)
     ui_theme = _validate_theme(theme)
-    targets = list_target_allocations()
+    targets = list_target_allocations(strategy_name=strategy)
     if not targets:
         if output_format == "json":
             typer.echo("[]")
@@ -719,6 +728,8 @@ def list_targets_command(
     if ui_theme == "minimal":
         table = Table(title="目标持仓", show_lines=False, box=box.SIMPLE)
         table.add_column("策略", justify="left")
+        table.add_column("类型", justify="left")
+        table.add_column("维度", justify="left")
         table.add_column("标的", justify="left")
         table.add_column("目标权重", justify="right")
     else:
@@ -730,12 +741,16 @@ def list_targets_command(
             box=box.SIMPLE_HEAVY,
         )
         table.add_column("策略", justify="left", style="#5f875f")
+        table.add_column("类型", justify="left", style="#5f875f")
+        table.add_column("维度", justify="left", style="#5f875f")
         table.add_column("标的", justify="left", style="#87ff87")
         table.add_column("目标权重", justify="right", style="#5f875f")
 
     for target in targets:
         table.add_row(
             target.strategy_name,
+            target.strategy_type or "-",
+            target.dimension or "-",
             target.symbol,
             f"{target.target_weight:.2%}",
         )
@@ -793,13 +808,22 @@ def export_targets_template_command(
 
 @targets_app.command("generate")
 def generate_targets_command(
-    strategy: str = typer.Option(..., "--strategy", "-s", help="策略名称"),
+    strategy: str | None = typer.Option(
+        None,
+        "--strategy",
+        "-s",
+        help="策略名称（不传则使用当前策略）",
+    ),
     output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
 ) -> None:
     """根据策略自动生成目标持仓。"""
     output_format = _validate_output_format(output)
+    effective_strategy = strategy or show_current_strategy().current_strategy
+    if not effective_strategy:
+        raise typer.BadParameter("未指定策略，且当前策略未设置。")
+
     try:
-        result = generate_targets_for_strategy(strategy_name=strategy)
+        result = generate_targets_for_strategy(strategy_name=effective_strategy)
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
 
@@ -814,7 +838,7 @@ def generate_targets_command(
         typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
         return
     typer.echo(
-        f"目标持仓已生成：策略={result.strategy}，分类={result.category}，条数={result.generated}"
+        f"目标持仓已生成：策略={result.strategy}，类型={result.strategy_type}，条数={result.generated}"
     )
 
 
@@ -833,12 +857,18 @@ def preview_rebalance_command(
     """预览调仓建议。"""
     output_format = _validate_output_format(output)
     ui_theme = _validate_theme(theme)
-    result = preview_rebalance(strategy=strategy, save=save)
+    effective_strategy = strategy or show_current_strategy().current_strategy
+    result = preview_rebalance(strategy=effective_strategy, save=save)
     payload = result.to_dict()
 
     if output_format == "json":
         typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
         return
+
+    if result.strategy:
+        typer.echo(
+            f"策略={result.strategy}，类型={result.strategy_type or '-'}，维度={result.dimension or '-'}"
+        )
 
     if not result.suggestions:
         typer.echo("暂无调仓建议。")

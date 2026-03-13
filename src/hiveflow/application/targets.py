@@ -16,6 +16,10 @@ from hiveflow.services.allocation_engine import generate_target_allocations
 class TargetAllocationView:
     # 策略名称。
     strategy_name: str
+    # 策略类型。
+    strategy_type: str | None
+    # 策略维度。
+    dimension: str | None
     # 标的代码。
     symbol: str
     # 目标权重（0~1）。
@@ -24,6 +28,8 @@ class TargetAllocationView:
     def to_dict(self) -> dict[str, str | float]:
         return {
             "strategy_name": self.strategy_name,
+            "strategy_type": self.strategy_type,
+            "dimension": self.dimension,
             "symbol": self.symbol,
             "target_weight": round(self.target_weight, 6),
         }
@@ -57,20 +63,22 @@ class TargetTemplateResult:
 class TargetGenerateResult:
     # 生成所使用的策略名称。
     strategy: str
-    # 策略分类。
-    category: str
+    # 策略类型。
+    strategy_type: str
     # 生成条数。
     generated: int
 
     def to_dict(self) -> dict[str, int | str]:
         return {
             "strategy": self.strategy,
-            "category": self.category,
+            "strategy_type": self.strategy_type,
+            # 兼容旧字段，后续可逐步移除。
+            "category": self.strategy_type,
             "generated": self.generated,
         }
 
 
-def list_target_allocations() -> list[TargetAllocationView]:
+def list_target_allocations(strategy_name: str | None = None) -> list[TargetAllocationView]:
     """读取并返回目标持仓（按策略名和标的排序）。
 
     Returns:
@@ -79,9 +87,23 @@ def list_target_allocations() -> list[TargetAllocationView]:
     create_all_tables()
     with get_session() as session:
         rows = session.exec(select(TargetAllocation)).all()
+        strategies = session.exec(select(Strategy)).all()
+    strategy_meta = {item.name: item for item in strategies}
+    if strategy_name:
+        rows = [row for row in rows if row.strategy_name == strategy_name]
     return [
         TargetAllocationView(
             strategy_name=row.strategy_name,
+            strategy_type=(
+                strategy_meta[row.strategy_name].category
+                if row.strategy_name in strategy_meta
+                else None
+            ),
+            dimension=(
+                strategy_meta[row.strategy_name].dimension
+                if row.strategy_name in strategy_meta
+                else None
+            ),
             symbol=row.symbol,
             target_weight=row.target_weight,
         )
@@ -121,6 +143,12 @@ def import_target_allocations_from_csv(file: Path, mode: str) -> TargetImportRes
                 symbol = (row.get("symbol") or "").strip().upper()
                 if not strategy_name or not symbol:
                     continue
+                session.exec(
+                    delete(TargetAllocation).where(
+                        (TargetAllocation.strategy_name == strategy_name)
+                        & (TargetAllocation.symbol == symbol)
+                    )
+                )
                 session.add(
                     TargetAllocation(
                         strategy_name=strategy_name,
@@ -184,6 +212,6 @@ def generate_targets_for_strategy(strategy_name: str) -> TargetGenerateResult:
 
         return TargetGenerateResult(
             strategy=strategy_name,
-            category=strategy.category,
+            strategy_type=strategy.category,
             generated=len(targets),
         )

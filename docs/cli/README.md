@@ -59,7 +59,7 @@ uv run hiveflow bootstrap
 
 - 创建数据表
 - 写入默认策略席位（进攻/防守/长期）
-- 写入默认策略分类对应的基础策略
+- 写入默认策略类型对应的基础策略
 
 ### 3.2 写入决策日志
 
@@ -297,8 +297,9 @@ uv run hiveflow strategies import --file ./strategies.csv
 CSV 列要求（必须包含）：
 
 - `name`
-- `category`
+- `strategy_type`（或 `category`）
 - `thesis`
+- `dimension`（可选，支持如 `趋势|动量`）
 - `market_regime`
 - `backtest_summary`
 
@@ -379,6 +380,14 @@ uv run hiveflow slots set-weight --name "进攻席位" --weight 0.55 --output js
 uv run hiveflow targets list
 ```
 
+说明：列表会同时展示策略名称、策略类型、策略维度、标的与目标权重。
+
+按策略过滤：
+
+```bash
+uv run hiveflow targets list --strategy "进攻突破策略"
+```
+
 JSON 输出示例：
 
 ```bash
@@ -398,6 +407,7 @@ uv run hiveflow targets import --file ./target-allocations.csv
 ```
 
 说明：导入成功后会自动写入一条 `decision_logs` 记录（类型：`targets-import`）。
+同策略同标的在导入时会自动覆盖旧值，避免重复累积。
 
 可选参数：
 
@@ -445,7 +455,8 @@ uv run hiveflow targets template --output json
 uv run hiveflow targets generate --strategy "进攻突破策略"
 ```
 
-说明：会按策略分类自动套用默认权重模板，并覆盖该策略已有目标持仓。  
+说明：会按策略类型自动套用默认权重模板，并覆盖该策略已有目标持仓。  
+如果不传 `--strategy`，会自动使用当前策略（`hiveflow current show` 的值）。  
 导入成功后会自动写入一条 `decision_logs` 记录（类型：`targets-generate`）。
 
 JSON 输出示例：
@@ -459,6 +470,9 @@ uv run hiveflow targets generate --strategy "进攻突破策略" --output json
 ```bash
 uv run hiveflow rebalance preview
 ```
+
+说明：如果不传 `--strategy`，会自动使用当前策略（若未设置则退化为全目标持仓预览）。
+当使用某个具体策略预览时，会同时输出该策略的类型与维度。
 
 只预览某个策略：
 

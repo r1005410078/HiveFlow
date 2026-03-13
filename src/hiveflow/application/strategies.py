@@ -20,6 +20,8 @@ class StrategyView:
     name: str
     # 策略分类。
     category: str
+    # 策略维度。
+    dimension: str | None
     # 策略核心理念。
     thesis: str
     # 适用市场环境。
@@ -32,6 +34,8 @@ class StrategyView:
         return {
             "name": self.name,
             "category": self.category,
+            "strategy_type": self.category,
+            "dimension": self.dimension,
             "thesis": self.thesis,
             "market_regime": self.market_regime,
             "backtest_summary": self.backtest_summary,
@@ -78,6 +82,7 @@ def list_strategies() -> list[StrategyView]:
         StrategyView(
             name=row.name,
             category=row.category,
+            dimension=row.dimension,
             thesis=row.thesis,
             market_regime=row.market_regime,
             backtest_summary=row.backtest_summary,
@@ -101,15 +106,17 @@ def import_strategies_from_csv(file: Path, mode: str) -> StrategyImportResult:
 
         with file.open("r", encoding="utf-8-sig", newline="") as csv_file:
             reader = DictReader(csv_file)
-            required = {"name", "category", "thesis", "market_regime", "backtest_summary"}
-            if not reader.fieldnames or not required.issubset(set(reader.fieldnames)):
+            fieldnames = set(reader.fieldnames or [])
+            required = {"name", "thesis", "market_regime", "backtest_summary"}
+            has_type = "category" in fieldnames or "strategy_type" in fieldnames
+            if not reader.fieldnames or not required.issubset(fieldnames) or not has_type:
                 raise ValueError(
-                    "CSV 列必须包含：name, category, thesis, market_regime, backtest_summary"
+                    "CSV 列必须包含：name, thesis, market_regime, backtest_summary，且需包含 category 或 strategy_type"
                 )
 
             for row in reader:
                 name = (row.get("name") or "").strip()
-                category = (row.get("category") or "").strip()
+                category = (row.get("category") or row.get("strategy_type") or "").strip()
                 thesis = (row.get("thesis") or "").strip()
                 if not name or not category or not thesis:
                     continue
@@ -118,6 +125,7 @@ def import_strategies_from_csv(file: Path, mode: str) -> StrategyImportResult:
                     Strategy(
                         name=name,
                         category=category,
+                        dimension=(row.get("dimension") or "").strip() or None,
                         thesis=thesis,
                         market_regime=(row.get("market_regime") or "").strip() or None,
                         backtest_summary=(row.get("backtest_summary") or "").strip() or None,
@@ -133,9 +141,9 @@ def export_strategy_template(file: Path) -> StrategyTemplateResult:
     """导出策略 CSV 模板。"""
     file.parent.mkdir(parents=True, exist_ok=True)
     template = (
-        "name,category,thesis,market_regime,backtest_summary\n"
-        "进攻突破策略,进攻型,顺势突破+风控,趋势市,年化 18%\n"
-        "防守轮动策略,防守型,低波动防守轮动,震荡市,最大回撤 8%\n"
+        "name,strategy_type,thesis,dimension,market_regime,backtest_summary\n"
+        "进攻突破策略,进攻型,顺势突破+风控,趋势|动量,趋势市,年化 18%\n"
+        "防守轮动策略,防守型,低波动防守轮动,波动|防守,震荡市,最大回撤 8%\n"
     )
     file.write_text(template, encoding="utf-8")
     return StrategyTemplateResult(file=str(file), rows=2)

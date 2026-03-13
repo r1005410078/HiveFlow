@@ -389,6 +389,62 @@ def test_targets_import_and_list_support_json_output(tmp_path, monkeypatch) -> N
     assert targets[0]["strategy_name"] == "进攻型默认策略"
 
 
+def test_targets_list_supports_strategy_filter(tmp_path, monkeypatch) -> None:
+    # 验证 targets list 支持按策略过滤。
+    db_path = tmp_path / "targets-filter.db"
+    csv_path = tmp_path / "targets-filter.csv"
+    csv_path.write_text(
+        (
+            "strategy_name,symbol,target_weight\n"
+            "进攻型默认策略,BTC,0.5\n"
+            "进攻型默认策略,ETH,0.3\n"
+            "防守型默认策略,USDT,0.6\n"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+    runner.invoke(app, ["targets", "import", "--file", str(csv_path), "--mode", "replace"])
+
+    result = runner.invoke(
+        app, ["targets", "list", "--strategy", "进攻型默认策略", "--output", "json"]
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert len(payload) == 2
+    assert all(item["strategy_name"] == "进攻型默认策略" for item in payload)
+    assert all("strategy_type" in item for item in payload)
+    assert all("dimension" in item for item in payload)
+
+
+def test_targets_import_append_upserts_same_strategy_symbol(tmp_path, monkeypatch) -> None:
+    # 验证 append 模式重复导入同策略同标的时会覆盖，不会累积重复行。
+    db_path = tmp_path / "targets-upsert.db"
+    csv_a = tmp_path / "targets-a.csv"
+    csv_b = tmp_path / "targets-b.csv"
+    csv_a.write_text(
+        "strategy_name,symbol,target_weight\n进攻型默认策略,BTC,0.50\n",
+        encoding="utf-8",
+    )
+    csv_b.write_text(
+        "strategy_name,symbol,target_weight\n进攻型默认策略,BTC,0.55\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+    runner.invoke(app, ["targets", "import", "--file", str(csv_a), "--mode", "replace"])
+    runner.invoke(app, ["targets", "import", "--file", str(csv_b), "--mode", "append"])
+
+    result = runner.invoke(
+        app, ["targets", "list", "--strategy", "进攻型默认策略", "--output", "json"]
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert len(payload) == 1
+    assert payload[0]["symbol"] == "BTC"
+    assert payload[0]["target_weight"] == 0.55
+
+
 def test_summary_json_includes_target_count_after_import(tmp_path, monkeypatch) -> None:
     # 验证导入目标持仓后，summary 的目标数量会更新。
     db_path = tmp_path / "summary-targets.db"
@@ -622,6 +678,35 @@ def test_strategies_import_and_list_support_json_output(tmp_path, monkeypatch) -
     assert items[0]["name"] in {"进攻突破策略", "防守轮动策略"}
 
 
+def test_strategies_support_type_and_dimension_fields(tmp_path, monkeypatch) -> None:
+    # 验证策略支持“策略类型(strategy_type)”与“维度(dimension)”字段。
+    db_path = tmp_path / "strategies-dimension.db"
+    csv_path = tmp_path / "strategies-dimension.csv"
+    csv_path.write_text(
+        (
+            "name,strategy_type,thesis,dimension,market_regime,backtest_summary\n"
+            "趋势动量策略,进攻型,趋势跟随+风控,趋势|动量,趋势市,年化 20%\n"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+
+    import_result = runner.invoke(
+        app,
+        ["strategies", "import", "--file", str(csv_path), "--mode", "replace"],
+    )
+    assert import_result.exit_code == 0
+
+    list_result = runner.invoke(app, ["strategies", "list", "--output", "json"])
+    assert list_result.exit_code == 0
+    items = json.loads(list_result.stdout)
+    assert len(items) == 1
+    assert items[0]["name"] == "趋势动量策略"
+    assert items[0]["strategy_type"] == "进攻型"
+    assert items[0]["dimension"] == "趋势|动量"
+
+
 def test_strategies_template_supports_json_output(tmp_path) -> None:
     # 验证策略模板生成命令支持 JSON 输出。
     template_path = tmp_path / "strategies-template.csv"
@@ -704,7 +789,7 @@ def test_targets_generate_from_strategy_supports_json_output(tmp_path, monkeypat
     assert generate_result.exit_code == 0
     payload = json.loads(generate_result.stdout)
     assert payload["strategy"] == "进攻突破策略"
-    assert payload["category"] == "进攻型"
+    assert payload["strategy_type"] == "进攻型"
     assert payload["generated"] == 3
 
     list_result = runner.invoke(app, ["targets", "list", "--output", "json"])
@@ -893,3 +978,74 @@ def test_current_strategy_set_auto_records_decision_log(tmp_path, monkeypatch) -
     logs_result = runner.invoke(app, ["logs", "list", "--output", "json"])
     logs = json.loads(logs_result.stdout)
     assert any(item["decision_type"] == "current-strategy-set" for item in logs)
+
+
+def test_targets_generate_uses_current_strategy_when_omitted(tmp_path, monkeypatch) -> None:
+    # 验证 targets generate 未传 --strategy 时会使用当前策略。
+    db_path = tmp_path / "targets-generate-current.db"
+    strategies_path = tmp_path / "targets-generate-current.csv"
+    strategies_path.write_text(
+        (
+            "name,category,thesis,market_regime,backtest_summary\n"
+            "进攻突破策略,进攻型,顺势突破+风控,趋势市,年化 18%\n"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+    runner.invoke(app, ["strategies", "import", "--file", str(strategies_path), "--mode", "replace"])
+    runner.invoke(app, ["current", "set-strategy", "--name", "进攻突破策略"])
+
+    generate_result = runner.invoke(app, ["targets", "generate", "--output", "json"])
+    assert generate_result.exit_code == 0
+    payload = json.loads(generate_result.stdout)
+    assert payload["strategy"] == "进攻突破策略"
+    assert payload["generated"] == 3
+
+
+def test_rebalance_preview_uses_current_strategy_when_omitted(tmp_path, monkeypatch) -> None:
+    # 验证 rebalance preview 未传 --strategy 时会使用当前策略。
+    db_path = tmp_path / "rebalance-current.db"
+    positions_path = tmp_path / "positions-current.csv"
+    targets_path = tmp_path / "targets-current.csv"
+    strategies_path = tmp_path / "strategies-current.csv"
+    positions_path.write_text(
+        "symbol,quantity,market_value,weight\nBTC,1,100000,0.70\nETH,2,20000,0.10\nUSDT,1,20000,0.20\n",
+        encoding="utf-8",
+    )
+    targets_path.write_text(
+        "strategy_name,symbol,target_weight\n进攻突破策略,BTC,0.50\n进攻突破策略,ETH,0.30\n进攻突破策略,USDT,0.20\n",
+        encoding="utf-8",
+    )
+    strategies_path.write_text(
+        (
+            "name,category,thesis,market_regime,backtest_summary\n"
+            "进攻突破策略,进攻型,顺势突破+风控,趋势市,年化 18%\n"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+    runner.invoke(app, ["positions", "import", "--file", str(positions_path), "--mode", "replace"])
+    runner.invoke(app, ["targets", "import", "--file", str(targets_path), "--mode", "replace"])
+    runner.invoke(app, ["strategies", "import", "--file", str(strategies_path), "--mode", "replace"])
+    runner.invoke(app, ["current", "set-strategy", "--name", "进攻突破策略"])
+
+    preview_result = runner.invoke(app, ["rebalance", "preview", "--output", "json"])
+    assert preview_result.exit_code == 0
+    payload = json.loads(preview_result.stdout)
+    assert payload["strategy"] == "进攻突破策略"
+    assert payload["strategy_type"] == "进攻型"
+    assert payload["dimension"] is None
+    assert payload["suggestions_count"] >= 1
+
+
+def test_targets_generate_requires_strategy_or_current_strategy(tmp_path, monkeypatch) -> None:
+    # 验证在未传策略且未设置当前策略时，generate 会给出明确错误。
+    db_path = tmp_path / "targets-generate-no-strategy.db"
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["targets", "generate"])
+    assert result.exit_code != 0
+    assert "当前策略未设置" in (result.stdout + result.stderr)

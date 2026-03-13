@@ -16,6 +16,8 @@ class Strategy(SQLModel, table=True):
     name: str
     # 策略分类，如 进攻型/防守型/长期型。
     category: str
+    # 策略维度，如 趋势/动量/波动/估值 等，可用“|”拼接多个维度。
+    dimension: str | None = None
     # 策略核心思想说明。
     thesis: str
     # 适用市场环境（可选）。

@@ -17,7 +17,10 @@
 - 增量层面：已完成 Chunk 13（`targets generate` 自动生成目标持仓 + 决策日志联动）。
 - 增量层面：已完成 Chunk 14（`slots list/set-weight` + `summary` 席位统计联动）。
 - 增量层面：已完成 Chunk 15（`current show/set-strategy` + `summary` 当前策略联动）。
-- 验证层面：当前测试集通过（`uv run python -m pytest -q` -> `56 passed`）。
+- 增量层面：已完成 Chunk 16（`targets/rebalance` 默认跟随当前策略）。
+- 增量层面：已完成 Chunk 17（`targets` 去重写入 + 按策略过滤）。
+- 增量层面：已完成 Chunk 18（策略类型与维度字段落地，兼容旧库）。
+- 验证层面：当前测试集通过（`uv run python -m pytest -q` -> `62 passed`）。
 - 文档层面：已补充 CLI 使用文档与测试使用文档。
 - 与原计划差异：计划要求“每任务单独提交”，实际执行为集中开发后一次性提交。
  - 回填说明：后续增量按“实现后即时回填”方式维护本计划。
@@ -938,6 +941,81 @@ git commit -m "feat: add hiveflow summary command"
 - [x] `summary --output json` 新增 `current_strategy` 字段。
 - [x] `summary` 终端输出新增“当前策略”。
 - [x] 测试通过：设置当前策略后统计正确。
+
+## Chunk 16：当前策略驱动动作闭环
+
+### 任务 33：targets generate 默认使用当前策略
+
+**文件：**
+- 修改：`src/hiveflow/cli.py`
+- 修改：`docs/cli/README.md`
+- 测试：`tests/test_cli.py`
+
+- [x] `targets generate` 支持不传 `--strategy`。
+- [x] 不传时自动读取当前策略并执行生成。
+- [x] 未传且当前策略未设置时返回明确错误。
+- [x] 测试通过：当前策略默认生效、异常路径正确。
+
+### 任务 34：rebalance preview 默认使用当前策略
+
+**文件：**
+- 修改：`src/hiveflow/cli.py`
+- 修改：`docs/cli/README.md`
+- 测试：`tests/test_cli.py`
+
+- [x] `rebalance preview` 不传 `--strategy` 时优先使用当前策略。
+- [x] 测试通过：预览结果中的 strategy 字段为当前策略。
+
+## Chunk 17：目标持仓去重与过滤
+
+### 任务 35：targets list 支持按策略过滤
+
+**文件：**
+- 修改：`src/hiveflow/application/targets.py`
+- 修改：`src/hiveflow/cli.py`
+- 修改：`docs/cli/README.md`
+- 测试：`tests/test_cli.py`
+
+- [x] `targets list` 新增 `--strategy` 参数。
+- [x] 支持按策略名称过滤目标持仓。
+- [x] 测试通过：过滤结果仅返回指定策略条目。
+
+### 任务 36：targets import 防止重复累积
+
+**文件：**
+- 修改：`src/hiveflow/application/targets.py`
+- 修改：`docs/cli/README.md`
+- 测试：`tests/test_cli.py`
+
+- [x] 导入时同策略同标的自动覆盖旧值（upsert 语义）。
+- [x] append 模式不再因重复导入导致累积重复行。
+- [x] 测试通过：重复导入后条目唯一且权重为最新值。
+
+## Chunk 18：策略类型与维度建模
+
+### 任务 37：策略导入支持 strategy_type + dimension
+
+**文件：**
+- 修改：`src/hiveflow/domain/strategies.py`
+- 修改：`src/hiveflow/application/strategies.py`
+- 修改：`src/hiveflow/cli.py`
+- 修改：`tests/test_cli.py`
+- 修改：`docs/cli/README.md`
+
+- [x] 策略模型新增 `dimension` 字段。
+- [x] 策略导入支持 `strategy_type`（兼容 `category`）。
+- [x] 策略列表 JSON 输出新增 `strategy_type` 与 `dimension`。
+- [x] 策略表格展示新增“类型/维度”列。
+- [x] 测试通过：导入与展示符合预期。
+
+### 任务 38：旧数据库兼容迁移
+
+**文件：**
+- 修改：`src/hiveflow/db.py`
+
+- [x] `create_all_tables` 后执行轻量迁移。
+- [x] 旧库缺少 `strategy.dimension` 时自动 `ALTER TABLE` 增列。
+- [x] 测试通过：全量回归通过。
 
 ## 计划说明
 

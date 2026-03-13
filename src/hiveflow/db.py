@@ -23,6 +23,19 @@ def create_all_tables(settings: Settings | None = None) -> None:
     """按当前 SQLModel 元数据创建所有数据表。"""
     engine = get_engine(settings)
     SQLModel.metadata.create_all(engine)
+    _run_lightweight_migrations(engine)
+
+
+def _run_lightweight_migrations(engine) -> None:
+    """执行轻量迁移，确保旧库可兼容新增字段。"""
+    if not engine.url.drivername.startswith("sqlite"):
+        return
+
+    with engine.begin() as conn:
+        columns = conn.exec_driver_sql("PRAGMA table_info('strategy')").fetchall()
+        column_names = {row[1] for row in columns}
+        if "dimension" not in column_names:
+            conn.exec_driver_sql("ALTER TABLE strategy ADD COLUMN dimension VARCHAR")
 
 
 @contextmanager
