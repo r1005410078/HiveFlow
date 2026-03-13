@@ -26,6 +26,7 @@ data/*.sqlite
 data/*.sqlite3
 positions.csv
 risk-signals.csv
+target-allocations.csv
 
 # OS / editor
 .DS_Store

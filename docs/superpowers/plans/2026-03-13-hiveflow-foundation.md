@@ -10,7 +10,8 @@
 - 增量层面：已完成 Chunk 6（真实持仓闭环最小版：`positions add/list` + `summary` 读取真实数据库）。
 - 增量层面：已完成 Chunk 7（`positions import`：CSV 导入持仓，支持 `append/replace` 与 JSON 输出）。
 - 增量层面：已完成 Chunk 8（`risk import/list/template` + `summary` 风险分布统计与展示）。
-- 验证层面：当前测试集通过（`uv run python -m pytest -q` -> `27 passed`）。
+- 增量层面：已完成 Chunk 9（`targets import/list/template` + `summary` 目标持仓数量联动）。
+- 验证层面：当前测试集通过（`uv run python -m pytest -q` -> `31 passed`）。
 - 文档层面：已补充 CLI 使用文档与测试使用文档。
 - 与原计划差异：计划要求“每任务单独提交”，实际执行为集中开发后一次性提交。
  - 回填说明：后续增量按“实现后即时回填”方式维护本计划。
@@ -755,6 +756,30 @@ git commit -m "feat: add hiveflow summary command"
 - [x] `summary` 终端输出展示高/中/低分布。
 - [x] `summary --output json` 返回新增字段。
 - [x] 测试通过：风险分布统计正确。
+
+## Chunk 9：目标持仓闭环
+
+### 任务 20：增加目标持仓命令组
+
+**文件：**
+- 新增：`src/hiveflow/application/targets.py`
+- 修改：`src/hiveflow/cli.py`
+- 测试：`tests/test_cli.py`
+
+- [x] 新增 `targets` 命令组。
+- [x] 新增 `targets list`（pretty/json）。
+- [x] 新增 `targets import`（append/replace/json）。
+- [x] 新增 `targets template`（模板导出/json）。
+- [x] 测试通过：命令可用、导入与列表正确。
+
+### 任务 21：summary 目标数量联动
+
+**文件：**
+- 修改：`src/hiveflow/application/summary.py`
+- 测试：`tests/test_cli.py`
+
+- [x] 导入目标持仓后，`summary --output json` 的 `target_allocations_count` 可正确反映。
+- [x] 测试通过：目标数量统计正确。
 
 ## 计划说明
 

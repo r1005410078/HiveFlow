@@ -41,6 +41,12 @@ def test_risk_command_group_is_available() -> None:
     assert result.exit_code == 0
 
 
+def test_targets_command_group_is_available() -> None:
+    # 验证目标持仓命令组已在 CLI 中暴露。
+    result = CliRunner().invoke(app, ["targets", "--help"])
+    assert result.exit_code == 0
+
+
 def test_positions_add_and_list_work_with_real_data(tmp_path, monkeypatch) -> None:
     # 验证可以写入持仓并在 list 中看到真实数据。
     db_path = tmp_path / "cli-test.db"
@@ -69,6 +75,9 @@ def test_positions_add_and_list_work_with_real_data(tmp_path, monkeypatch) -> No
     assert "BTC" in list_result.stdout
     assert "120000.00" in list_result.stdout
 
+    minimal_result = runner.invoke(app, ["positions", "list", "--theme", "minimal"])
+    assert minimal_result.exit_code == 0
+
 
 def test_summary_reads_real_database_state(tmp_path, monkeypatch) -> None:
     # 验证 summary 读取数据库真实状态，而不是 demo 文本。
@@ -96,6 +105,10 @@ def test_summary_reads_real_database_state(tmp_path, monkeypatch) -> None:
     assert "- 持仓数量: 1" in result.stdout
     assert "- 持仓总市值: 20000.00" in result.stdout
     assert "demo data" not in result.stdout
+
+    minimal_result = runner.invoke(app, ["summary", "--theme", "minimal"])
+    assert minimal_result.exit_code == 0
+    assert "HiveFlow 状态摘要" in minimal_result.stdout
 
 
 def test_positions_list_supports_json_output(tmp_path, monkeypatch) -> None:
@@ -318,3 +331,61 @@ def test_risk_template_supports_json_output(tmp_path) -> None:
     payload = json.loads(result.stdout)
     assert payload["file"] == str(template_path)
     assert payload["rows"] == 2
+
+
+def test_targets_import_and_list_support_json_output(tmp_path, monkeypatch) -> None:
+    # 验证目标持仓支持 CSV 导入并可 JSON 列出。
+    db_path = tmp_path / "targets-import.db"
+    csv_path = tmp_path / "targets.csv"
+    csv_path.write_text(
+        "strategy_name,symbol,target_weight\n进攻型默认策略,BTC,0.5\n进攻型默认策略,ETH,0.3\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+
+    import_result = runner.invoke(
+        app,
+        ["targets", "import", "--file", str(csv_path), "--output", "json"],
+    )
+    assert import_result.exit_code == 0
+    payload = json.loads(import_result.stdout)
+    assert payload["imported"] == 2
+
+    list_result = runner.invoke(app, ["targets", "list", "--output", "json"])
+    assert list_result.exit_code == 0
+    targets = json.loads(list_result.stdout)
+    assert len(targets) == 2
+    assert targets[0]["strategy_name"] == "进攻型默认策略"
+
+
+def test_summary_json_includes_target_count_after_import(tmp_path, monkeypatch) -> None:
+    # 验证导入目标持仓后，summary 的目标数量会更新。
+    db_path = tmp_path / "summary-targets.db"
+    csv_path = tmp_path / "targets-summary.csv"
+    csv_path.write_text(
+        "strategy_name,symbol,target_weight\n进攻型默认策略,BTC,0.5\n防守型默认策略,USDT,0.4\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+    runner.invoke(app, ["targets", "import", "--file", str(csv_path)])
+
+    result = runner.invoke(app, ["summary", "--output", "json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["target_allocations_count"] == 2
+
+
+def test_targets_template_supports_json_output(tmp_path) -> None:
+    # 验证目标持仓模板生成命令支持 JSON 输出。
+    template_path = tmp_path / "targets-template.csv"
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["targets", "template", "--file", str(template_path), "--output", "json"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["file"] == str(template_path)
+    assert payload["rows"] == 3

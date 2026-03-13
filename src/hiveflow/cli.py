@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import typer
+from rich import box
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -15,11 +16,15 @@ from hiveflow.application.risk import export_risk_template
 from hiveflow.application.risk import import_risk_signals_from_csv
 from hiveflow.application.risk import list_risk_signals
 from hiveflow.application.summary import get_summary_stats
+from hiveflow.application.targets import export_target_template
+from hiveflow.application.targets import import_target_allocations_from_csv
+from hiveflow.application.targets import list_target_allocations
 from hiveflow.services.bootstrap import bootstrap_all
 
 app = typer.Typer(help="HiveFlow 本地资产决策系统。")
 positions_app = typer.Typer(help="持仓管理命令。")
 risk_app = typer.Typer(help="风险信号管理命令。")
+targets_app = typer.Typer(help="目标持仓管理命令。")
 console = Console()
 
 
@@ -45,6 +50,14 @@ def _validate_import_mode(value: str) -> str:
     normalized = value.strip().lower()
     if normalized not in {"append", "replace"}:
         raise typer.BadParameter("导入模式仅支持 append 或 replace。")
+    return normalized
+
+
+def _validate_theme(value: str) -> str:
+    """校验显示主题参数。"""
+    normalized = value.strip().lower()
+    if normalized not in {"hacker", "minimal"}:
+        raise typer.BadParameter("主题仅支持 hacker 或 minimal。")
     return normalized
 
 
@@ -74,40 +87,64 @@ def log_command(
 @app.command("summary")
 def summary_command(
     output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+    theme: str = typer.Option("hacker", "--theme", help="显示主题：hacker/minimal"),
 ) -> None:
     """输出当前数据库里的真实状态摘要。"""
     output_format = _validate_output_format(output)
+    ui_theme = _validate_theme(theme)
     stats = get_summary_stats()
     payload = stats.to_dict()
+    risk_count = stats.risk_signals_count
+    suggestion_count = stats.rebalance_suggestions_count
 
     if output_format == "json":
         typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
         return
 
-    risk_count = stats.risk_signals_count
-    suggestion_count = stats.rebalance_suggestions_count
+    if ui_theme == "minimal":
+        lines = [
+            "HiveFlow 状态摘要",
+            f"- 持仓数量: {stats.positions_count}",
+            f"- 持仓总市值: {stats.total_market_value:.2f}",
+            f"- 目标持仓数量: {stats.target_allocations_count}",
+            f"- 风险信号数量: {risk_count}",
+            f"- 风险分布: 高 {stats.risk_high_count} / 中 {stats.risk_medium_count} / 低 {stats.risk_low_count}",
+            f"- 调仓建议数量: {suggestion_count}",
+        ]
+        typer.echo("\n".join(lines))
+        return
+
     risk_style = _level_style(risk_count, medium_threshold=1, high_threshold=3)
     suggestion_style = _level_style(suggestion_count, medium_threshold=1, high_threshold=3)
 
     lines = [
-        "[bold cyan]HiveFlow 状态摘要[/bold cyan]",
-        f"[green]- 持仓数量:[/green] [bold]{stats.positions_count}[/bold]",
-        f"[green]- 持仓总市值:[/green] [bold]{stats.total_market_value:.2f}[/bold]",
-        f"[yellow]- 目标持仓数量:[/yellow] [bold]{stats.target_allocations_count}[/bold]",
-        f"[magenta]- 风险信号数量:[/magenta] [{risk_style}]{risk_count}[/{risk_style}]",
+        "[bold #5fd75f]>> HIVEFLOW SYSTEM STATUS[/bold #5fd75f]",
+        f"[#5f875f]- 持仓数量:[/#5f875f] [bold #87ff87]{stats.positions_count}[/bold #87ff87]",
         (
-            "[magenta]- 风险分布:[/magenta] "
+            f"[#5f875f]- 持仓总市值:[/#5f875f] "
+            f"[bold #87ff87]{stats.total_market_value:.2f}[/bold #87ff87]"
+        ),
+        (
+            f"[#5f875f]- 目标持仓数量:[/#5f875f] "
+            f"[bold #87ff87]{stats.target_allocations_count}[/bold #87ff87]"
+        ),
+        f"[#5f875f]- 风险信号数量:[/#5f875f] [{risk_style}]{risk_count}[/{risk_style}]",
+        (
+            "[#5f875f]- 风险分布:[/#5f875f] "
             f"[bold red]高 {stats.risk_high_count}[/bold red] / "
             f"[bold yellow]中 {stats.risk_medium_count}[/bold yellow] / "
-            f"[bold green]低 {stats.risk_low_count}[/bold green]"
+            f"[bold bright_green]低 {stats.risk_low_count}[/bold bright_green]"
         ),
-        f"[red]- 调仓建议数量:[/red] [{suggestion_style}]{suggestion_count}[/{suggestion_style}]",
+        (
+            f"[#5f875f]- 调仓建议数量:[/#5f875f] "
+            f"[{suggestion_style}]{suggestion_count}[/{suggestion_style}]"
+        ),
     ]
     console.print(
         Panel(
             "\n".join(lines),
-            border_style="cyan",
-            title="Summary",
+            border_style="#5f875f",
+            title="[bold #5fd75f]:: SUMMARY ::[/bold #5fd75f]",
             title_align="left",
         )
     )
@@ -128,9 +165,11 @@ def add_position_command(
 @positions_app.command("list")
 def list_positions_command(
     output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+    theme: str = typer.Option("hacker", "--theme", help="显示主题：hacker/minimal"),
 ) -> None:
     """列出当前所有持仓记录。"""
     output_format = _validate_output_format(output)
+    ui_theme = _validate_theme(theme)
     positions = list_positions()
 
     if not positions:
@@ -145,16 +184,28 @@ def list_positions_command(
         typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
         return
 
-    table = Table(
-        title="[bold cyan]当前持仓[/bold cyan]",
-        show_lines=False,
-        header_style="bold white",
-        border_style="cyan",
-    )
-    table.add_column("标的", justify="left", style="bold yellow")
-    table.add_column("数量", justify="right", style="green")
-    table.add_column("市值", justify="right", style="bright_blue")
-    table.add_column("权重", justify="right", style="magenta")
+    if ui_theme == "minimal":
+        table = Table(
+            title="当前持仓",
+            show_lines=False,
+            box=box.SIMPLE,
+        )
+        table.add_column("标的", justify="left")
+        table.add_column("数量", justify="right")
+        table.add_column("市值", justify="right")
+        table.add_column("权重", justify="right")
+    else:
+        table = Table(
+            title="[bold #5fd75f]:: POSITIONS ::[/bold #5fd75f]",
+            show_lines=False,
+            header_style="bold #5f875f",
+            border_style="#5f875f",
+            box=box.SIMPLE_HEAVY,
+        )
+        table.add_column("标的", justify="left", style="#87ff87")
+        table.add_column("数量", justify="right", style="#5f875f")
+        table.add_column("市值", justify="right", style="#5f875f")
+        table.add_column("权重", justify="right", style="#5f875f")
 
     for position in positions:
         table.add_row(
@@ -214,9 +265,11 @@ def export_positions_template_command(
 @risk_app.command("list")
 def list_risk_signals_command(
     output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+    theme: str = typer.Option("hacker", "--theme", help="显示主题：hacker/minimal"),
 ) -> None:
     """列出当前所有风险信号记录。"""
     output_format = _validate_output_format(output)
+    ui_theme = _validate_theme(theme)
     signals = list_risk_signals()
     if not signals:
         if output_format == "json":
@@ -230,16 +283,24 @@ def list_risk_signals_command(
         typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
         return
 
-    table = Table(
-        title="[bold magenta]风险信号[/bold magenta]",
-        show_lines=False,
-        header_style="bold white",
-        border_style="magenta",
-    )
-    table.add_column("标的", justify="left", style="bold yellow")
-    table.add_column("风险水位", justify="left", style="magenta")
-    table.add_column("风险评分", justify="right", style="bright_blue")
-    table.add_column("备注", justify="left", style="green")
+    if ui_theme == "minimal":
+        table = Table(title="风险信号", show_lines=False, box=box.SIMPLE)
+        table.add_column("标的", justify="left")
+        table.add_column("风险水位", justify="left")
+        table.add_column("风险评分", justify="right")
+        table.add_column("备注", justify="left")
+    else:
+        table = Table(
+            title="[bold #5fd75f]:: RISK SIGNALS ::[/bold #5fd75f]",
+            show_lines=False,
+            header_style="bold #5f875f",
+            border_style="#5f875f",
+            box=box.SIMPLE_HEAVY,
+        )
+        table.add_column("标的", justify="left", style="#87ff87")
+        table.add_column("风险水位", justify="left", style="#5f875f")
+        table.add_column("风险评分", justify="right", style="#5f875f")
+        table.add_column("备注", justify="left", style="#5f875f")
 
     for signal in signals:
         table.add_row(
@@ -294,8 +355,99 @@ def export_risk_template_command(
     typer.echo(f"风险模板已生成：{result.file}")
 
 
+@targets_app.command("list")
+def list_targets_command(
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+    theme: str = typer.Option("hacker", "--theme", help="显示主题：hacker/minimal"),
+) -> None:
+    """列出当前所有目标持仓记录。"""
+    output_format = _validate_output_format(output)
+    ui_theme = _validate_theme(theme)
+    targets = list_target_allocations()
+    if not targets:
+        if output_format == "json":
+            typer.echo("[]")
+        else:
+            typer.echo("暂无目标持仓记录。")
+        return
+
+    if output_format == "json":
+        payload = [target.to_dict() for target in targets]
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    if ui_theme == "minimal":
+        table = Table(title="目标持仓", show_lines=False, box=box.SIMPLE)
+        table.add_column("策略", justify="left")
+        table.add_column("标的", justify="left")
+        table.add_column("目标权重", justify="right")
+    else:
+        table = Table(
+            title="[bold #5fd75f]:: TARGET ALLOCATIONS ::[/bold #5fd75f]",
+            show_lines=False,
+            header_style="bold #5f875f",
+            border_style="#5f875f",
+            box=box.SIMPLE_HEAVY,
+        )
+        table.add_column("策略", justify="left", style="#5f875f")
+        table.add_column("标的", justify="left", style="#87ff87")
+        table.add_column("目标权重", justify="right", style="#5f875f")
+
+    for target in targets:
+        table.add_row(
+            target.strategy_name,
+            target.symbol,
+            f"{target.target_weight:.2%}",
+        )
+    console.print(table)
+
+
+@targets_app.command("import")
+def import_targets_command(
+    file: Path = typer.Option(..., "--file", "-f", help="CSV 文件路径"),
+    mode: str = typer.Option("append", "--mode", "-m", help="导入模式：append/replace"),
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+) -> None:
+    """从 CSV 导入目标持仓。"""
+    output_format = _validate_output_format(output)
+    import_mode = _validate_import_mode(mode)
+    try:
+        result = import_target_allocations_from_csv(file=file, mode=import_mode)
+    except FileNotFoundError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    payload = result.to_dict()
+    if output_format == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    typer.echo(f"目标持仓导入完成：{result.imported} 条（模式：{result.mode}）。")
+
+
+@targets_app.command("template")
+def export_targets_template_command(
+    file: Path = typer.Option(
+        Path("target-allocations.csv"),
+        "--file",
+        "-f",
+        help="模板输出路径（默认：./target-allocations.csv）",
+    ),
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+) -> None:
+    """导出目标持仓 CSV 模板。"""
+    output_format = _validate_output_format(output)
+    result = export_target_template(file=file)
+    payload = result.to_dict()
+    if output_format == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    typer.echo(f"目标持仓模板已生成：{result.file}")
+
+
 app.add_typer(positions_app, name="positions")
 app.add_typer(risk_app, name="risk")
+app.add_typer(targets_app, name="targets")
 
 
 def run() -> None:

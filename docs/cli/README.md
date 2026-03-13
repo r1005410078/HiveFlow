@@ -210,6 +210,64 @@ JSON 输出示例：
 uv run hiveflow risk template --output json
 ```
 
+### 3.11 查看目标持仓列表
+
+```bash
+uv run hiveflow targets list
+```
+
+JSON 输出示例：
+
+```bash
+uv run hiveflow targets list --output json
+```
+
+### 3.12 从 CSV 导入目标持仓
+
+```bash
+uv run hiveflow targets import --file ./target-allocations.csv
+```
+
+可选参数：
+
+- `--mode append`：追加导入（默认）
+- `--mode replace`：清空旧目标持仓后导入
+- `--output json`：输出结构化导入结果
+
+CSV 列要求（必须包含）：
+
+- `strategy_name`
+- `symbol`
+- `target_weight`
+
+CSV 示例：
+
+```csv
+strategy_name,symbol,target_weight
+进攻型默认策略,BTC,0.50
+进攻型默认策略,ETH,0.30
+进攻型默认策略,USDT,0.20
+```
+
+### 3.13 下载（生成）目标持仓 CSV 模板
+
+```bash
+uv run hiveflow targets template
+```
+
+默认会在当前目录生成 `target-allocations.csv`。  
+也可以指定路径：
+
+```bash
+uv run hiveflow targets template --file ./data/target-allocations.csv
+```
+
+JSON 输出示例：
+
+```bash
+uv run hiveflow targets template --output json
+```
+
 ## 4. 数据库路径
 
 默认数据库路径：
