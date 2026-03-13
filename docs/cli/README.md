@@ -73,7 +73,36 @@ uv run hiveflow log --summary "减仓 BTC 5%" --decision-type "rebalance" --note
 - `--decision-type`：决策类型（必填）
 - `--notes`：补充备注（可选）
 
-### 3.3 查看系统摘要（当前为最小可行版本演示输出）
+### 3.3 查看决策日志列表
+
+```bash
+uv run hiveflow logs list
+```
+
+可选参数：
+
+- `--limit`：最多返回条数（默认 100）
+- `--output json`：输出结构化日志，便于脚本/模型读取
+- `--theme minimal`：切换为简洁展示
+
+JSON 输出示例：
+
+```bash
+uv run hiveflow logs list --output json
+```
+
+### 3.4 导出决策日志 CSV
+
+```bash
+uv run hiveflow logs export --file ./decision-logs.csv
+```
+
+可选参数：
+
+- `--limit`：最多导出条数（默认 1000）
+- `--output json`：返回导出结果（文件路径、导出条数）
+
+### 3.5 查看系统摘要（当前为最小可行版本演示输出）
 
 ```bash
 uv run hiveflow summary
@@ -81,14 +110,14 @@ uv run hiveflow summary
 
 说明：
 
-- 现在会读取数据库里的真实数据（持仓数量、总市值等）
+- 现在会读取数据库里的真实数据（持仓、风险、目标、调仓建议、决策日志）
 - 支持 JSON 输出（给脚本/大模型使用）：
 
 ```bash
 uv run hiveflow summary --output json
 ```
 
-### 3.4 新增持仓
+### 3.6 新增持仓
 
 ```bash
 uv run hiveflow positions add --symbol "BTC" --quantity 1.5 --market-value 120000 --weight 0.6
@@ -101,7 +130,7 @@ uv run hiveflow positions add --symbol "BTC" --quantity 1.5 --market-value 12000
 - `--market-value`：当前持仓市值
 - `--weight`：持仓权重（0~1）
 
-### 3.5 查看持仓列表
+### 3.7 查看持仓列表
 
 ```bash
 uv run hiveflow positions list
@@ -119,11 +148,13 @@ uv run hiveflow positions list --output json
 uv run hiveflow positions list --theme minimal
 ```
 
-### 3.6 从 CSV 导入持仓
+### 3.8 从 CSV 导入持仓
 
 ```bash
 uv run hiveflow positions import --file ./positions.csv
 ```
+
+说明：导入成功后会自动写入一条 `decision_logs` 记录（类型：`positions-import`）。
 
 可选参数：
 
@@ -146,7 +177,7 @@ BTC,1.5,120000,0.6
 ETH,2,20000,0.2
 ```
 
-### 3.7 下载（生成）CSV 模板
+### 3.9 下载（生成）CSV 模板
 
 ```bash
 uv run hiveflow positions template
@@ -165,7 +196,7 @@ JSON 输出示例：
 uv run hiveflow positions template --output json
 ```
 
-### 3.8 查看风险信号列表
+### 3.10 查看风险信号列表
 
 ```bash
 uv run hiveflow risk list
@@ -183,11 +214,13 @@ uv run hiveflow risk list --output json
 uv run hiveflow risk list --theme minimal
 ```
 
-### 3.9 从 CSV 导入风险信号
+### 3.11 从 CSV 导入风险信号
 
 ```bash
 uv run hiveflow risk import --file ./risk-signals.csv
 ```
+
+说明：导入成功后会自动写入一条 `decision_logs` 记录（类型：`risk-import`）。
 
 可选参数：
 
@@ -210,7 +243,7 @@ BTC,high,0.82,波动放大且接近阻力位
 ETH,medium,0.55,短期震荡
 ```
 
-### 3.10 下载（生成）风险 CSV 模板
+### 3.12 下载（生成）风险 CSV 模板
 
 ```bash
 uv run hiveflow risk template
@@ -229,7 +262,7 @@ JSON 输出示例：
 uv run hiveflow risk template --output json
 ```
 
-### 3.11 查看目标持仓列表
+### 3.13 查看目标持仓列表
 
 ```bash
 uv run hiveflow targets list
@@ -247,11 +280,13 @@ uv run hiveflow targets list --output json
 uv run hiveflow targets list --theme minimal
 ```
 
-### 3.12 从 CSV 导入目标持仓
+### 3.14 从 CSV 导入目标持仓
 
 ```bash
 uv run hiveflow targets import --file ./target-allocations.csv
 ```
+
+说明：导入成功后会自动写入一条 `decision_logs` 记录（类型：`targets-import`）。
 
 可选参数：
 
@@ -274,7 +309,7 @@ strategy_name,symbol,target_weight
 进攻型默认策略,USDT,0.20
 ```
 
-### 3.13 下载（生成）目标持仓 CSV 模板
+### 3.15 下载（生成）目标持仓 CSV 模板
 
 ```bash
 uv run hiveflow targets template
@@ -293,7 +328,7 @@ JSON 输出示例：
 uv run hiveflow targets template --output json
 ```
 
-### 3.14 预览调仓建议
+### 3.16 预览调仓建议
 
 ```bash
 uv run hiveflow rebalance preview

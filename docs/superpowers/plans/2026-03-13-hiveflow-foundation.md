@@ -12,7 +12,8 @@
 - 增量层面：已完成 Chunk 8（`risk import/list/template` + `summary` 风险分布统计与展示）。
 - 增量层面：已完成 Chunk 9（`targets import/list/template` + `summary` 目标持仓数量联动）。
 - 增量层面：已完成 Chunk 10（`rebalance preview` 预览闭环，支持 `strategy/save/json/theme`）。
-- 验证层面：当前测试集通过（`uv run python -m pytest -q` -> `34 passed`）。
+- 增量层面：已完成 Chunk 11（`logs list/export` + `summary` 决策日志数量联动）。
+- 验证层面：当前测试集通过（`uv run python -m pytest -q` -> `38 passed`）。
 - 文档层面：已补充 CLI 使用文档与测试使用文档。
 - 与原计划差异：计划要求“每任务单独提交”，实际执行为集中开发后一次性提交。
  - 回填说明：后续增量按“实现后即时回填”方式维护本计划。
@@ -806,6 +807,33 @@ git commit -m "feat: add hiveflow summary command"
 
 - [x] `rebalance preview --save` 后，`summary --output json` 的 `rebalance_suggestions_count` 正确更新。
 - [x] 测试通过：建议数量联动正确。
+
+## Chunk 11：决策日志闭环
+
+### 任务 24：增加决策日志查询与导出
+
+**文件：**
+- 修改：`src/hiveflow/application/decision_logs.py`
+- 修改：`src/hiveflow/cli.py`
+- 修改：`docs/cli/README.md`
+- 测试：`tests/test_cli.py`
+
+- [x] 新增 `logs` 命令组。
+- [x] 新增 `logs list`（pretty/json）。
+- [x] 新增 `logs export`（CSV 导出/json）。
+- [x] 支持 `--limit` 参数控制读取或导出条数。
+- [x] 测试通过：命令可用、JSON 结构正确、CSV 导出可用。
+
+### 任务 25：summary 与决策日志联动
+
+**文件：**
+- 修改：`src/hiveflow/application/summary.py`
+- 修改：`src/hiveflow/cli.py`
+- 测试：`tests/test_cli.py`
+
+- [x] `summary --output json` 新增 `decision_logs_count` 字段。
+- [x] `summary` 终端输出新增“决策日志数量”。
+- [x] 测试通过：写入日志后统计数量正确。
 
 ## 计划说明
 

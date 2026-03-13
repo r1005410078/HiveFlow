@@ -6,6 +6,7 @@ from sqlmodel import select
 
 from hiveflow.db import create_all_tables, get_session
 from hiveflow.domain.allocations import TargetAllocation
+from hiveflow.domain.decision_logs import DecisionLog
 from hiveflow.domain.positions import Position
 from hiveflow.domain.risk import RiskSignal
 from hiveflow.domain.suggestions import RebalanceSuggestion
@@ -13,16 +14,27 @@ from hiveflow.domain.suggestions import RebalanceSuggestion
 
 @dataclass(frozen=True)
 class SummaryStats:
+    # 持仓条目数量。
     positions_count: int
+    # 持仓总市值。
     total_market_value: float
+    # 目标持仓条目数量。
     target_allocations_count: int
+    # 风险信号总数量。
     risk_signals_count: int
+    # 高风险信号数量。
     risk_high_count: int
+    # 中风险信号数量。
     risk_medium_count: int
+    # 低风险信号数量。
     risk_low_count: int
+    # 调仓建议数量。
     rebalance_suggestions_count: int
+    # 决策日志数量。
+    decision_logs_count: int
 
     def to_dict(self) -> dict[str, int | float]:
+        """转换为字典，便于 JSON 输出。"""
         return {
             "positions_count": self.positions_count,
             "total_market_value": round(self.total_market_value, 2),
@@ -32,6 +44,7 @@ class SummaryStats:
             "risk_medium_count": self.risk_medium_count,
             "risk_low_count": self.risk_low_count,
             "rebalance_suggestions_count": self.rebalance_suggestions_count,
+            "decision_logs_count": self.decision_logs_count,
         }
 
 
@@ -43,6 +56,7 @@ def get_summary_stats() -> SummaryStats:
         target_allocations = session.exec(select(TargetAllocation)).all()
         risk_signals = session.exec(select(RiskSignal)).all()
         rebalance_suggestions = session.exec(select(RebalanceSuggestion)).all()
+        decision_logs = session.exec(select(DecisionLog)).all()
 
     total_market_value = sum(position.market_value for position in positions)
     risk_high_count = sum(
@@ -62,4 +76,5 @@ def get_summary_stats() -> SummaryStats:
         risk_medium_count=risk_medium_count,
         risk_low_count=risk_low_count,
         rebalance_suggestions_count=len(rebalance_suggestions),
+        decision_logs_count=len(decision_logs),
     )

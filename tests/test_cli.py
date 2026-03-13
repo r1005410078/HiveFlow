@@ -53,6 +53,12 @@ def test_rebalance_command_group_is_available() -> None:
     assert result.exit_code == 0
 
 
+def test_logs_command_group_is_available() -> None:
+    # 验证决策日志命令组已在 CLI 中暴露。
+    result = CliRunner().invoke(app, ["logs", "--help"])
+    assert result.exit_code == 0
+
+
 def test_positions_add_and_list_work_with_real_data(tmp_path, monkeypatch) -> None:
     # 验证可以写入持仓并在 list 中看到真实数据。
     db_path = tmp_path / "cli-test.db"
@@ -452,3 +458,117 @@ def test_rebalance_preview_save_updates_summary_suggestion_count(tmp_path, monke
     summary_result = runner.invoke(app, ["summary", "--output", "json"])
     payload = json.loads(summary_result.stdout)
     assert payload["rebalance_suggestions_count"] >= 1
+
+
+def test_logs_list_supports_json_output(tmp_path, monkeypatch) -> None:
+    # 验证决策日志支持 JSON 列表输出。
+    db_path = tmp_path / "logs-list.db"
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+    runner.invoke(
+        app,
+        [
+            "log",
+            "--summary",
+            "减仓 BTC 10%",
+            "--decision-type",
+            "rebalance",
+            "--notes",
+            "风险水位升高",
+        ],
+    )
+
+    result = runner.invoke(app, ["logs", "list", "--output", "json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert len(payload) == 1
+    assert payload[0]["decision_type"] == "rebalance"
+    assert payload[0]["summary"] == "减仓 BTC 10%"
+
+
+def test_logs_export_generates_csv_file(tmp_path, monkeypatch) -> None:
+    # 验证决策日志可以导出为 CSV 文件。
+    db_path = tmp_path / "logs-export.db"
+    export_path = tmp_path / "decision-logs.csv"
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+    runner.invoke(
+        app,
+        [
+            "log",
+            "--summary",
+            "保持仓位",
+            "--decision-type",
+            "hold",
+        ],
+    )
+
+    export_result = runner.invoke(
+        app,
+        ["logs", "export", "--file", str(export_path), "--output", "json"],
+    )
+    assert export_result.exit_code == 0
+    payload = json.loads(export_result.stdout)
+    assert payload["rows"] == 1
+    assert payload["file"] == str(export_path)
+    assert export_path.exists()
+    content = export_path.read_text(encoding="utf-8")
+    assert "id,summary,decision_type,notes,created_at" in content
+    assert "保持仓位" in content
+
+
+def test_summary_json_includes_decision_logs_count(tmp_path, monkeypatch) -> None:
+    # 验证 summary JSON 会返回决策日志数量。
+    db_path = tmp_path / "summary-logs.db"
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+    runner.invoke(
+        app,
+        [
+            "log",
+            "--summary",
+            "加仓 ETH",
+            "--decision-type",
+            "rebalance",
+        ],
+    )
+    runner.invoke(
+        app,
+        [
+            "log",
+            "--summary",
+            "降低仓位波动",
+            "--decision-type",
+            "risk-control",
+        ],
+    )
+
+    result = runner.invoke(app, ["summary", "--output", "json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["decision_logs_count"] == 2
+
+
+def test_targets_import_auto_records_decision_log(tmp_path, monkeypatch) -> None:
+    # 验证导入目标持仓后，会自动写入一条决策日志。
+    db_path = tmp_path / "targets-import-log.db"
+    csv_path = tmp_path / "targets-import-log.csv"
+    csv_path.write_text(
+        "strategy_name,symbol,target_weight\n进攻型默认策略,BTC,0.5\n进攻型默认策略,ETH,0.3\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+
+    import_result = runner.invoke(
+        app,
+        ["targets", "import", "--file", str(csv_path), "--mode", "replace"],
+    )
+    assert import_result.exit_code == 0
+
+    logs_result = runner.invoke(app, ["logs", "list", "--output", "json"])
+    assert logs_result.exit_code == 0
+    logs = json.loads(logs_result.stdout)
+    assert len(logs) == 1
+    assert logs[0]["decision_type"] == "targets-import"
+    assert "导入目标持仓" in logs[0]["summary"]
