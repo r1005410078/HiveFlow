@@ -21,12 +21,15 @@ venv/
 .env.*
 
 # Local runtime data
+data/
 data/*.db
 data/*.sqlite
 data/*.sqlite3
 positions.csv
 risk-signals.csv
 target-allocations.csv
+strategies.csv
+config/target-templates.history.json
 
 # OS / editor
 .DS_Store
