@@ -141,6 +141,40 @@ uv run hiveflow backtest list --strategy "进攻突破策略"
 - 当前回测命令仍使用 `--file` 读取行情文件。
 - `market-data import/list/summary` 用于把行情沉淀进系统并方便日常核对。
 
+### 3.0.3 回测进阶 Example（参数版）
+
+```bash
+# Example A: 带手续费和滑点做更接近真实交易的回测
+uv run hiveflow backtest run \
+  --strategy "进攻突破策略" \
+  --file ./prices.csv \
+  --fee-bps 5 \
+  --slippage-bps 3
+```
+
+```bash
+# Example B: 输出 JSON（给脚本 / AI 继续处理）
+uv run hiveflow backtest run \
+  --strategy "进攻突破策略" \
+  --file ./prices.csv \
+  --fee-bps 5 \
+  --slippage-bps 3 \
+  --output json
+```
+
+```bash
+# Example C: 连续跑多次参数，最后按策略查看历史结果
+uv run hiveflow backtest run --strategy "进攻突破策略" --file ./prices.csv --fee-bps 2 --slippage-bps 1
+uv run hiveflow backtest run --strategy "进攻突破策略" --file ./prices.csv --fee-bps 5 --slippage-bps 3
+uv run hiveflow backtest run --strategy "进攻突破策略" --file ./prices.csv --fee-bps 8 --slippage-bps 5
+uv run hiveflow backtest list --strategy "进攻突破策略"
+```
+
+```bash
+# Example D: 只取历史回测结果的结构化输出
+uv run hiveflow backtest list --strategy "进攻突破策略" --output json
+```
+
 ### 3.1 初始化本地数据库与基础数据
 
 ```bash
