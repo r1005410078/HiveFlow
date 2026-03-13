@@ -65,6 +65,12 @@ def test_strategies_command_group_is_available() -> None:
     assert result.exit_code == 0
 
 
+def test_slots_command_group_is_available() -> None:
+    # 验证席位命令组已在 CLI 中暴露。
+    result = CliRunner().invoke(app, ["slots", "--help"])
+    assert result.exit_code == 0
+
+
 def test_positions_add_and_list_work_with_real_data(tmp_path, monkeypatch) -> None:
     # 验证可以写入持仓并在 list 中看到真实数据。
     db_path = tmp_path / "cli-test.db"
@@ -668,3 +674,128 @@ def test_strategies_import_auto_records_decision_log(tmp_path, monkeypatch) -> N
     assert len(logs) == 1
     assert logs[0]["decision_type"] == "strategies-import"
     assert "导入策略" in logs[0]["summary"]
+
+
+def test_targets_generate_from_strategy_supports_json_output(tmp_path, monkeypatch) -> None:
+    # 验证可根据策略自动生成目标持仓，并支持 JSON 输出。
+    db_path = tmp_path / "targets-generate.db"
+    strategies_path = tmp_path / "strategies-generate.csv"
+    strategies_path.write_text(
+        (
+            "name,category,thesis,market_regime,backtest_summary\n"
+            "进攻突破策略,进攻型,顺势突破+风控,趋势市,年化 18%\n"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+    runner.invoke(app, ["strategies", "import", "--file", str(strategies_path)])
+
+    generate_result = runner.invoke(
+        app,
+        ["targets", "generate", "--strategy", "进攻突破策略", "--output", "json"],
+    )
+    assert generate_result.exit_code == 0
+    payload = json.loads(generate_result.stdout)
+    assert payload["strategy"] == "进攻突破策略"
+    assert payload["category"] == "进攻型"
+    assert payload["generated"] == 3
+
+    list_result = runner.invoke(app, ["targets", "list", "--output", "json"])
+    assert list_result.exit_code == 0
+    targets = json.loads(list_result.stdout)
+    assert len(targets) == 3
+    assert {item["symbol"] for item in targets} == {"BTC", "ETH", "USDT"}
+
+
+def test_targets_generate_auto_records_decision_log(tmp_path, monkeypatch) -> None:
+    # 验证自动生成目标持仓后，会自动写入决策日志。
+    db_path = tmp_path / "targets-generate-log.db"
+    strategies_path = tmp_path / "strategies-generate-log.csv"
+    strategies_path.write_text(
+        (
+            "name,category,thesis,market_regime,backtest_summary\n"
+            "防守轮动策略,防守型,低波动防守轮动,震荡市,最大回撤 8%\n"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+    runner.invoke(app, ["strategies", "import", "--file", str(strategies_path)])
+
+    generate_result = runner.invoke(
+        app,
+        ["targets", "generate", "--strategy", "防守轮动策略"],
+    )
+    assert generate_result.exit_code == 0
+
+    logs_result = runner.invoke(app, ["logs", "list", "--output", "json"])
+    logs = json.loads(logs_result.stdout)
+    assert any(item["decision_type"] == "targets-generate" for item in logs)
+
+
+def test_targets_generate_rejects_unknown_strategy(tmp_path, monkeypatch) -> None:
+    # 验证当策略不存在时，生成命令会报错。
+    db_path = tmp_path / "targets-generate-unknown.db"
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        ["targets", "generate", "--strategy", "不存在的策略"],
+    )
+    assert result.exit_code != 0
+    assert "策略不存在" in (result.stdout + result.stderr)
+
+
+def test_slots_list_supports_json_output(tmp_path, monkeypatch) -> None:
+    # 验证席位列表支持 JSON 输出。
+    db_path = tmp_path / "slots-list.db"
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["slots", "list", "--output", "json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert len(payload) >= 3
+    names = {item["name"] for item in payload}
+    assert {"进攻席位", "防守席位", "长期席位"}.issubset(names)
+
+
+def test_slots_set_weight_updates_slot_and_records_log(tmp_path, monkeypatch) -> None:
+    # 验证席位权重可更新，并自动写入决策日志。
+    db_path = tmp_path / "slots-set-weight.db"
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+
+    update_result = runner.invoke(
+        app,
+        ["slots", "set-weight", "--name", "进攻席位", "--weight", "0.55", "--output", "json"],
+    )
+    assert update_result.exit_code == 0
+    payload = json.loads(update_result.stdout)
+    assert payload["name"] == "进攻席位"
+    assert payload["weight"] == 0.55
+
+    list_result = runner.invoke(app, ["slots", "list", "--output", "json"])
+    slots = json.loads(list_result.stdout)
+    attack_slot = next(item for item in slots if item["name"] == "进攻席位")
+    assert attack_slot["weight"] == 0.55
+
+    logs_result = runner.invoke(app, ["logs", "list", "--output", "json"])
+    logs = json.loads(logs_result.stdout)
+    assert any(item["decision_type"] == "slots-set-weight" for item in logs)
+
+
+def test_summary_json_includes_slot_metrics(tmp_path, monkeypatch) -> None:
+    # 验证 summary 返回席位统计信息。
+    db_path = tmp_path / "summary-slots.db"
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+    runner.invoke(app, ["slots", "set-weight", "--name", "防守席位", "--weight", "0.45"])
+
+    result = runner.invoke(app, ["summary", "--output", "json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["slots_count"] >= 3
+    assert payload["enabled_slots_count"] >= 3

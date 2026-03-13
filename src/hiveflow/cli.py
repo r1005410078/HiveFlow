@@ -21,8 +21,11 @@ from hiveflow.application.risk import list_risk_signals
 from hiveflow.application.strategies import export_strategy_template
 from hiveflow.application.strategies import import_strategies_from_csv
 from hiveflow.application.strategies import list_strategies
+from hiveflow.application.slots import list_slots
+from hiveflow.application.slots import set_slot_weight
 from hiveflow.application.summary import get_summary_stats
 from hiveflow.application.targets import export_target_template
+from hiveflow.application.targets import generate_targets_for_strategy
 from hiveflow.application.targets import import_target_allocations_from_csv
 from hiveflow.application.targets import list_target_allocations
 from hiveflow.services.bootstrap import bootstrap_all
@@ -34,6 +37,7 @@ targets_app = typer.Typer(help="目标持仓管理命令。")
 rebalance_app = typer.Typer(help="调仓建议命令。")
 logs_app = typer.Typer(help="决策日志命令。")
 strategies_app = typer.Typer(help="策略管理命令。")
+slots_app = typer.Typer(help="席位管理命令。")
 console = Console()
 
 
@@ -276,6 +280,78 @@ def export_strategies_template_command(
     typer.echo(f"策略模板已生成：{result.file}")
 
 
+@slots_app.command("list")
+def list_slots_command(
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+    theme: str = typer.Option("hacker", "--theme", help="显示主题：hacker/minimal"),
+) -> None:
+    """列出策略席位。"""
+    output_format = _validate_output_format(output)
+    ui_theme = _validate_theme(theme)
+    items = list_slots()
+
+    if output_format == "json":
+        typer.echo(json.dumps([item.to_dict() for item in items], ensure_ascii=False, indent=2))
+        return
+
+    if ui_theme == "minimal":
+        table = Table(title="策略席位", show_lines=False, box=box.SIMPLE)
+        table.add_column("席位", justify="left")
+        table.add_column("用途", justify="left")
+        table.add_column("分类", justify="left")
+        table.add_column("权重", justify="right")
+        table.add_column("启用", justify="left")
+    else:
+        table = Table(
+            title="[bold #5fd75f]:: STRATEGY SLOTS ::[/bold #5fd75f]",
+            show_lines=False,
+            header_style="bold #5f875f",
+            border_style="#5f875f",
+            box=box.SIMPLE_HEAVY,
+        )
+        table.add_column("席位", justify="left", style="#87ff87")
+        table.add_column("用途", justify="left", style="#5f875f")
+        table.add_column("分类", justify="left", style="#5f875f")
+        table.add_column("权重", justify="right", style="#5f875f")
+        table.add_column("启用", justify="left", style="#5f875f")
+
+    for item in items:
+        table.add_row(
+            item.name,
+            item.purpose,
+            item.allowed_category or "-",
+            f"{item.weight:.2%}",
+            "是" if item.enabled else "否",
+        )
+    console.print(table)
+
+
+@slots_app.command("set-weight")
+def set_slot_weight_command(
+    name: str = typer.Option(..., "--name", help="席位名称"),
+    weight: float = typer.Option(..., "--weight", help="席位目标权重（0~1）"),
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+) -> None:
+    """更新席位权重。"""
+    output_format = _validate_output_format(output)
+    try:
+        result = set_slot_weight(name=name, weight=weight)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    record_decision_log(
+        summary=f"更新席位权重：{result.name} -> {result.weight:.2%}",
+        decision_type="slots-set-weight",
+        notes=f"name={result.name}, weight={result.weight}",
+    )
+
+    payload = result.to_dict()
+    if output_format == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    typer.echo(f"席位权重更新成功：{result.name} -> {result.weight:.2%}")
+
+
 @app.command("summary")
 def summary_command(
     output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
@@ -298,6 +374,8 @@ def summary_command(
             "HiveFlow 状态摘要",
             f"- 持仓数量: {stats.positions_count}",
             f"- 策略数量: {stats.strategies_count}",
+            f"- 席位数量: {stats.slots_count}",
+            f"- 启用席位数量: {stats.enabled_slots_count}",
             f"- 持仓总市值: {stats.total_market_value:.2f}",
             f"- 目标持仓数量: {stats.target_allocations_count}",
             f"- 风险信号数量: {risk_count}",
@@ -315,6 +393,11 @@ def summary_command(
         "[bold #5fd75f]>> HIVEFLOW SYSTEM STATUS[/bold #5fd75f]",
         f"[#5f875f]- 持仓数量:[/#5f875f] [bold #87ff87]{stats.positions_count}[/bold #87ff87]",
         f"[#5f875f]- 策略数量:[/#5f875f] [bold #87ff87]{stats.strategies_count}[/bold #87ff87]",
+        f"[#5f875f]- 席位数量:[/#5f875f] [bold #87ff87]{stats.slots_count}[/bold #87ff87]",
+        (
+            f"[#5f875f]- 启用席位数量:[/#5f875f] "
+            f"[bold #87ff87]{stats.enabled_slots_count}[/bold #87ff87]"
+        ),
         (
             f"[#5f875f]- 持仓总市值:[/#5f875f] "
             f"[bold #87ff87]{stats.total_market_value:.2f}[/bold #87ff87]"
@@ -662,6 +745,33 @@ def export_targets_template_command(
     typer.echo(f"目标持仓模板已生成：{result.file}")
 
 
+@targets_app.command("generate")
+def generate_targets_command(
+    strategy: str = typer.Option(..., "--strategy", "-s", help="策略名称"),
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+) -> None:
+    """根据策略自动生成目标持仓。"""
+    output_format = _validate_output_format(output)
+    try:
+        result = generate_targets_for_strategy(strategy_name=strategy)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    record_decision_log(
+        summary=f"基于策略自动生成目标持仓 {result.generated} 条",
+        decision_type="targets-generate",
+        notes=f"strategy={result.strategy}",
+    )
+
+    payload = result.to_dict()
+    if output_format == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    typer.echo(
+        f"目标持仓已生成：策略={result.strategy}，分类={result.category}，条数={result.generated}"
+    )
+
+
 @rebalance_app.command("preview")
 def preview_rebalance_command(
     strategy: str | None = typer.Option(
@@ -724,6 +834,7 @@ app.add_typer(targets_app, name="targets")
 app.add_typer(rebalance_app, name="rebalance")
 app.add_typer(logs_app, name="logs")
 app.add_typer(strategies_app, name="strategies")
+app.add_typer(slots_app, name="slots")
 
 
 def run() -> None:

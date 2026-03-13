@@ -9,6 +9,7 @@ from hiveflow.domain.allocations import TargetAllocation
 from hiveflow.domain.decision_logs import DecisionLog
 from hiveflow.domain.positions import Position
 from hiveflow.domain.risk import RiskSignal
+from hiveflow.domain.slots import StrategySlot
 from hiveflow.domain.strategies import Strategy
 from hiveflow.domain.suggestions import RebalanceSuggestion
 
@@ -19,6 +20,10 @@ class SummaryStats:
     positions_count: int
     # 策略条目数量。
     strategies_count: int
+    # 席位条目数量。
+    slots_count: int
+    # 启用席位数量。
+    enabled_slots_count: int
     # 持仓总市值。
     total_market_value: float
     # 目标持仓条目数量。
@@ -41,6 +46,8 @@ class SummaryStats:
         return {
             "positions_count": self.positions_count,
             "strategies_count": self.strategies_count,
+            "slots_count": self.slots_count,
+            "enabled_slots_count": self.enabled_slots_count,
             "total_market_value": round(self.total_market_value, 2),
             "target_allocations_count": self.target_allocations_count,
             "risk_signals_count": self.risk_signals_count,
@@ -58,6 +65,7 @@ def get_summary_stats() -> SummaryStats:
     with get_session() as session:
         positions = session.exec(select(Position)).all()
         strategies = session.exec(select(Strategy)).all()
+        slots = session.exec(select(StrategySlot)).all()
         target_allocations = session.exec(select(TargetAllocation)).all()
         risk_signals = session.exec(select(RiskSignal)).all()
         rebalance_suggestions = session.exec(select(RebalanceSuggestion)).all()
@@ -75,6 +83,8 @@ def get_summary_stats() -> SummaryStats:
     return SummaryStats(
         positions_count=len(positions),
         strategies_count=len(strategies),
+        slots_count=len(slots),
+        enabled_slots_count=sum(1 for slot in slots if slot.enabled),
         total_market_value=total_market_value,
         target_allocations_count=len(target_allocations),
         risk_signals_count=len(risk_signals),

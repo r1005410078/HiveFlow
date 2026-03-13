@@ -8,6 +8,8 @@ from sqlmodel import delete, select
 
 from hiveflow.db import create_all_tables, get_session
 from hiveflow.domain.allocations import TargetAllocation
+from hiveflow.domain.strategies import Strategy
+from hiveflow.services.allocation_engine import generate_target_allocations
 
 
 @dataclass(frozen=True)
@@ -49,6 +51,23 @@ class TargetTemplateResult:
 
     def to_dict(self) -> dict[str, int | str]:
         return {"file": self.file, "rows": self.rows}
+
+
+@dataclass(frozen=True)
+class TargetGenerateResult:
+    # 生成所使用的策略名称。
+    strategy: str
+    # 策略分类。
+    category: str
+    # 生成条数。
+    generated: int
+
+    def to_dict(self) -> dict[str, int | str]:
+        return {
+            "strategy": self.strategy,
+            "category": self.category,
+            "generated": self.generated,
+        }
 
 
 def list_target_allocations() -> list[TargetAllocationView]:
@@ -133,3 +152,38 @@ def export_target_template(file: Path) -> TargetTemplateResult:
     )
     file.write_text(template, encoding="utf-8")
     return TargetTemplateResult(file=str(file), rows=3)
+
+
+def _default_allocations_for_category(category: str) -> dict[str, float]:
+    """按策略分类返回默认目标权重配置。"""
+    normalized = category.strip()
+    presets: dict[str, dict[str, float]] = {
+        "进攻型": {"BTC": 0.50, "ETH": 0.30, "USDT": 0.20},
+        "防守型": {"BTC": 0.20, "ETH": 0.20, "USDT": 0.60},
+        "长期型": {"BTC": 0.40, "ETH": 0.40, "USDT": 0.20},
+    }
+    return presets.get(normalized, {"BTC": 0.34, "ETH": 0.33, "USDT": 0.33})
+
+
+def generate_targets_for_strategy(strategy_name: str) -> TargetGenerateResult:
+    """根据策略自动生成目标持仓（覆盖该策略已有目标）。"""
+    create_all_tables()
+    with get_session() as session:
+        strategy = session.exec(select(Strategy).where(Strategy.name == strategy_name)).first()
+        if strategy is None:
+            raise ValueError("策略不存在，无法生成目标持仓。")
+
+        session.exec(
+            delete(TargetAllocation).where(TargetAllocation.strategy_name == strategy_name)
+        )
+        allocations = _default_allocations_for_category(strategy.category)
+        targets = generate_target_allocations(strategy_name=strategy_name, allocations=allocations)
+        for item in targets:
+            session.add(item)
+        session.commit()
+
+        return TargetGenerateResult(
+            strategy=strategy_name,
+            category=strategy.category,
+            generated=len(targets),
+        )

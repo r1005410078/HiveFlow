@@ -14,7 +14,9 @@
 - 增量层面：已完成 Chunk 10（`rebalance preview` 预览闭环，支持 `strategy/save/json/theme`）。
 - 增量层面：已完成 Chunk 11（`logs list/export` + `summary` 决策日志数量联动）。
 - 增量层面：已完成 Chunk 12（`strategies list/import/template` + `summary` 策略数量联动）。
-- 验证层面：当前测试集通过（`uv run python -m pytest -q` -> `44 passed`）。
+- 增量层面：已完成 Chunk 13（`targets generate` 自动生成目标持仓 + 决策日志联动）。
+- 增量层面：已完成 Chunk 14（`slots list/set-weight` + `summary` 席位统计联动）。
+- 验证层面：当前测试集通过（`uv run python -m pytest -q` -> `51 passed`）。
 - 文档层面：已补充 CLI 使用文档与测试使用文档。
 - 与原计划差异：计划要求“每任务单独提交”，实际执行为集中开发后一次性提交。
  - 回填说明：后续增量按“实现后即时回填”方式维护本计划。
@@ -863,6 +865,51 @@ git commit -m "feat: add hiveflow summary command"
 - [x] `summary --output json` 新增 `strategies_count` 字段。
 - [x] `summary` 终端输出新增“策略数量”。
 - [x] 测试通过：导入策略后统计数量正确。
+
+## Chunk 13：目标持仓自动生成闭环
+
+### 任务 28：增加 targets generate 自动生成命令
+
+**文件：**
+- 修改：`src/hiveflow/application/targets.py`
+- 修改：`src/hiveflow/cli.py`
+- 修改：`docs/cli/README.md`
+- 测试：`tests/test_cli.py`
+
+- [x] 新增 `targets generate --strategy ...`。
+- [x] 按策略分类套用默认权重模板自动生成目标持仓。
+- [x] 生成时覆盖该策略历史目标持仓，避免重复堆叠。
+- [x] 支持 `--output json`。
+- [x] 策略不存在时返回明确错误信息。
+- [x] 自动写入决策日志（`targets-generate`）。
+- [x] 测试通过：生成成功、日志联动、异常路径均覆盖。
+
+## Chunk 14：席位配比管理闭环
+
+### 任务 29：增加 slots 命令组
+
+**文件：**
+- 新增：`src/hiveflow/application/slots.py`
+- 修改：`src/hiveflow/cli.py`
+- 修改：`docs/cli/README.md`
+- 测试：`tests/test_cli.py`
+
+- [x] 新增 `slots` 命令组。
+- [x] 新增 `slots list`（pretty/json）。
+- [x] 新增 `slots set-weight`（更新席位权重）。
+- [x] `set-weight` 自动写入决策日志（`slots-set-weight`）。
+- [x] 测试通过：命令可用、JSON 结构正确、日志联动可用。
+
+### 任务 30：summary 与席位统计联动
+
+**文件：**
+- 修改：`src/hiveflow/application/summary.py`
+- 修改：`src/hiveflow/cli.py`
+- 测试：`tests/test_cli.py`
+
+- [x] `summary --output json` 新增 `slots_count` 和 `enabled_slots_count` 字段。
+- [x] `summary` 终端输出新增“席位数量/启用席位数量”。
+- [x] 测试通过：席位更新后统计正确。
 
 ## 计划说明
 
