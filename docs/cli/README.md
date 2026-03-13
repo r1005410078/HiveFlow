@@ -116,6 +116,31 @@ uv run hiveflow positions drift --strategy "进攻突破策略"
 uv run hiveflow rebalance preview --strategy "进攻突破策略"
 ```
 
+### 3.0.2 行情契约与回测 Example
+
+```bash
+# 1) 生成行情模板并填写
+uv run hiveflow market-data template
+
+# 2) 校验行情文件是否符合契约
+uv run hiveflow market-data validate --file ./prices.csv
+
+# 3) 导入行情到本地数据库（可查询）
+uv run hiveflow market-data import --file ./prices.csv --mode replace
+uv run hiveflow market-data summary
+uv run hiveflow market-data list --symbol BTC
+
+# 4) 运行一次策略回测
+uv run hiveflow backtest run --strategy "进攻突破策略" --file ./prices.csv
+
+# 5) 查看回测历史
+uv run hiveflow backtest list --strategy "进攻突破策略"
+```
+
+说明：
+- 当前回测命令仍使用 `--file` 读取行情文件。
+- `market-data import/list/summary` 用于把行情沉淀进系统并方便日常核对。
+
 ### 3.1 初始化本地数据库与基础数据
 
 ```bash

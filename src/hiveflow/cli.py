@@ -13,6 +13,13 @@ from hiveflow.application.decision_logs import list_decision_logs
 from hiveflow.application.decision_logs import record_decision_log
 from hiveflow.application.current import set_current_strategy
 from hiveflow.application.current import show_current_strategy
+from hiveflow.application.backtest import list_backtest_results
+from hiveflow.application.backtest import run_backtest_for_strategy
+from hiveflow.application.market_data import export_market_data_template
+from hiveflow.application.market_data import import_market_data_csv
+from hiveflow.application.market_data import list_market_bars
+from hiveflow.application.market_data import summarize_market_data
+from hiveflow.application.market_data import validate_market_data_csv
 from hiveflow.application.positions import add_position
 from hiveflow.application.positions import analyze_positions_drift
 from hiveflow.application.positions import export_positions_template
@@ -48,6 +55,8 @@ logs_app = typer.Typer(help="决策日志命令。")
 strategies_app = typer.Typer(help="策略管理命令。")
 slots_app = typer.Typer(help="席位管理命令。")
 current_app = typer.Typer(help="当前策略命令。")
+market_data_app = typer.Typer(help="行情数据契约命令。")
+backtest_app = typer.Typer(help="策略回测命令。")
 console = Console()
 JSON_SCHEMA_VERSION = "1.0.0"
 
@@ -1361,6 +1370,225 @@ def preview_rebalance_command(
     typer.echo(f"建议数量：{len(result.suggestions)}；已保存：{'是' if result.saved else '否'}")
 
 
+@market_data_app.command("template")
+def export_market_data_template_command(
+    file: Path = typer.Option(
+        Path("prices.csv"),
+        "--file",
+        "-f",
+        help="模板输出路径（默认：./prices.csv）",
+    ),
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+) -> None:
+    """导出行情 CSV 模板。"""
+    output_format = _validate_output_format(output)
+    result = export_market_data_template(file=file)
+    payload = result.to_dict()
+    if output_format == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    typer.echo(f"行情模板已生成：{result.file}")
+
+
+@market_data_app.command("validate")
+def validate_market_data_command(
+    file: Path = typer.Option(..., "--file", "-f", help="待校验 CSV 路径"),
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+    envelope: bool = typer.Option(False, "--envelope", help="JSON 输出使用统一 envelope"),
+    json_schema: bool = typer.Option(False, "--json-schema", help="输出 JSON schema 后退出"),
+) -> None:
+    """校验行情 CSV 是否符合 HiveFlow 契约。"""
+    if json_schema:
+        _print_json_schema("market-data.validate")
+        return
+
+    output_format = _validate_output_format(output)
+    try:
+        result = validate_market_data_csv(file=file)
+    except (FileNotFoundError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    payload = result.to_dict()
+    if output_format == "json":
+        _print_json(payload=payload, command="market-data.validate", envelope=envelope)
+        return
+
+    if result.valid:
+        typer.echo(f"校验通过：{result.rows} 行有效数据。")
+        return
+    typer.echo(f"校验失败：{len(result.errors)} 个问题。")
+    for item in result.errors:
+        typer.echo(f"- {item}")
+
+
+@market_data_app.command("import")
+def import_market_data_command(
+    file: Path = typer.Option(..., "--file", "-f", help="CSV 文件路径"),
+    mode: str = typer.Option("append", "--mode", "-m", help="导入模式：append/replace"),
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+) -> None:
+    """导入行情 CSV 到数据库。"""
+    output_format = _validate_output_format(output)
+    import_mode = _validate_import_mode(mode)
+    try:
+        result = import_market_data_csv(file=file, mode=import_mode)
+    except (FileNotFoundError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    record_decision_log(
+        summary=f"导入行情 {result.imported} 条（模式：{result.mode}）",
+        decision_type="market-data-import",
+        notes=f"file={file}",
+    )
+    payload = result.to_dict()
+    if output_format == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    typer.echo(f"行情导入完成：{result.imported} 条（模式：{result.mode}）。")
+
+
+@market_data_app.command("list")
+def list_market_data_command(
+    symbol: str | None = typer.Option(None, "--symbol", "-s", help="按标的过滤（可选）"),
+    limit: int = typer.Option(100, "--limit", help="最多返回条数"),
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+    theme: str = typer.Option("hacker", "--theme", help="显示主题：hacker/minimal"),
+) -> None:
+    """查看已导入行情。"""
+    output_format = _validate_output_format(output)
+    ui_theme = _validate_theme(theme)
+    row_limit = _validate_limit(limit)
+    rows = list_market_bars(symbol=symbol, limit=row_limit)
+    if output_format == "json":
+        typer.echo(json.dumps([item.to_dict() for item in rows], ensure_ascii=False, indent=2))
+        return
+    if not rows:
+        typer.echo("暂无行情记录。")
+        return
+    if ui_theme == "minimal":
+        table = Table(title="行情数据", show_lines=False, box=box.SIMPLE)
+        table.add_column("标的", justify="left")
+        table.add_column("时间", justify="left")
+        table.add_column("开", justify="right")
+        table.add_column("高", justify="right")
+        table.add_column("低", justify="right")
+        table.add_column("收", justify="right")
+        table.add_column("量", justify="right")
+    else:
+        table = Table(
+            title="[bold #5fd75f]:: MARKET DATA ::[/bold #5fd75f]",
+            show_lines=False,
+            header_style="bold #5f875f",
+            border_style="#5f875f",
+            box=box.SIMPLE_HEAVY,
+        )
+        table.add_column("标的", justify="left", style="#87ff87")
+        table.add_column("时间", justify="left", style="#5f875f")
+        table.add_column("开", justify="right", style="#5f875f")
+        table.add_column("高", justify="right", style="#5f875f")
+        table.add_column("低", justify="right", style="#5f875f")
+        table.add_column("收", justify="right", style="#5f875f")
+        table.add_column("量", justify="right", style="#5f875f")
+    for item in rows:
+        table.add_row(
+            item.symbol,
+            item.timestamp,
+            f"{item.open:.4f}",
+            f"{item.high:.4f}",
+            f"{item.low:.4f}",
+            f"{item.close:.4f}",
+            f"{item.volume:.2f}",
+        )
+    console.print(table)
+
+
+@market_data_app.command("summary")
+def summary_market_data_command(
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+) -> None:
+    """查看行情数据汇总。"""
+    output_format = _validate_output_format(output)
+    result = summarize_market_data()
+    payload = result.to_dict()
+    if output_format == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    typer.echo(
+        f"行情汇总：symbols={result.symbols_count} bars={result.bars_count} latest={result.latest_timestamp or '-'}"
+    )
+
+
+@backtest_app.command("run")
+def run_backtest_command(
+    strategy: str = typer.Option(..., "--strategy", "-s", help="策略名称"),
+    file: Path = typer.Option(..., "--file", "-f", help="行情 CSV 文件路径"),
+    fee_bps: float = typer.Option(0.0, "--fee-bps", help="交易费率（基点）"),
+    slippage_bps: float = typer.Option(0.0, "--slippage-bps", help="滑点（基点）"),
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+) -> None:
+    """运行一次策略回测。"""
+    output_format = _validate_output_format(output)
+    try:
+        result = run_backtest_for_strategy(
+            strategy_name=strategy,
+            prices_file=file,
+            fee_bps=fee_bps,
+            slippage_bps=slippage_bps,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    record_decision_log(
+        summary=f"执行回测：{strategy}",
+        decision_type="backtest-run",
+        notes=f"file={file}, periods={result.periods}",
+    )
+    payload = result.to_dict()
+    if output_format == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    typer.echo(
+        f"回测完成：strategy={result.strategy_name} "
+        f"return={result.total_return:.2%} "
+        f"mdd={result.max_drawdown:.2%} "
+        f"sharpe={result.sharpe:.2f}"
+    )
+
+
+@backtest_app.command("list")
+def list_backtest_command(
+    strategy: str | None = typer.Option(None, "--strategy", "-s", help="按策略过滤（可选）"),
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+) -> None:
+    """列出历史回测结果。"""
+    output_format = _validate_output_format(output)
+    rows = list_backtest_results(strategy_name=strategy)
+    payload = [item.to_dict() for item in rows]
+    if output_format == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    if not rows:
+        typer.echo("暂无回测记录。")
+        return
+    table = Table(title="回测记录", show_lines=False, box=box.SIMPLE)
+    table.add_column("策略", justify="left")
+    table.add_column("周期", justify="right")
+    table.add_column("总收益", justify="right")
+    table.add_column("最大回撤", justify="right")
+    table.add_column("Sharpe", justify="right")
+    table.add_column("时间", justify="left")
+    for item in rows:
+        table.add_row(
+            item.strategy_name,
+            str(item.periods),
+            f"{item.total_return:.2%}",
+            f"{item.max_drawdown:.2%}",
+            f"{item.sharpe:.2f}",
+            item.created_at,
+        )
+    console.print(table)
+
+
 app.add_typer(positions_app, name="positions")
 app.add_typer(risk_app, name="risk")
 app.add_typer(targets_app, name="targets")
@@ -1369,6 +1597,8 @@ app.add_typer(logs_app, name="logs")
 app.add_typer(strategies_app, name="strategies")
 app.add_typer(slots_app, name="slots")
 app.add_typer(current_app, name="current")
+app.add_typer(market_data_app, name="market-data")
+app.add_typer(backtest_app, name="backtest")
 
 
 def run() -> None:
