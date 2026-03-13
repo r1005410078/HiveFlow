@@ -909,6 +909,73 @@ def test_targets_generate_supports_external_template_config(tmp_path, monkeypatc
     assert weights == {"BTC": 0.6, "ETH": 0.3, "USDT": 0.1}
 
 
+def test_targets_template_show_supports_json_output(tmp_path, monkeypatch) -> None:
+    # 验证可以通过命令查看当前目标模板配置。
+    db_path = tmp_path / "targets-template-show.db"
+    config_path = tmp_path / "target-templates-show.json"
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    monkeypatch.setenv("HIVEFLOW_TARGET_TEMPLATE_FILE", str(config_path))
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["targets", "template-show", "--output", "json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert "type_presets" in payload
+    assert "dimension_presets" in payload
+    assert "file" in payload
+
+
+def test_targets_template_set_updates_config_and_generate_result(tmp_path, monkeypatch) -> None:
+    # 验证通过命令设置模板后，generate 会使用新模板。
+    db_path = tmp_path / "targets-template-set.db"
+    config_path = tmp_path / "target-templates-set.json"
+    strategies_path = tmp_path / "strategies-template-set.csv"
+    strategies_path.write_text(
+        (
+            "name,strategy_type,thesis,dimension,market_regime,backtest_summary\n"
+            "趋势动量策略,进攻型,趋势跟随+动量确认,趋势|动量,趋势市,年化 20%\n"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    monkeypatch.setenv("HIVEFLOW_TARGET_TEMPLATE_FILE", str(config_path))
+    runner = CliRunner()
+
+    set_result = runner.invoke(
+        app,
+        [
+            "targets",
+            "template-set",
+            "--scope",
+            "dimension",
+            "--key",
+            "趋势|动量",
+            "--weights",
+            "BTC=0.70,ETH=0.20,USDT=0.10",
+            "--output",
+            "json",
+        ],
+    )
+    assert set_result.exit_code == 0
+    set_payload = json.loads(set_result.stdout)
+    assert set_payload["scope"] == "dimension"
+    assert set_payload["key"] == "趋势|动量"
+
+    runner.invoke(app, ["strategies", "import", "--file", str(strategies_path), "--mode", "replace"])
+    runner.invoke(app, ["targets", "generate", "--strategy", "趋势动量策略"])
+
+    list_result = runner.invoke(
+        app, ["targets", "list", "--strategy", "趋势动量策略", "--output", "json"]
+    )
+    targets = json.loads(list_result.stdout)
+    weights = {item["symbol"]: item["target_weight"] for item in targets}
+    assert weights == {"BTC": 0.7, "ETH": 0.2, "USDT": 0.1}
+
+    logs_result = runner.invoke(app, ["logs", "list", "--output", "json"])
+    logs = json.loads(logs_result.stdout)
+    assert any(item["decision_type"] == "targets-template-set" for item in logs)
+
+
 def test_targets_generate_auto_records_decision_log(tmp_path, monkeypatch) -> None:
     # 验证自动生成目标持仓后，会自动写入决策日志。
     db_path = tmp_path / "targets-generate-log.db"
@@ -1159,3 +1226,262 @@ def test_targets_generate_requires_strategy_or_current_strategy(tmp_path, monkey
     result = runner.invoke(app, ["targets", "generate"])
     assert result.exit_code != 0
     assert "当前策略未设置" in (result.stdout + result.stderr)
+
+
+def test_positions_drift_supports_json_output(tmp_path, monkeypatch) -> None:
+    # 验证 positions drift 可按当前策略输出结构化偏离结果。
+    db_path = tmp_path / "positions-drift.db"
+    positions_path = tmp_path / "positions-drift.csv"
+    targets_path = tmp_path / "targets-drift.csv"
+    strategies_path = tmp_path / "strategies-drift.csv"
+    positions_path.write_text(
+        "symbol,quantity,market_value,weight\nBTC,1,100000,0.70\nETH,2,20000,0.10\nUSDT,1,20000,0.20\n",
+        encoding="utf-8",
+    )
+    targets_path.write_text(
+        "strategy_name,symbol,target_weight\n进攻突破策略,BTC,0.50\n进攻突破策略,ETH,0.30\n进攻突破策略,USDT,0.20\n",
+        encoding="utf-8",
+    )
+    strategies_path.write_text(
+        (
+            "name,category,thesis,market_regime,backtest_summary\n"
+            "进攻突破策略,进攻型,顺势突破+风控,趋势市,年化 18%\n"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+    runner.invoke(app, ["positions", "import", "--file", str(positions_path), "--mode", "replace"])
+    runner.invoke(app, ["targets", "import", "--file", str(targets_path), "--mode", "replace"])
+    runner.invoke(app, ["strategies", "import", "--file", str(strategies_path), "--mode", "replace"])
+    runner.invoke(app, ["current", "set-strategy", "--name", "进攻突破策略"])
+
+    result = runner.invoke(app, ["positions", "drift", "--output", "json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["strategy"] == "进攻突破策略"
+    assert payload["count"] >= 3
+    assert any(item["drift_level"] in {"high", "medium", "low"} for item in payload["items"])
+
+
+def test_rebalance_preview_json_contains_explanation_and_risk_gate(tmp_path, monkeypatch) -> None:
+    # 验证 rebalance JSON 含解释字段，且高风险买入会被门控为 hold。
+    db_path = tmp_path / "rebalance-explain.db"
+    positions_path = tmp_path / "positions-explain.csv"
+    targets_path = tmp_path / "targets-explain.csv"
+    risk_path = tmp_path / "risk-explain.csv"
+    strategies_path = tmp_path / "strategies-explain.csv"
+    positions_path.write_text(
+        "symbol,quantity,market_value,weight\nBTC,1,50000,0.50\nETH,2,10000,0.10\nUSDT,1,40000,0.40\n",
+        encoding="utf-8",
+    )
+    targets_path.write_text(
+        "strategy_name,symbol,target_weight\n进攻突破策略,BTC,0.40\n进攻突破策略,ETH,0.40\n进攻突破策略,USDT,0.20\n",
+        encoding="utf-8",
+    )
+    risk_path.write_text(
+        "symbol,waterline,score,note\nETH,high,0.90,短期波动过高\nBTC,low,0.2,稳定\nUSDT,low,0.1,稳定\n",
+        encoding="utf-8",
+    )
+    strategies_path.write_text(
+        (
+            "name,category,thesis,market_regime,backtest_summary\n"
+            "进攻突破策略,进攻型,顺势突破+风控,趋势市,年化 18%\n"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+    runner.invoke(app, ["positions", "import", "--file", str(positions_path), "--mode", "replace"])
+    runner.invoke(app, ["targets", "import", "--file", str(targets_path), "--mode", "replace"])
+    runner.invoke(app, ["risk", "import", "--file", str(risk_path), "--mode", "replace"])
+    runner.invoke(app, ["strategies", "import", "--file", str(strategies_path), "--mode", "replace"])
+    runner.invoke(app, ["current", "set-strategy", "--name", "进攻突破策略"])
+
+    result = runner.invoke(app, ["rebalance", "preview", "--output", "json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    eth_item = next(item for item in payload["suggestions"] if item["symbol"] == "ETH")
+    assert "explanation" in eth_item
+    assert eth_item["risk_waterline"] == "high"
+    assert eth_item["action"] == "hold"
+
+
+def test_targets_template_rollback_restores_previous_config(tmp_path, monkeypatch) -> None:
+    # 验证模板回滚可恢复到历史版本。
+    db_path = tmp_path / "targets-rollback.db"
+    config_path = tmp_path / "target-templates.json"
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    monkeypatch.setenv("HIVEFLOW_TARGET_TEMPLATE_FILE", str(config_path))
+    runner = CliRunner()
+
+    runner.invoke(
+        app,
+        [
+            "targets",
+            "template-set",
+            "--scope",
+            "dimension",
+            "--key",
+            "趋势|动量",
+            "--weights",
+            "BTC=0.70,ETH=0.20,USDT=0.10",
+        ],
+    )
+    runner.invoke(
+        app,
+        [
+            "targets",
+            "template-set",
+            "--scope",
+            "dimension",
+            "--key",
+            "趋势|动量",
+            "--weights",
+            "BTC=0.50,ETH=0.30,USDT=0.20",
+        ],
+    )
+
+    rollback_result = runner.invoke(
+        app,
+        ["targets", "template-rollback", "--output", "json"],
+    )
+    assert rollback_result.exit_code == 0
+    rollback_payload = json.loads(rollback_result.stdout)
+    assert rollback_payload["restored_version"] >= 1
+
+    show_result = runner.invoke(app, ["targets", "template-show", "--output", "json"])
+    show_payload = json.loads(show_result.stdout)
+    assert show_payload["dimension_presets"]["趋势|动量"] == {
+        "BTC": 0.7,
+        "ETH": 0.2,
+        "USDT": 0.1,
+    }
+
+
+def test_current_run_executes_generate_and_preview(tmp_path, monkeypatch) -> None:
+    # 验证 current run 能一键串联目标生成与调仓预览。
+    db_path = tmp_path / "current-run.db"
+    positions_path = tmp_path / "positions-run.csv"
+    strategies_path = tmp_path / "strategies-run.csv"
+    positions_path.write_text(
+        "symbol,quantity,market_value,weight\nBTC,1,100000,0.60\nETH,2,20000,0.20\nUSDT,1,20000,0.20\n",
+        encoding="utf-8",
+    )
+    strategies_path.write_text(
+        (
+            "name,category,thesis,market_regime,backtest_summary\n"
+            "进攻突破策略,进攻型,顺势突破+风控,趋势市,年化 18%\n"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+    runner.invoke(app, ["positions", "import", "--file", str(positions_path), "--mode", "replace"])
+    runner.invoke(app, ["strategies", "import", "--file", str(strategies_path), "--mode", "replace"])
+    runner.invoke(app, ["current", "set-strategy", "--name", "进攻突破策略"])
+
+    run_result = runner.invoke(app, ["current", "run", "--output", "json"])
+    assert run_result.exit_code == 0
+    payload = json.loads(run_result.stdout)
+    assert payload["strategy"] == "进攻突破策略"
+    assert payload["targets_generated"] == 3
+    assert payload["suggestions_count"] >= 1
+
+
+def test_doctor_and_init_demo_support_json_output(tmp_path, monkeypatch) -> None:
+    # 验证 doctor 与 init-demo 命令支持 JSON 输出。
+    db_path = tmp_path / "doctor-init-demo.db"
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+
+    init_result = runner.invoke(app, ["init-demo", "--output", "json"])
+    assert init_result.exit_code == 0
+    init_payload = json.loads(init_result.stdout)
+    assert init_payload["positions"] >= 3
+    assert init_payload["strategies"] >= 2
+
+    doctor_result = runner.invoke(app, ["doctor", "--output", "json"])
+    assert doctor_result.exit_code == 0
+    doctor_payload = json.loads(doctor_result.stdout)
+    assert doctor_payload["overall_status"] in {"ok", "warn"}
+    assert len(doctor_payload["checks"]) >= 1
+
+
+def test_json_schema_and_envelope_output(tmp_path, monkeypatch) -> None:
+    # 验证统一 JSON schema 与 envelope 输出能力。
+    db_path = tmp_path / "json-schema.db"
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+
+    schema_result = runner.invoke(app, ["summary", "--json-schema"])
+    assert schema_result.exit_code == 0
+    schema_payload = json.loads(schema_result.stdout)
+    assert schema_payload["title"] == "HiveFlow summary output envelope"
+
+    summary_result = runner.invoke(app, ["summary", "--output", "json", "--envelope"])
+    assert summary_result.exit_code == 0
+    envelope_payload = json.loads(summary_result.stdout)
+    assert envelope_payload["schema_version"] == "1.0.0"
+    assert envelope_payload["command"] == "summary"
+    assert "data" in envelope_payload
+
+
+def test_rebalance_table_uses_chinese_labels_and_risk_percent(tmp_path, monkeypatch) -> None:
+    # 验证 Table 使用中文动作/优先级，且风险显示为百分比；JSON 保持英文枚举。
+    db_path = tmp_path / "rebalance-table-zh.db"
+    positions_path = tmp_path / "positions-table-zh.csv"
+    targets_path = tmp_path / "targets-table-zh.csv"
+    risk_path = tmp_path / "risk-table-zh.csv"
+    strategies_path = tmp_path / "strategies-table-zh.csv"
+    positions_path.write_text(
+        "symbol,quantity,market_value,weight\nBTC,1,50000,0.50\nETH,2,10000,0.10\nUSDT,1,40000,0.40\n",
+        encoding="utf-8",
+    )
+    targets_path.write_text(
+        "strategy_name,symbol,target_weight\n进攻突破策略,BTC,0.40\n进攻突破策略,ETH,0.40\n进攻突破策略,USDT,0.20\n",
+        encoding="utf-8",
+    )
+    risk_path.write_text(
+        "symbol,waterline,score,note\nETH,high,0.90,短期波动过高\nBTC,medium,0.58,正常\nUSDT,low,0.10,稳定\n",
+        encoding="utf-8",
+    )
+    strategies_path.write_text(
+        (
+            "name,category,thesis,market_regime,backtest_summary\n"
+            "进攻突破策略,进攻型,顺势突破+风控,趋势市,年化 18%\n"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+    runner.invoke(app, ["positions", "import", "--file", str(positions_path), "--mode", "replace"])
+    runner.invoke(app, ["targets", "import", "--file", str(targets_path), "--mode", "replace"])
+    runner.invoke(app, ["risk", "import", "--file", str(risk_path), "--mode", "replace"])
+    runner.invoke(app, ["strategies", "import", "--file", str(strategies_path), "--mode", "replace"])
+    runner.invoke(app, ["current", "set-strategy", "--name", "进攻突破策略"])
+
+    pretty_result = runner.invoke(
+        app, ["rebalance", "preview", "--theme", "minimal"]
+    )
+    assert pretty_result.exit_code == 0
+    assert "持有" in pretty_result.stdout
+    assert "高" in pretty_result.stdout or "中" in pretty_result.stdout or "低" in pretty_result.stdout
+    assert "90.00%" in pretty_result.stdout
+
+    json_result = runner.invoke(app, ["rebalance", "preview", "--output", "json"])
+    assert json_result.exit_code == 0
+    payload = json.loads(json_result.stdout)
+    eth_item = next(item for item in payload["suggestions"] if item["symbol"] == "ETH")
+    assert eth_item["action"] == "hold"
+    assert eth_item["priority"] in {"high", "medium", "low"}
+
+
+def test_command_help_includes_scene_and_example() -> None:
+    # 验证核心命令帮助中包含“使用场景”和“示例（含目的说明）”。
+    runner = CliRunner()
+    result = runner.invoke(app, ["current", "run", "--help"])
+    assert result.exit_code == 0
+    assert "使用场景" in result.stdout
+    assert "示例" in result.stdout
+    assert "用途" in result.stdout

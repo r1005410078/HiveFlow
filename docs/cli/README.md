@@ -40,6 +40,18 @@ uv run hiveflow --help
 uv run hiveflow log --help
 ```
 
+查看某个命令的 JSON schema（给 AI/Skills 对接）：
+
+```bash
+uv run hiveflow summary --json-schema
+```
+
+如果你希望 JSON 输出带统一包装层（包含 `schema_version` 和 `command`）：
+
+```bash
+uv run hiveflow summary --output json --envelope
+```
+
 主题切换（仅 pretty 输出生效）：
 
 ```bash
@@ -47,7 +59,62 @@ uv run hiveflow summary --theme hacker
 uv run hiveflow summary --theme minimal
 ```
 
+### 2.1 命令帮助速查（建议收藏）
+
+```bash
+# 根命令帮助（所有一级命令）
+uv run hiveflow --help
+
+# 某个命令组帮助（查看二级命令）
+uv run hiveflow positions --help
+uv run hiveflow targets --help
+uv run hiveflow current --help
+
+# 某个具体动作帮助（查看参数）
+uv run hiveflow positions drift --help
+uv run hiveflow current run --help
+uv run hiveflow targets template-rollback --help
+
+# 给 AI/Skills 的结构说明
+uv run hiveflow rebalance preview --json-schema
+```
+
 ## 3. 核心命令
+
+### 3.0 快速跑通（推荐）
+
+```bash
+uv run hiveflow init-demo
+uv run hiveflow doctor
+uv run hiveflow summary
+```
+
+作用：
+
+- `init-demo`：一键生成演示数据（策略/持仓/风险/目标/建议）
+- `doctor`：检查数据库、模板配置和基础数据状态
+
+### 3.0.1 常用 Example（可直接复制）
+
+```bash
+# Example 1: 快速演示闭环
+uv run hiveflow init-demo
+uv run hiveflow current run
+uv run hiveflow positions drift
+
+# Example 2: 查看可给模型消费的 JSON（带统一 envelope）
+uv run hiveflow summary --output json --envelope
+uv run hiveflow rebalance preview --output json --envelope
+
+# Example 3: 模板误改后回滚
+uv run hiveflow targets template-set --scope dimension --key "趋势|动量" --weights "BTC=0.7,ETH=0.2,USDT=0.1"
+uv run hiveflow targets template-rollback
+
+# Example 4: 只看某个策略的偏离与建议
+uv run hiveflow current set-strategy --name "进攻突破策略"
+uv run hiveflow positions drift --strategy "进攻突破策略"
+uv run hiveflow rebalance preview --strategy "进攻突破策略"
+```
 
 ### 3.1 初始化本地数据库与基础数据
 
@@ -146,6 +213,24 @@ uv run hiveflow positions list --output json
 
 ```bash
 uv run hiveflow positions list --theme minimal
+```
+
+### 3.7.1 查看持仓偏离（M2）
+
+```bash
+uv run hiveflow positions drift
+```
+
+说明：
+
+- 默认按“当前策略”对比目标持仓
+- 输出每个标的的 `actual_weight/target_weight/delta/drift_level/action`
+- `drift_level` 分为 `low / medium / high`
+
+JSON 输出示例：
+
+```bash
+uv run hiveflow positions drift --output json
 ```
 
 ### 3.8 从 CSV 导入持仓
@@ -348,6 +433,23 @@ JSON 输出示例：
 uv run hiveflow current set-strategy --name "进攻突破策略" --output json
 ```
 
+### 3.17.1 一键执行当前策略（M2/M3）
+
+```bash
+uv run hiveflow current run
+```
+
+说明：
+
+- 会串联执行：`targets generate` + `rebalance preview`
+- 默认保存建议（可用 `--no-save` 关闭）
+
+JSON 输出示例：
+
+```bash
+uv run hiveflow current run --output json
+```
+
 ### 3.18 查看策略席位列表
 
 ```bash
@@ -449,7 +551,51 @@ JSON 输出示例：
 uv run hiveflow targets template --output json
 ```
 
-### 3.23 基于策略自动生成目标持仓
+### 3.23 查看目标模板配置
+
+```bash
+uv run hiveflow targets template-show
+```
+
+JSON 输出示例：
+
+```bash
+uv run hiveflow targets template-show --output json
+```
+
+### 3.24 设置单条目标模板
+
+```bash
+uv run hiveflow targets template-set --scope dimension --key "趋势|动量" --weights "BTC=0.7,ETH=0.2,USDT=0.1"
+```
+
+说明：更新成功后会自动写入一条 `decision_logs` 记录（类型：`targets-template-set`）。
+
+JSON 输出示例：
+
+```bash
+uv run hiveflow targets template-set --scope type --key "进攻型" --weights "BTC=0.5,ETH=0.3,USDT=0.2" --output json
+```
+
+### 3.24.1 回滚目标模板（M2）
+
+```bash
+uv run hiveflow targets template-rollback
+```
+
+回滚到指定版本：
+
+```bash
+uv run hiveflow targets template-rollback --version 2
+```
+
+JSON 输出示例：
+
+```bash
+uv run hiveflow targets template-rollback --output json
+```
+
+### 3.25 基于策略自动生成目标持仓
 
 ```bash
 uv run hiveflow targets generate --strategy "进攻突破策略"
@@ -474,7 +620,7 @@ JSON 输出示例：
 uv run hiveflow targets generate --strategy "进攻突破策略" --output json
 ```
 
-### 3.24 预览调仓建议
+### 3.26 预览调仓建议
 
 ```bash
 uv run hiveflow rebalance preview
@@ -482,6 +628,7 @@ uv run hiveflow rebalance preview
 
 说明：如果不传 `--strategy`，会自动使用当前策略（若未设置则退化为全目标持仓预览）。
 当使用某个具体策略预览时，会同时输出该策略的类型与维度。
+JSON 中会带 `risk_waterline` 与 `explanation` 字段；当标的风险为 `high` 且原建议为 `buy` 时，会被风险门控为 `hold`。
 
 只预览某个策略：
 

@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from typing import Any
 
 import typer
 from rich import box
@@ -13,6 +14,7 @@ from hiveflow.application.decision_logs import record_decision_log
 from hiveflow.application.current import set_current_strategy
 from hiveflow.application.current import show_current_strategy
 from hiveflow.application.positions import add_position
+from hiveflow.application.positions import analyze_positions_drift
 from hiveflow.application.positions import export_positions_template
 from hiveflow.application.positions import import_positions_from_csv
 from hiveflow.application.positions import list_positions
@@ -28,8 +30,13 @@ from hiveflow.application.slots import set_slot_weight
 from hiveflow.application.summary import get_summary_stats
 from hiveflow.application.targets import export_target_template
 from hiveflow.application.targets import generate_targets_for_strategy
+from hiveflow.application.targets import get_target_template_config
 from hiveflow.application.targets import import_target_allocations_from_csv
 from hiveflow.application.targets import list_target_allocations
+from hiveflow.application.targets import rollback_target_template
+from hiveflow.application.targets import set_target_template_preset
+from hiveflow.application.system import init_demo_data
+from hiveflow.application.system import run_doctor
 from hiveflow.services.bootstrap import bootstrap_all
 
 app = typer.Typer(help="HiveFlow 本地资产决策系统。")
@@ -42,6 +49,7 @@ strategies_app = typer.Typer(help="策略管理命令。")
 slots_app = typer.Typer(help="席位管理命令。")
 current_app = typer.Typer(help="当前策略命令。")
 console = Console()
+JSON_SCHEMA_VERSION = "1.0.0"
 
 
 def _level_style(count: int, medium_threshold: int = 1, high_threshold: int = 5) -> str:
@@ -84,6 +92,74 @@ def _validate_limit(value: int) -> int:
     return value
 
 
+def _action_label(action: str) -> str:
+    """动作枚举中文显示。"""
+    return {"buy": "买入", "sell": "卖出", "hold": "持有"}.get(action, action)
+
+
+def _priority_label(priority: str) -> str:
+    """优先级枚举中文显示。"""
+    return {"high": "高", "medium": "中", "low": "低"}.get(priority, priority)
+
+
+def _drift_level_label(level: str) -> str:
+    """偏离等级枚举中文显示。"""
+    return {"high": "高", "medium": "中", "low": "低"}.get(level, level)
+
+
+def _build_json_envelope(command: str, data: Any) -> dict[str, Any]:
+    """构建统一 JSON 包装层，供 AI/Skills 稳定消费。"""
+    return {
+        "schema_version": JSON_SCHEMA_VERSION,
+        "command": command,
+        "data": data,
+    }
+
+
+def _print_json(payload: Any, command: str, envelope: bool) -> None:
+    """输出 JSON，可选包一层统一 envelope。"""
+    body: Any = _build_json_envelope(command=command, data=payload) if envelope else payload
+    typer.echo(json.dumps(body, ensure_ascii=False, indent=2))
+
+
+def _print_json_schema(command: str) -> None:
+    """输出统一 JSON envelope 的通用 schema。"""
+    schema = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": f"HiveFlow {command} output envelope",
+        "type": "object",
+        "required": ["schema_version", "command", "data"],
+        "properties": {
+            "schema_version": {"type": "string", "const": JSON_SCHEMA_VERSION},
+            "command": {"type": "string"},
+            "data": {},
+        },
+    }
+    typer.echo(json.dumps(schema, ensure_ascii=False, indent=2))
+
+
+def _parse_weights(text: str) -> dict[str, float]:
+    """解析权重参数，格式：BTC=0.5,ETH=0.3,USDT=0.2。"""
+    result: dict[str, float] = {}
+    for part in text.split(","):
+        item = part.strip()
+        if not item:
+            continue
+        if "=" not in item:
+            raise typer.BadParameter("weights 格式错误，需为 SYMBOL=WEIGHT。")
+        symbol, value = item.split("=", 1)
+        symbol = symbol.strip().upper()
+        if not symbol:
+            raise typer.BadParameter("weights 中 symbol 不能为空。")
+        try:
+            result[symbol] = float(value.strip())
+        except ValueError as exc:
+            raise typer.BadParameter("weights 中 weight 必须是数字。") from exc
+    if not result:
+        raise typer.BadParameter("weights 不能为空。")
+    return result
+
+
 @app.callback()
 def main() -> None:
     """HiveFlow CLI 主入口。"""
@@ -107,13 +183,95 @@ def log_command(
     typer.echo("Decision log recorded.")
 
 
+@app.command("doctor")
+def doctor_command(
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+    envelope: bool = typer.Option(False, "--envelope", help="JSON 输出使用统一 envelope"),
+    json_schema: bool = typer.Option(False, "--json-schema", help="输出 JSON schema 后退出"),
+) -> None:
+    """检查数据库、配置与基础数据状态。
+
+    使用场景：
+    - 启动前检查环境是否健康（数据库、模板配置、基础数据）。
+
+    示例：
+    - uv run hiveflow doctor
+      用途：快速体检当前环境，适合每天开工先跑一次。
+    - uv run hiveflow doctor --output json
+      用途：给脚本/AI 读取诊断结果并自动提醒。
+    """
+    if json_schema:
+        _print_json_schema("doctor")
+        return
+
+    output_format = _validate_output_format(output)
+    result = run_doctor()
+    payload = result.to_dict()
+    if output_format == "json":
+        _print_json(payload=payload, command="doctor", envelope=envelope)
+        return
+
+    typer.echo(f"总体状态：{result.overall_status}")
+    for item in result.checks:
+        typer.echo(f"- [{item.status}] {item.name}: {item.detail}")
+
+
+@app.command("init-demo")
+def init_demo_command(
+    reset: bool = typer.Option(True, "--reset/--no-reset", help="是否先清空并重建演示数据"),
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+    envelope: bool = typer.Option(False, "--envelope", help="JSON 输出使用统一 envelope"),
+    json_schema: bool = typer.Option(False, "--json-schema", help="输出 JSON schema 后退出"),
+) -> None:
+    """一键初始化可演示的数据样本。
+
+    使用场景：
+    - 新环境快速跑通闭环，不想手工准备 CSV。
+
+    示例：
+    - uv run hiveflow init-demo
+      用途：重置并生成演示数据，5 分钟跑通全流程。
+    - uv run hiveflow init-demo --no-reset
+      用途：保留现有数据，仅补齐演示基线。
+    - uv run hiveflow init-demo --output json
+      用途：在自动化流程中拿到初始化结果。
+    """
+    if json_schema:
+        _print_json_schema("init-demo")
+        return
+
+    output_format = _validate_output_format(output)
+    result = init_demo_data(reset=reset)
+    record_decision_log(
+        summary="初始化演示数据",
+        decision_type="init-demo",
+        notes=f"positions={result.positions}, strategies={result.strategies}, targets={result.targets}",
+    )
+
+    payload = result.to_dict()
+    if output_format == "json":
+        _print_json(payload=payload, command="init-demo", envelope=envelope)
+        return
+    typer.echo(
+        "演示数据初始化完成："
+        f"策略={result.strategies}，持仓={result.positions}，风险={result.risks}，"
+        f"目标持仓={result.targets}，当前策略={result.current_strategy}"
+    )
+
+
 @logs_app.command("list")
 def list_logs_command(
     limit: int = typer.Option(100, "--limit", help="最多返回日志条数"),
     output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
     theme: str = typer.Option("hacker", "--theme", help="显示主题：hacker/minimal"),
+    envelope: bool = typer.Option(False, "--envelope", help="JSON 输出使用统一 envelope"),
+    json_schema: bool = typer.Option(False, "--json-schema", help="输出 JSON schema 后退出"),
 ) -> None:
     """按时间倒序列出决策日志。"""
+    if json_schema:
+        _print_json_schema("logs.list")
+        return
+
     row_limit = _validate_limit(limit)
     output_format = _validate_output_format(output)
     ui_theme = _validate_theme(theme)
@@ -127,7 +285,11 @@ def list_logs_command(
         return
 
     if output_format == "json":
-        typer.echo(json.dumps([item.to_dict() for item in logs], ensure_ascii=False, indent=2))
+        _print_json(
+            payload=[item.to_dict() for item in logs],
+            command="logs.list",
+            envelope=envelope,
+        )
         return
 
     if ui_theme == "minimal":
@@ -361,13 +523,19 @@ def set_slot_weight_command(
 @current_app.command("show")
 def show_current_strategy_command(
     output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+    envelope: bool = typer.Option(False, "--envelope", help="JSON 输出使用统一 envelope"),
+    json_schema: bool = typer.Option(False, "--json-schema", help="输出 JSON schema 后退出"),
 ) -> None:
     """查看当前策略。"""
+    if json_schema:
+        _print_json_schema("current.show")
+        return
+
     output_format = _validate_output_format(output)
     result = show_current_strategy()
     payload = result.to_dict()
     if output_format == "json":
-        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        _print_json(payload=payload, command="current.show", envelope=envelope)
         return
     typer.echo(f"当前策略：{result.current_strategy or '未设置'}")
 
@@ -396,12 +564,71 @@ def set_current_strategy_command(
     typer.echo(f"当前策略已设置为：{name}")
 
 
+@current_app.command("run")
+def run_current_strategy_command(
+    save: bool = typer.Option(True, "--save/--no-save", help="是否保存调仓建议"),
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+    envelope: bool = typer.Option(False, "--envelope", help="JSON 输出使用统一 envelope"),
+    json_schema: bool = typer.Option(False, "--json-schema", help="输出 JSON schema 后退出"),
+) -> None:
+    """一键执行当前策略：生成目标持仓并预览调仓建议。
+
+    使用场景：
+    - 每次决策前快速得到“当前策略 -> 目标持仓 -> 调仓建议”。
+
+    示例：
+    - uv run hiveflow current run
+      用途：人类操盘前的一键闭环入口。
+    - uv run hiveflow current run --no-save
+      用途：只看建议不写库，先讨论再落地。
+    - uv run hiveflow current run --output json --envelope
+      用途：把完整闭环结果交给 AI/Skills 做二次决策。
+    """
+    if json_schema:
+        _print_json_schema("current.run")
+        return
+
+    output_format = _validate_output_format(output)
+    current = show_current_strategy().current_strategy
+    if not current:
+        raise typer.BadParameter("当前策略未设置，请先执行 current set-strategy。")
+
+    generated = generate_targets_for_strategy(strategy_name=current)
+    preview = preview_rebalance(strategy=current, save=save)
+    payload = {
+        "strategy": current,
+        "targets_generated": generated.generated,
+        "template_source": generated.template_source,
+        "suggestions_count": len(preview.suggestions),
+        "saved": preview.saved,
+        "preview": preview.to_dict(),
+    }
+    record_decision_log(
+        summary=f"执行当前策略：{current}",
+        decision_type="current-run",
+        notes=f"targets={generated.generated}, suggestions={len(preview.suggestions)}, save={save}",
+    )
+    if output_format == "json":
+        _print_json(payload=payload, command="current.run", envelope=envelope)
+        return
+    typer.echo(
+        f"已执行当前策略：{current}；目标条数={generated.generated}；"
+        f"建议条数={len(preview.suggestions)}；已保存={'是' if preview.saved else '否'}"
+    )
+
+
 @app.command("summary")
 def summary_command(
     output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
     theme: str = typer.Option("hacker", "--theme", help="显示主题：hacker/minimal"),
+    envelope: bool = typer.Option(False, "--envelope", help="JSON 输出使用统一 envelope"),
+    json_schema: bool = typer.Option(False, "--json-schema", help="输出 JSON schema 后退出"),
 ) -> None:
     """输出当前数据库里的真实状态摘要。"""
+    if json_schema:
+        _print_json_schema("summary")
+        return
+
     output_format = _validate_output_format(output)
     ui_theme = _validate_theme(theme)
     stats = get_summary_stats()
@@ -410,7 +637,7 @@ def summary_command(
     suggestion_count = stats.rebalance_suggestions_count
 
     if output_format == "json":
-        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        _print_json(payload=payload, command="summary", envelope=envelope)
         return
 
     if ui_theme == "minimal":
@@ -497,8 +724,14 @@ def add_position_command(
 def list_positions_command(
     output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
     theme: str = typer.Option("hacker", "--theme", help="显示主题：hacker/minimal"),
+    envelope: bool = typer.Option(False, "--envelope", help="JSON 输出使用统一 envelope"),
+    json_schema: bool = typer.Option(False, "--json-schema", help="输出 JSON schema 后退出"),
 ) -> None:
     """列出当前所有持仓记录。"""
+    if json_schema:
+        _print_json_schema("positions.list")
+        return
+
     output_format = _validate_output_format(output)
     ui_theme = _validate_theme(theme)
     positions = list_positions()
@@ -512,7 +745,7 @@ def list_positions_command(
 
     if output_format == "json":
         payload = [position.to_dict() for position in positions]
-        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        _print_json(payload=payload, command="positions.list", envelope=envelope)
         return
 
     if ui_theme == "minimal":
@@ -576,6 +809,87 @@ def import_positions_command(
         return
 
     typer.echo(f"导入完成：{result.imported} 条（模式：{result.mode}）。")
+
+
+@positions_app.command("drift")
+def positions_drift_command(
+    strategy: str | None = typer.Option(
+        None,
+        "--strategy",
+        "-s",
+        help="指定策略名称（不传则使用当前策略）",
+    ),
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+    theme: str = typer.Option("hacker", "--theme", help="显示主题：hacker/minimal"),
+    envelope: bool = typer.Option(False, "--envelope", help="JSON 输出使用统一 envelope"),
+    json_schema: bool = typer.Option(False, "--json-schema", help="输出 JSON schema 后退出"),
+) -> None:
+    """检测实际持仓与目标持仓的偏离等级。
+
+    使用场景：
+    - 快速定位最该处理的仓位，优先处理 high 偏离。
+
+    示例：
+    - uv run hiveflow positions drift
+      用途：用当前策略快速查看偏离优先级。
+    - uv run hiveflow positions drift --strategy "进攻突破策略"
+      用途：只看某个策略对应的偏离，不受其它策略干扰。
+    - uv run hiveflow positions drift --output json --envelope
+      用途：把偏离结果结构化喂给 AI/Skills。
+    """
+    if json_schema:
+        _print_json_schema("positions.drift")
+        return
+
+    output_format = _validate_output_format(output)
+    ui_theme = _validate_theme(theme)
+    effective_strategy = strategy or show_current_strategy().current_strategy
+    if not effective_strategy:
+        raise typer.BadParameter("未指定策略，且当前策略未设置。")
+
+    items = analyze_positions_drift(strategy_name=effective_strategy)
+    payload = {
+        "strategy": effective_strategy,
+        "count": len(items),
+        "items": [item.to_dict() for item in items],
+    }
+    if output_format == "json":
+        _print_json(payload=payload, command="positions.drift", envelope=envelope)
+        return
+
+    if ui_theme == "minimal":
+        table = Table(title="持仓偏离", show_lines=False, box=box.SIMPLE)
+        table.add_column("标的", justify="left")
+        table.add_column("实际权重", justify="right")
+        table.add_column("目标权重", justify="right")
+        table.add_column("偏离", justify="right")
+        table.add_column("等级", justify="left")
+        table.add_column("建议", justify="left")
+    else:
+        table = Table(
+            title="[bold #5fd75f]:: POSITION DRIFT ::[/bold #5fd75f]",
+            show_lines=False,
+            header_style="bold #5f875f",
+            border_style="#5f875f",
+            box=box.SIMPLE_HEAVY,
+        )
+        table.add_column("标的", justify="left", style="#87ff87")
+        table.add_column("实际权重", justify="right", style="#5f875f")
+        table.add_column("目标权重", justify="right", style="#5f875f")
+        table.add_column("偏离", justify="right", style="#5f875f")
+        table.add_column("等级", justify="left", style="#5f875f")
+        table.add_column("建议", justify="left", style="#87ff87")
+    for item in items:
+        table.add_row(
+            item.symbol,
+            f"{item.actual_weight:.2%}",
+            f"{item.target_weight:.2%}",
+            f"{item.delta:+.2%}",
+            _drift_level_label(item.drift_level),
+            _action_label(item.action),
+        )
+    console.print(table)
+    typer.echo(f"策略={effective_strategy}；偏离项={len(items)}")
 
 
 @positions_app.command("template")
@@ -708,8 +1022,14 @@ def list_targets_command(
     ),
     output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
     theme: str = typer.Option("hacker", "--theme", help="显示主题：hacker/minimal"),
+    envelope: bool = typer.Option(False, "--envelope", help="JSON 输出使用统一 envelope"),
+    json_schema: bool = typer.Option(False, "--json-schema", help="输出 JSON schema 后退出"),
 ) -> None:
     """列出当前所有目标持仓记录。"""
+    if json_schema:
+        _print_json_schema("targets.list")
+        return
+
     output_format = _validate_output_format(output)
     ui_theme = _validate_theme(theme)
     targets = list_target_allocations(strategy_name=strategy)
@@ -722,7 +1042,7 @@ def list_targets_command(
 
     if output_format == "json":
         payload = [target.to_dict() for target in targets]
-        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        _print_json(payload=payload, command="targets.list", envelope=envelope)
         return
 
     if ui_theme == "minimal":
@@ -806,6 +1126,97 @@ def export_targets_template_command(
     typer.echo(f"目标持仓模板已生成：{result.file}")
 
 
+@targets_app.command("template-show")
+def show_target_template_config_command(
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+) -> None:
+    """查看目标模板配置。"""
+    output_format = _validate_output_format(output)
+    config_view = get_target_template_config()
+    payload = config_view.to_dict()
+    if output_format == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    typer.echo(f"模板文件：{config_view.file}")
+    typer.echo(f"类型模板数：{len(config_view.type_presets)}")
+    typer.echo(f"维度模板数：{len(config_view.dimension_presets)}")
+
+
+@targets_app.command("template-set")
+def set_target_template_config_command(
+    scope: str = typer.Option(..., "--scope", help="模板作用域：type/dimension"),
+    key: str = typer.Option(..., "--key", help="模板键名，如 进攻型 或 趋势|动量"),
+    weights: str = typer.Option(..., "--weights", help="权重串：BTC=0.5,ETH=0.3,USDT=0.2"),
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+) -> None:
+    """设置单条目标模板配置。"""
+    output_format = _validate_output_format(output)
+    parsed_weights = _parse_weights(weights)
+    try:
+        result = set_target_template_preset(scope=scope, key=key, weights=parsed_weights)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    record_decision_log(
+        summary=f"更新目标模板：{result.scope}/{result.key}",
+        decision_type="targets-template-set",
+        notes=f"file={result.file}",
+    )
+
+    payload = result.to_dict()
+    if output_format == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    typer.echo(f"模板已更新：{result.scope}/{result.key} -> {result.weights}")
+
+
+@targets_app.command("template-rollback")
+def rollback_target_template_config_command(
+    version: int | None = typer.Option(
+        None,
+        "--version",
+        help="回滚到指定版本号（不传默认回滚到最近快照）",
+    ),
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+    envelope: bool = typer.Option(False, "--envelope", help="JSON 输出使用统一 envelope"),
+    json_schema: bool = typer.Option(False, "--json-schema", help="输出 JSON schema 后退出"),
+) -> None:
+    """回滚目标模板配置到历史快照。
+
+    使用场景：
+    - 模板误改后一键恢复到可用版本。
+
+    示例：
+    - uv run hiveflow targets template-rollback
+      用途：回到最近一次快照（最快止损）。
+    - uv run hiveflow targets template-rollback --version 2
+      用途：精确恢复到已知稳定版本。
+    - uv run hiveflow targets template-rollback --output json
+      用途：在流水线中记录回滚事件。
+    """
+    if json_schema:
+        _print_json_schema("targets.template-rollback")
+        return
+
+    output_format = _validate_output_format(output)
+    try:
+        result = rollback_target_template(version=version)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    record_decision_log(
+        summary=f"回滚目标模板到版本 {result.restored_version}",
+        decision_type="targets-template-rollback",
+        notes=f"file={result.file}",
+    )
+
+    payload = result.to_dict()
+    if output_format == "json":
+        _print_json(payload=payload, command="targets.template-rollback", envelope=envelope)
+        return
+    typer.echo(f"模板已回滚：version={result.restored_version} -> {result.file}")
+
+
 @targets_app.command("generate")
 def generate_targets_command(
     strategy: str | None = typer.Option(
@@ -815,8 +1226,26 @@ def generate_targets_command(
         help="策略名称（不传则使用当前策略）",
     ),
     output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+    envelope: bool = typer.Option(False, "--envelope", help="JSON 输出使用统一 envelope"),
+    json_schema: bool = typer.Option(False, "--json-schema", help="输出 JSON schema 后退出"),
 ) -> None:
-    """根据策略自动生成目标持仓。"""
+    """根据策略自动生成目标持仓。
+
+    使用场景：
+    - 策略切换后，快速生成最新目标仓位。
+
+    示例：
+    - uv run hiveflow targets generate
+      用途：使用“当前策略”生成目标持仓。
+    - uv run hiveflow targets generate --strategy "进攻突破策略"
+      用途：强制按指定策略生成，不依赖当前策略状态。
+    - uv run hiveflow targets generate --output json --envelope
+      用途：将生成结果给 AI/Skills 继续处理。
+    """
+    if json_schema:
+        _print_json_schema("targets.generate")
+        return
+
     output_format = _validate_output_format(output)
     effective_strategy = strategy or show_current_strategy().current_strategy
     if not effective_strategy:
@@ -835,7 +1264,7 @@ def generate_targets_command(
 
     payload = result.to_dict()
     if output_format == "json":
-        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        _print_json(payload=payload, command="targets.generate", envelope=envelope)
         return
     typer.echo(
         "目标持仓已生成："
@@ -855,8 +1284,26 @@ def preview_rebalance_command(
     save: bool = typer.Option(False, "--save", help="是否保存本次调仓建议到数据库"),
     output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
     theme: str = typer.Option("hacker", "--theme", help="显示主题：hacker/minimal"),
+    envelope: bool = typer.Option(False, "--envelope", help="JSON 输出使用统一 envelope"),
+    json_schema: bool = typer.Option(False, "--json-schema", help="输出 JSON schema 后退出"),
 ) -> None:
-    """预览调仓建议。"""
+    """预览调仓建议。
+
+    使用场景：
+    - 执行动作前先看建议，确认风险与优先级。
+
+    示例：
+    - uv run hiveflow rebalance preview
+      用途：用当前策略做一次人工决策前检查。
+    - uv run hiveflow rebalance preview --strategy "进攻突破策略" --save
+      用途：指定策略并落库，供后续 summary/日志复盘。
+    - uv run hiveflow rebalance preview --output json --envelope
+      用途：输出结构化建议给 AI/自动化流程。
+    """
+    if json_schema:
+        _print_json_schema("rebalance.preview")
+        return
+
     output_format = _validate_output_format(output)
     ui_theme = _validate_theme(theme)
     effective_strategy = strategy or show_current_strategy().current_strategy
@@ -864,7 +1311,7 @@ def preview_rebalance_command(
     payload = result.to_dict()
 
     if output_format == "json":
-        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        _print_json(payload=payload, command="rebalance.preview", envelope=envelope)
         return
 
     if result.strategy:
@@ -882,6 +1329,7 @@ def preview_rebalance_command(
         table.add_column("偏差", justify="right")
         table.add_column("动作", justify="left")
         table.add_column("优先级", justify="left")
+        table.add_column("风险水位", justify="left")
     else:
         table = Table(
             title="[bold #5fd75f]:: REBALANCE PREVIEW ::[/bold #5fd75f]",
@@ -894,13 +1342,20 @@ def preview_rebalance_command(
         table.add_column("偏差", justify="right", style="#5f875f")
         table.add_column("动作", justify="left", style="#87ff87")
         table.add_column("优先级", justify="left", style="#5f875f")
+        table.add_column("风险水位", justify="left", style="#5f875f")
 
     for item in result.suggestions:
+        risk_percent = (
+            f"{item.risk_score * 100:.2f}%"
+            if item.risk_score is not None
+            else "-"
+        )
         table.add_row(
             item.symbol,
             f"{item.delta:+.2%}",
-            item.action,
-            item.priority,
+            _action_label(item.action),
+            _priority_label(item.priority),
+            risk_percent,
         )
     console.print(table)
     typer.echo(f"建议数量：{len(result.suggestions)}；已保存：{'是' if result.saved else '否'}")

@@ -10,4 +10,11 @@
 - 统一输出口径：涉及策略输出的命令逐步从“分类”统一为“类型”，并补充维度展示。
 - 完成 Chunk 19：`targets generate` 支持“维度优先、类型回退”的模板选择，并输出模板来源。
 - 完成 Chunk 20：目标模板支持外部配置文件 `config/target-templates.json`，可通过 `HIVEFLOW_TARGET_TEMPLATE_FILE` 切换。
+- 完成 Chunk 21：新增 `targets template-show / template-set`，可在 CLI 里直接查看和更新模板。
 - 提交约定确认：后续 git 提交信息使用中文。
+- 完成 Chunk 25：新增 `positions drift`，支持按当前策略检测偏离等级和动作建议。
+- 完成 Chunk 26：`rebalance preview` 增加 `risk_waterline + explanation` 输出，可直接供模型消费。
+- 完成 Chunk 27：模板修改写入版本快照，新增 `targets template-rollback` 回滚能力。
+- 完成 Chunk 28：新增 `hiveflow doctor` 与 `hiveflow init-demo`。
+- 完成 Chunk 29：新增统一 JSON 输出预备层（`--envelope`）与 `--json-schema`。
+- 完成 Chunk 30：文档收口并完成全量回归（`73 passed`）。

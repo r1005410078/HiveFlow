@@ -7,6 +7,7 @@ from sqlmodel import delete, select
 from hiveflow.db import create_all_tables, get_session
 from hiveflow.domain.allocations import TargetAllocation
 from hiveflow.domain.positions import Position
+from hiveflow.domain.risk import RiskSignal
 from hiveflow.domain.strategies import Strategy
 from hiveflow.domain.suggestions import RebalanceSuggestion
 from hiveflow.services.rebalance_engine import generate_rebalance_suggestions
@@ -24,6 +25,12 @@ class RebalanceSuggestionView:
     priority: str
     # 建议原因。
     reason: str
+    # 风险水位。
+    risk_waterline: str | None
+    # 风险评分（0~1）。
+    risk_score: float | None
+    # 解释文本（面向人和模型）。
+    explanation: str
 
     def to_dict(self) -> dict[str, str | float]:
         return {
@@ -32,6 +39,11 @@ class RebalanceSuggestionView:
             "action": self.action,
             "priority": self.priority,
             "reason": self.reason,
+            "risk_waterline": self.risk_waterline,
+            "risk_score": (
+                round(self.risk_score, 6) if self.risk_score is not None else None
+            ),
+            "explanation": self.explanation,
         }
 
 
@@ -111,12 +123,28 @@ def _save_suggestions(items: list[RebalanceSuggestionView]) -> None:
                     delta=item.delta,
                     action=item.action,
                     priority=item.priority,
-                    reason=item.reason,
+                    reason=item.explanation,
                 )
                 for item in items
             ]
         )
         session.commit()
+
+
+def _build_explanation(
+    symbol: str,
+    delta: float,
+    action: str,
+    risk_waterline: str | None,
+    strategy_type: str | None,
+    dimension: str | None,
+) -> str:
+    """构造结构化解释文本。"""
+    risk_text = risk_waterline or "unknown"
+    return (
+        f"symbol={symbol}; action={action}; delta={delta:+.2%}; "
+        f"risk={risk_text}; strategy_type={strategy_type or '-'}; dimension={dimension or '-'}"
+    )
 
 
 def preview_rebalance(
@@ -135,19 +163,6 @@ def preview_rebalance(
     actual = _collect_actual_weights()
     target = _collect_target_weights(strategy=strategy)
     suggestions = generate_rebalance_suggestions(actual=actual, target=target)
-    suggestion_views = [
-        RebalanceSuggestionView(
-            symbol=item.symbol,
-            delta=item.delta,
-            action=item.action,
-            priority=item.priority,
-            reason=item.reason,
-        )
-        for item in suggestions
-    ]
-
-    if save:
-        _save_suggestions(suggestion_views)
 
     strategy_type: str | None = None
     dimension: str | None = None
@@ -157,6 +172,43 @@ def preview_rebalance(
         if strategy_row:
             strategy_type = strategy_row.category
             dimension = strategy_row.dimension
+
+    with get_session() as session:
+        risk_rows = session.exec(select(RiskSignal)).all()
+    risk_map = {row.symbol: row.waterline for row in risk_rows}
+    risk_score_map = {row.symbol: row.score for row in risk_rows}
+
+    suggestion_views = [
+        RebalanceSuggestionView(
+            symbol=item.symbol,
+            delta=item.delta,
+            action=(
+                "hold"
+                if item.action == "buy" and risk_map.get(item.symbol, "").lower() == "high"
+                else item.action
+            ),
+            priority=item.priority,
+            reason=item.reason,
+            risk_waterline=risk_map.get(item.symbol),
+            risk_score=risk_score_map.get(item.symbol),
+            explanation=_build_explanation(
+                symbol=item.symbol,
+                delta=item.delta,
+                action=(
+                    "hold"
+                    if item.action == "buy" and risk_map.get(item.symbol, "").lower() == "high"
+                    else item.action
+                ),
+                risk_waterline=risk_map.get(item.symbol),
+                strategy_type=strategy_type,
+                dimension=dimension,
+            ),
+        )
+        for item in suggestions
+    ]
+
+    if save:
+        _save_suggestions(suggestion_views)
 
     return RebalancePreviewResult(
         strategy=strategy,

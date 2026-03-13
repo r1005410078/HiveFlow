@@ -22,7 +22,16 @@
 - 增量层面：已完成 Chunk 18（策略类型与维度字段落地，兼容旧库）。
 - 增量层面：已完成 Chunk 19（维度驱动目标持仓模板）。
 - 增量层面：已完成 Chunk 20（目标模板配置文件化与可切换）。
-- 验证层面：当前测试集通过（`uv run python -m pytest -q` -> `65 passed`）。
+- 增量层面：已完成 Chunk 21（目标模板命令化管理）。
+- 增量层面：已完成 Chunk 23（`current run` 一键执行当前策略）。
+- 增量层面：已完成 Chunk 24（风险门控接入调仓建议，`high risk + buy` 自动门控为 `hold`）。
+- 增量层面：已完成 Chunk 25（`positions drift` 持仓偏离告警）。
+- 增量层面：已完成 Chunk 26（调仓解释增强，输出风险水位与解释文本）。
+- 增量层面：已完成 Chunk 27（模板快照与 `targets template-rollback`）。
+- 增量层面：已完成 Chunk 28（`doctor` / `init-demo` 工作流优化）。
+- 增量层面：已完成 Chunk 29（JSON envelope 与 `--json-schema` 预备层）。
+- 增量层面：已完成 Chunk 30（文档收口与回归验证）。
+- 验证层面：当前测试集通过（`uv run python -m pytest -q` -> `73 passed`）。
 - 文档层面：已补充 CLI 使用文档与测试使用文档。
 - 与原计划差异：计划要求“每任务单独提交”，实际执行为集中开发后一次性提交。
  - 回填说明：后续增量按“实现后即时回填”方式维护本计划。
@@ -1059,6 +1068,22 @@ git commit -m "feat: add hiveflow summary command"
 - [x] 补充默认模板配置路径说明。
 - [x] 补充环境变量覆盖示例。
 
+## Chunk 21：目标模板命令化管理
+
+### 任务 42：增加模板查看与设置命令
+
+**文件：**
+- 修改：`src/hiveflow/application/targets.py`
+- 修改：`src/hiveflow/cli.py`
+- 修改：`tests/test_cli.py`
+- 修改：`docs/cli/README.md`
+
+- [x] 新增 `targets template-show`（pretty/json）。
+- [x] 新增 `targets template-set`（type/dimension）。
+- [x] 支持 `weights` 参数（`BTC=0.5,ETH=0.3,USDT=0.2`）。
+- [x] 写入成功自动记录决策日志（`targets-template-set`）。
+- [x] 测试通过：命令可用、配置生效、日志联动正确。
+
 ## 计划说明
 
 - 第一版保持本地运行、同步执行。
@@ -1069,3 +1094,71 @@ git commit -m "feat: add hiveflow summary command"
 ## 执行交接
 
 计划已完成，并保存到 `docs/superpowers/plans/2026-03-13-hiveflow-foundation.md`。可以开始执行。
+
+---
+
+## 后续路线图（可见版）
+
+> 目的：避免“走一步看一步”，让后续开发始终有全局节奏和阶段目标。
+
+### Chunk 22：模板管理增强
+
+- 新增 `targets template-list`（分页/过滤）
+- 新增 `targets template-delete`（按 scope+key 删除模板）
+- 验证：模板增删改查形成完整闭环
+
+### Chunk 23：当前策略一键执行闭环
+
+- 新增 `current run`：串联 `targets generate` + `rebalance preview`
+- 支持 `--save` 一键落库建议
+- 验证：单命令完成“当前策略 -> 动作建议”闭环
+
+### Chunk 24：风险驱动的策略动作门控
+
+- 在 `rebalance preview` 中接入风险水位阈值
+- 高风险时自动降低进攻仓建议权重
+- 验证：风险变化会改变建议动作而非仅展示
+
+### Chunk 25：持仓偏离告警
+
+- 新增 `positions drift`（检测实际 vs 目标偏离）
+- 新增偏离等级（低/中/高）与建议动作
+- 验证：可快速定位最该处理的仓位
+
+### Chunk 26：决策解释增强
+
+- 为每条调仓建议增加“解释字段”（基于类型/维度/风险）
+- `rebalance preview --output json` 输出可直接给大模型消费
+- 验证：建议具备可解释文本，不再只有数值
+
+### Chunk 27：模板版本与回滚（轻量）
+
+- 模板修改写入版本快照
+- 新增 `targets template-rollback`
+- 验证：模板误改后可一键恢复
+
+### Chunk 28：CLI 工作流体验优化
+
+- 增加 `hiveflow doctor`（环境与配置诊断）
+- 增加 `hiveflow init-demo`（一键生成演示数据）
+- 验证：新用户 5 分钟可跑通完整 demo
+
+### Chunk 29：面向 AI 的结构化接口预备层
+
+- 统一 JSON 输出 schema（版本号 + 字段稳定约定）
+- 新增 `--json-schema` 帮助输出
+- 验证：为后续 SKILLS/Agent 调用打标准化地基
+
+### Chunk 30：MVP 收口与发布准备
+
+- 文档收口（CLI 手册、上下文、路线图）
+- 回归测试与冒烟脚本
+- 发布 `v0.1.0-mvp`
+
+---
+
+## 三个里程碑（你只需记这三个）
+
+1. `M1`（Chunk 22-24）：让“当前策略真正可执行且受风险约束”
+2. `M2`（Chunk 25-27）：让“偏离发现、解释、回滚”形成稳态系统
+3. `M3`（Chunk 28-30）：让“可上手、可集成、可发布”完整闭环

@@ -7,13 +7,14 @@
 
 ## 已完成阶段（按计划文档）
 
-- Chunk 1 ~ Chunk 20 已落地
+- Chunk 1 ~ Chunk 30 已落地
 - 最近完成重点：
-  - `current show / set-strategy` 闭环
-  - `targets/rebalance` 默认跟随当前策略
-  - `targets` 去重写入与按策略过滤
-  - 策略模型支持 `strategy_type + dimension`
-  - 目标持仓模板支持外部配置文件（可通过环境变量切换）
+  - `positions drift` 持仓偏离告警（含等级和动作）
+  - `rebalance preview` 解释增强（风险水位 + explain 文本）
+  - `targets template-rollback` 模板版本回滚
+  - `current run` 一键执行当前策略
+  - `doctor` / `init-demo` 新用户可快速跑通
+  - JSON 标准化输出能力：`--envelope` + `--json-schema`
 
 ## 当前可用命令（核心）
 
@@ -26,14 +27,16 @@
 - `hiveflow rebalance preview ...`
 - `hiveflow logs ...`
 - `hiveflow summary`
+- `hiveflow doctor`
+- `hiveflow init-demo`
 
 ## 当前状态说明
 
-- 全量测试最近结果：`65 passed`
+- 全量测试最近结果：`73 passed`
 - 本地存在未跟踪数据文件：`data/`、`strategies.csv`（不应提交）
 
 ## 下一步建议
 
-1. 提交当前未提交改动（若会话里已有代码变更）
-2. 进入下一个 chunk：将维度模板从“静态配置”升级为“可命令行管理（增删改查）”
-3. 再往后：把 `rebalance` 的解释文案与策略维度联动（可解释性增强）
+1. 启动 M4：策略回测 v1（指标、窗口、费用、结果存档）
+2. 风险分析从导入升级为计算（支持定时刷新）
+3. 自定义策略发布闭环（验证、版本、回滚）

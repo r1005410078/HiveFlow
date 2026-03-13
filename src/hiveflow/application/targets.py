@@ -3,6 +3,7 @@
 import json
 from csv import DictReader
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 from sqlmodel import delete, select
@@ -84,6 +85,54 @@ class TargetGenerateResult:
             "category": self.strategy_type,
             "generated": self.generated,
         }
+
+
+@dataclass(frozen=True)
+class TargetTemplateConfigView:
+    # 配置文件路径。
+    file: str
+    # 类型模板。
+    type_presets: dict[str, dict[str, float]]
+    # 维度模板。
+    dimension_presets: dict[str, dict[str, float]]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "file": self.file,
+            "type_presets": self.type_presets,
+            "dimension_presets": self.dimension_presets,
+        }
+
+
+@dataclass(frozen=True)
+class TargetTemplateSetResult:
+    # 作用域：type/dimension。
+    scope: str
+    # 模板键名。
+    key: str
+    # 最新权重。
+    weights: dict[str, float]
+    # 配置文件路径。
+    file: str
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "scope": self.scope,
+            "key": self.key,
+            "weights": self.weights,
+            "file": self.file,
+        }
+
+
+@dataclass(frozen=True)
+class TargetTemplateRollbackResult:
+    # 恢复到的版本号。
+    restored_version: int
+    # 配置文件路径。
+    file: str
+
+    def to_dict(self) -> dict[str, int | str]:
+        return {"restored_version": self.restored_version, "file": self.file}
 
 
 def list_target_allocations(strategy_name: str | None = None) -> list[TargetAllocationView]:
@@ -202,10 +251,19 @@ _DIMENSION_PRESETS: dict[str, dict[str, float]] = {
 }
 
 
+def _template_config_file() -> Path:
+    """返回目标模板配置文件路径。"""
+    return Path(Settings().target_template_file)
+
+
+def _template_history_file() -> Path:
+    """返回模板历史快照文件路径。"""
+    return _template_config_file().with_name("target-templates.history.json")
+
+
 def _load_template_presets_from_config() -> tuple[dict[str, dict[str, float]], dict[str, dict[str, float]]]:
     """从外部配置读取模板；读取失败时回退到内置模板。"""
-    settings = Settings()
-    config_file = Path(settings.target_template_file)
+    config_file = _template_config_file()
     if not config_file.exists() or not config_file.is_file():
         return _TYPE_PRESETS, _DIMENSION_PRESETS
 
@@ -236,6 +294,135 @@ def _load_template_presets_from_config() -> tuple[dict[str, dict[str, float]], d
                 continue
 
     return type_presets, dimension_presets
+
+
+def _read_raw_template_config() -> dict[str, object]:
+    """读取原始模板配置，不存在时返回空结构。"""
+    config_file = _template_config_file()
+    if not config_file.exists() or not config_file.is_file():
+        return {"type_presets": {}, "dimension_presets": {}}
+    try:
+        payload = json.loads(config_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"type_presets": {}, "dimension_presets": {}}
+    if not isinstance(payload, dict):
+        return {"type_presets": {}, "dimension_presets": {}}
+    payload.setdefault("type_presets", {})
+    payload.setdefault("dimension_presets", {})
+    return payload
+
+
+def _read_template_history() -> list[dict[str, object]]:
+    """读取模板历史快照列表。"""
+    history_file = _template_history_file()
+    if not history_file.exists() or not history_file.is_file():
+        return []
+    try:
+        payload = json.loads(history_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    if not isinstance(payload, list):
+        return []
+    return [item for item in payload if isinstance(item, dict)]
+
+
+def _append_template_snapshot(config_payload: dict[str, object], reason: str) -> None:
+    """追加一条模板快照。"""
+    history = _read_template_history()
+    next_version = (history[-1].get("version", 0) if history else 0) + 1
+    if not isinstance(next_version, int):
+        next_version = len(history) + 1
+    history.append(
+        {
+            "version": next_version,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "reason": reason,
+            "payload": config_payload,
+        }
+    )
+    history_file = _template_history_file()
+    history_file.parent.mkdir(parents=True, exist_ok=True)
+    history_file.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def get_target_template_config() -> TargetTemplateConfigView:
+    """获取当前生效的模板配置（含默认模板）。"""
+    type_presets, dimension_presets = _load_template_presets_from_config()
+    return TargetTemplateConfigView(
+        file=str(_template_config_file()),
+        type_presets=type_presets,
+        dimension_presets=dimension_presets,
+    )
+
+
+def set_target_template_preset(scope: str, key: str, weights: dict[str, float]) -> TargetTemplateSetResult:
+    """写入单条模板配置。"""
+    normalized_scope = scope.strip().lower()
+    if normalized_scope not in {"type", "dimension"}:
+        raise ValueError("scope 仅支持 type 或 dimension。")
+    normalized_key = key.strip()
+    if not normalized_key:
+        raise ValueError("key 不能为空。")
+    if not weights:
+        raise ValueError("weights 不能为空。")
+
+    normalized_weights = {symbol.strip().upper(): float(value) for symbol, value in weights.items()}
+    payload = _read_raw_template_config()
+    _append_template_snapshot(config_payload=payload, reason=f"set:{normalized_scope}/{normalized_key}")
+    bucket_name = "type_presets" if normalized_scope == "type" else "dimension_presets"
+    bucket = payload.get(bucket_name)
+    if not isinstance(bucket, dict):
+        bucket = {}
+    bucket[normalized_key] = normalized_weights
+    payload[bucket_name] = bucket
+
+    config_file = _template_config_file()
+    config_file.parent.mkdir(parents=True, exist_ok=True)
+    config_file.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    return TargetTemplateSetResult(
+        scope=normalized_scope,
+        key=normalized_key,
+        weights=normalized_weights,
+        file=str(config_file),
+    )
+
+
+def rollback_target_template(version: int | None = None) -> TargetTemplateRollbackResult:
+    """将模板配置回滚到历史版本。
+
+    Args:
+        version: 目标版本号；不传时回滚到最近一次快照。
+
+    Returns:
+        TargetTemplateRollbackResult: 回滚结果。
+    """
+    history = _read_template_history()
+    if not history:
+        raise ValueError("没有可用的模板历史快照。")
+
+    selected: dict[str, object] | None = None
+    if version is None:
+        selected = history[-1]
+    else:
+        for item in history:
+            if item.get("version") == version:
+                selected = item
+                break
+    if selected is None:
+        raise ValueError("指定版本不存在。")
+
+    payload = selected.get("payload")
+    if not isinstance(payload, dict):
+        raise ValueError("历史快照损坏，无法回滚。")
+
+    config_file = _template_config_file()
+    config_file.parent.mkdir(parents=True, exist_ok=True)
+    config_file.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    restored_version = selected.get("version")
+    if not isinstance(restored_version, int):
+        restored_version = 0
+    return TargetTemplateRollbackResult(restored_version=restored_version, file=str(config_file))
 
 
 def _normalize_dimension(value: str | None) -> str:
