@@ -55,16 +55,17 @@ class OkxProvider:
         self._pass = passphrase
 
     def fetch_positions(self) -> list[OkxPosition]:
-        """拉取现货持仓（GET /api/v5/account/positions）。"""
-        data = self._get_auth("/api/v5/account/positions")
+        """拉取现货余额（GET /api/v5/account/balance），仅需 Read 权限。"""
+        data = self._get_auth("/api/v5/account/balance")
         result = []
-        for item in data:
-            if item.get("instType") != "SPOT":
+        # 响应结构：data[0].details[] 包含各币种余额
+        details = data[0].get("details", []) if data else []
+        for item in details:
+            symbol = item.get("ccy", "").upper()
+            if not symbol or symbol == "USDT":
                 continue
-            inst_id = item.get("instId", "")
-            symbol = inst_id.split("-")[0].upper()
-            qty = float(item.get("availEq") or 0)
-            val = float(item.get("notionalUsd") or 0)
+            qty = float(item.get("availBal") or 0)
+            val = float(item.get("eqUsd") or 0)
             if qty <= 0:
                 continue
             result.append(OkxPosition(symbol=symbol, quantity=qty, market_value_usdt=val))

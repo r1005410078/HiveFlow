@@ -22,15 +22,18 @@ def _resp(body: dict, status: int = 200) -> MagicMock:
 
 # ── 持仓 ──────────────────────────────────────────────────────────────────────
 
-def test_fetch_positions_returns_spot_only() -> None:
-    """使用 /account/positions，过滤非 SPOT。"""
+def test_fetch_positions_returns_spot_balances() -> None:
+    """使用 /account/balance，解析 details 列表，跳过 USDT 和余额为 0 的币种。"""
     payload = {
         "code": "0",
-        "data": [
-            {"instId": "BTC-USDT", "instType": "SPOT", "availEq": "0.5", "notionalUsd": "20000"},
-            {"instId": "ETH-USDT", "instType": "SPOT", "availEq": "3.0", "notionalUsd": "9000"},
-            {"instId": "BTC-USDT-SWAP", "instType": "SWAP", "availEq": "1", "notionalUsd": "40000"},
-        ],
+        "data": [{
+            "details": [
+                {"ccy": "BTC", "availBal": "0.5", "eqUsd": "20000"},
+                {"ccy": "ETH", "availBal": "3.0", "eqUsd": "9000"},
+                {"ccy": "USDT", "availBal": "100", "eqUsd": "100"},  # 应跳过
+                {"ccy": "SOL", "availBal": "0", "eqUsd": "0"},        # 余额为0，跳过
+            ]
+        }],
     }
     with patch("hiveflow.infrastructure.okx.okx_provider.urllib.request.urlopen") as m:
         m.return_value = _resp(payload)
