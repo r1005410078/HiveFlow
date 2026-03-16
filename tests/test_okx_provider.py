@@ -1,0 +1,112 @@
+# tests/test_okx_provider.py
+import json
+from datetime import timezone
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from hiveflow.infrastructure.okx.okx_provider import (
+    OkxAuthError, OkxProvider, OkxRateLimitError, OkxTimeoutError,
+    OkxPosition, OkxCandle, OkxTicker,
+)
+
+
+def _resp(body: dict, status: int = 200) -> MagicMock:
+    r = MagicMock()
+    r.status = status
+    r.read.return_value = json.dumps(body).encode()
+    r.__enter__ = lambda s: s
+    r.__exit__ = MagicMock(return_value=False)
+    return r
+
+
+# ── 持仓 ──────────────────────────────────────────────────────────────────────
+
+def test_fetch_positions_returns_spot_only() -> None:
+    """使用 /account/positions，过滤非 SPOT。"""
+    payload = {
+        "code": "0",
+        "data": [
+            {"instId": "BTC-USDT", "instType": "SPOT", "availEq": "0.5", "notionalUsd": "20000"},
+            {"instId": "ETH-USDT", "instType": "SPOT", "availEq": "3.0", "notionalUsd": "9000"},
+            {"instId": "BTC-USDT-SWAP", "instType": "SWAP", "availEq": "1", "notionalUsd": "40000"},
+        ],
+    }
+    with patch("hiveflow.infrastructure.okx.okx_provider.urllib.request.urlopen") as m:
+        m.return_value = _resp(payload)
+        p = OkxProvider(api_key="k", api_secret="s", passphrase="p")
+        positions = p.fetch_positions()
+    assert len(positions) == 2
+    assert positions[0].symbol == "BTC"
+    assert positions[0].quantity == 0.5
+    assert positions[0].market_value_usdt == 20000.0
+
+
+def test_fetch_positions_raises_on_401() -> None:
+    with patch("hiveflow.infrastructure.okx.okx_provider.urllib.request.urlopen") as m:
+        m.side_effect = Exception("HTTP Error 401")
+        with pytest.raises(OkxAuthError):
+            OkxProvider("k", "s", "p").fetch_positions()
+
+
+def test_fetch_positions_raises_on_timeout() -> None:
+    with patch("hiveflow.infrastructure.okx.okx_provider.urllib.request.urlopen") as m:
+        m.side_effect = TimeoutError()
+        with pytest.raises(OkxTimeoutError):
+            OkxProvider("k", "s", "p").fetch_positions()
+
+
+def test_fetch_positions_raises_on_rate_limit_body() -> None:
+    """OKX 返回 HTTP 200 但 code=50011 时触发限流异常。"""
+    payload = {"code": "50011", "msg": "Too Many Requests", "data": []}
+    with patch("hiveflow.infrastructure.okx.okx_provider.urllib.request.urlopen") as m:
+        m.return_value = _resp(payload)
+        with pytest.raises(OkxRateLimitError):
+            OkxProvider("k", "s", "p").fetch_positions()
+
+
+def test_fetch_positions_raises_on_429_http_status() -> None:
+    """HTTP 429 状态码触发限流异常（非 code=50011 路径）。"""
+    with patch("hiveflow.infrastructure.okx.okx_provider.urllib.request.urlopen") as m:
+        m.side_effect = Exception("HTTP Error 429")
+        with pytest.raises(OkxRateLimitError):
+            OkxProvider("k", "s", "p").fetch_positions()
+
+
+# ── 价格（Tickers） ───────────────────────────────────────────────────────────
+
+def test_fetch_tickers_returns_latest_prices() -> None:
+    payload = {
+        "code": "0",
+        "data": [
+            {"instId": "BTC-USDT", "last": "70000", "open24h": "68000",
+             "high24h": "71000", "low24h": "67000", "vol24h": "500"},
+            {"instId": "ETH-USDT", "last": "3000", "open24h": "2900",
+             "high24h": "3100", "low24h": "2850", "vol24h": "200"},
+        ],
+    }
+    with patch("hiveflow.infrastructure.okx.okx_provider.urllib.request.urlopen") as m:
+        m.return_value = _resp(payload)
+        tickers = OkxProvider("k", "s", "p").fetch_tickers(["BTC-USDT", "ETH-USDT"])
+    assert len(tickers) == 2
+    assert tickers[0].symbol == "BTC"
+    assert tickers[0].last == 70000.0
+
+
+# ── K 线 ──────────────────────────────────────────────────────────────────────
+
+def test_fetch_candles_returns_daily_bars() -> None:
+    payload = {
+        "code": "0",
+        "data": [
+            ["1710288000000", "70000", "71000", "69000", "70500", "100", "100"],
+            ["1710201600000", "68000", "70000", "67000", "70000", "90", "90"],
+        ],
+    }
+    with patch("hiveflow.infrastructure.okx.okx_provider.urllib.request.urlopen") as m:
+        m.return_value = _resp(payload)
+        candles = OkxProvider("k", "s", "p").fetch_candles("BTC-USDT", days=2)
+    assert len(candles) == 2
+    assert candles[0].symbol == "BTC"
+    assert candles[0].close == 70500.0
+    assert candles[0].timestamp.tzinfo is not None
