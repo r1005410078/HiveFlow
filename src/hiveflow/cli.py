@@ -45,6 +45,11 @@ from hiveflow.application.targets import set_target_template_preset
 from hiveflow.application.system import init_demo_data
 from hiveflow.application.system import run_doctor
 from hiveflow.services.bootstrap import bootstrap_all
+from hiveflow.application.sync import SyncResult, sync_from_okx
+from hiveflow.config import Settings
+from hiveflow.infrastructure.okx.okx_provider import (
+    OkxAuthError, OkxProvider, OkxRateLimitError, OkxTimeoutError,
+)
 
 app = typer.Typer(help="HiveFlow 本地资产决策系统。")
 positions_app = typer.Typer(help="持仓管理命令。")
@@ -1587,6 +1592,46 @@ def list_backtest_command(
             item.created_at,
         )
     console.print(table)
+
+
+@app.command()
+def sync(
+    days: int | None = typer.Option(None, "--days", help="同步最近 N 天 K 线（最大 100）"),
+    output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
+) -> None:
+    """从 OKX 拉取最新持仓和价格，写入本地数据库。"""
+    settings = Settings()
+    if not (settings.okx_api_key and settings.okx_api_secret and settings.okx_api_passphrase):
+        console.print(
+            "错误：未配置 OKX API Key。请在 .env 中设置：\n"
+            "  HIVEFLOW_OKX_API_KEY / HIVEFLOW_OKX_API_SECRET / HIVEFLOW_OKX_API_PASSPHRASE",
+            style="bold red",
+        )
+        raise typer.Exit(code=1)
+    if days is not None and not (1 <= days <= 100):
+        console.print("错误：--days 必须在 1 到 100 之间（OKX 单次上限）。", style="bold red")
+        raise typer.Exit(code=1)
+
+    provider = OkxProvider(
+        api_key=settings.okx_api_key,
+        api_secret=settings.okx_api_secret,
+        passphrase=settings.okx_api_passphrase,
+    )
+    try:
+        result = sync_from_okx(provider=provider, settings=settings, days=days)
+    except (OkxAuthError, OkxTimeoutError, OkxRateLimitError) as e:
+        console.print(f"错误：{e}", style="bold red")
+        raise typer.Exit(code=1)
+
+    if output == "json":
+        console.print(json.dumps(result.to_dict(), ensure_ascii=False))
+        return
+
+    console.print(f"[bold green]同步完成[/bold green]  {result.synced_at.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+    console.print(f"持仓：{result.positions_synced} 个币种  总估值：{result.total_value_usdt:,.2f} USDT")
+    console.print(f"价格：{result.prices_synced} 条记录已更新")
+    if result.candles_synced > 0:
+        console.print(f"K 线：{result.candles_synced} 条历史记录已写入")
 
 
 app.add_typer(positions_app, name="positions")
