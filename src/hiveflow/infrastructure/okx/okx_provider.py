@@ -139,6 +139,12 @@ class OkxProvider:
             msg = str(e)
             if "429" in msg:
                 raise OkxRateLimitError("请求频率超限，请稍后重试。")
+            if "403" in msg:
+                raise OkxAuthError(
+                    "OKX API 访问被拒绝（403）。请检查：\n"
+                    "  1. OKX API Key 是否已开启读取权限\n"
+                    "  2. OKX API Key 是否绑定了 IP 白名单（如有，需添加你的出口 IP）"
+                )
             if "401" in msg:
                 raise OkxAuthError(
                     "OKX API 鉴权失败（401）。请检查 .env 中的 HIVEFLOW_OKX_API_KEY / _SECRET / _PASSPHRASE。"
@@ -148,6 +154,12 @@ class OkxProvider:
             msg = str(e)
             if "429" in msg:
                 raise OkxRateLimitError("请求频率超限，请稍后重试。")
+            if "403" in msg:
+                raise OkxAuthError(
+                    "OKX API 访问被拒绝（403）。请检查：\n"
+                    "  1. OKX API Key 是否已开启读取权限\n"
+                    "  2. OKX API Key 是否绑定了 IP 白名单（如有，需添加你的出口 IP）"
+                )
             if "401" in msg:
                 raise OkxAuthError(
                     "OKX API 鉴权失败（401）。请检查 .env 中的 HIVEFLOW_OKX_API_KEY / _SECRET / _PASSPHRASE。"
