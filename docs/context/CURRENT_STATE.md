@@ -35,8 +35,8 @@
 
 ## 当前状态说明
 
-- 全量测试最近结果：`85 passed`
-- 本地存在未跟踪数据文件：`data/`、`strategies.csv`（不应提交）
+- 全量测试最近结果：`87 passed`
+- 本地存在未跟踪数据文件：`data/`、`strategies.csv`、`prices.csv`（不应提交）
 
 ## 下一步建议
 

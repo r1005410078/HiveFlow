@@ -17,7 +17,7 @@
 - 完成 Chunk 27：模板修改写入版本快照，新增 `targets template-rollback` 回滚能力。
 - 完成 Chunk 28：新增 `hiveflow doctor` 与 `hiveflow init-demo`。
 - 完成 Chunk 29：新增统一 JSON 输出预备层（`--envelope`）与 `--json-schema`。
-- 完成 Chunk 30：文档收口并完成全量回归（`73 passed`）。
+- 完成 Chunk 30：文档收口并完成全量回归（`73 passed`，后续持续增加至 87 passed）。
 - 完成 M4 Chunk 0：新增 `market-data template / validate`，冻结行情输入契约并提供校验能力。
 - 完成 M4 Chunk 1：新增 `backtest run / list`，实现最小回测引擎与结果落库。
 - 增加行情落库能力：新增 `market-data import / list / summary`，支持行情数据沉淀与查询。

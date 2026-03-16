@@ -29,6 +29,7 @@ positions.csv
 risk-signals.csv
 target-allocations.csv
 strategies.csv
+prices.csv
 config/target-templates.history.json
 
 # OS / editor

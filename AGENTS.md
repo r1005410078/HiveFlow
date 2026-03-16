@@ -8,8 +8,9 @@
 
 1. `docs/context/START_HERE.md`
 2. `docs/context/PROJECT_CONTEXT.md`
-3. `docs/context/CURRENT_STATE.md`
-4. `docs/context/SESSION_LOG.md`（只看最新日期段）
+3. `docs/context/ROADMAP.md`
+4. `docs/context/CURRENT_STATE.md`
+5. `docs/context/SESSION_LOG.md`（只看最新日期段）
 
 ## 2. 执行规则
 
