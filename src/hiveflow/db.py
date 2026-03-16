@@ -32,6 +32,9 @@ def _run_lightweight_migrations(engine) -> None:
         return
 
     with engine.begin() as conn:
+        tables = {row[0] for row in conn.exec_driver_sql("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        if "strategy" not in tables:
+            return
         columns = conn.exec_driver_sql("PRAGMA table_info('strategy')").fetchall()
         column_names = {row[1] for row in columns}
         if "dimension" not in column_names:
