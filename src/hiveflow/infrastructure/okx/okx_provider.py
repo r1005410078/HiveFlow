@@ -13,6 +13,10 @@ from datetime import datetime, timezone
 
 BASE_URL = "https://www.okx.com"
 TIMEOUT = 10
+USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+)
 
 
 class OkxAuthError(Exception): ...
@@ -109,14 +113,13 @@ class OkxProvider:
     # ── 私有工具 ──────────────────────────────────────────────────────────────
 
     def _get_auth(self, path: str) -> list:
-        ts = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        ts = datetime.now(tz=timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
         sign = self._sign("GET", path, ts, "")
         headers = {
             "OK-ACCESS-KEY": self._key,
             "OK-ACCESS-SIGN": sign,
             "OK-ACCESS-TIMESTAMP": ts,
             "OK-ACCESS-PASSPHRASE": self._pass,
-            "Content-Type": "application/json",
         }
         return self._request(path, headers)
 
@@ -129,7 +132,13 @@ class OkxProvider:
         return base64.b64encode(mac.digest()).decode()
 
     def _request(self, path: str, headers: dict) -> list:
-        req = urllib.request.Request(BASE_URL + path, headers=headers)
+        base_headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": USER_AGENT,
+        }
+        base_headers.update(headers)
+        req = urllib.request.Request(BASE_URL + path, headers=base_headers)
         try:
             with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
                 body = json.loads(resp.read())
