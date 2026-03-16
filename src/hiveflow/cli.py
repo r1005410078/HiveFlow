@@ -46,6 +46,9 @@ from hiveflow.application.system import init_demo_data
 from hiveflow.application.system import run_doctor
 from hiveflow.services.bootstrap import bootstrap_all
 from hiveflow.application.sync import SyncResult, sync_from_okx
+from hiveflow.application.health_check import AlertLevel, HealthCheckResult, run_health_check
+from hiveflow.db import create_all_tables, get_session
+from sqlmodel import select
 from hiveflow.config import Settings
 from hiveflow.infrastructure.okx.okx_provider import (
     OkxAuthError, OkxProvider, OkxRateLimitError, OkxTimeoutError,
@@ -1632,6 +1635,75 @@ def sync(
     console.print(f"价格：{result.prices_synced} 条记录已更新")
     if result.candles_synced > 0:
         console.print(f"K 线：{result.candles_synced} 条历史记录已写入")
+
+
+def _load_check_data(settings: Settings) -> tuple[list, dict]:
+    from hiveflow.domain.market_data import MarketBar
+    from hiveflow.domain.positions import Position
+    create_all_tables(settings)
+    with get_session(settings) as session:
+        positions = list(session.exec(select(Position)).all())
+        all_bars = list(session.exec(select(MarketBar)).all())
+    bars_by_symbol: dict[str, list] = {}
+    for bar in all_bars:
+        bars_by_symbol.setdefault(bar.symbol, []).append(bar)
+    return positions, bars_by_symbol
+
+
+@app.command()
+def check(
+    output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
+) -> None:
+    """检查持仓风险状态，输出健康结论（退出码始终为 0）。"""
+    settings = Settings()
+    positions, bars_by_symbol = _load_check_data(settings)
+    result = run_health_check(positions=positions, bars_by_symbol=bars_by_symbol)
+
+    if output == "json":
+        payload = {
+            "verdict": result.verdict,
+            "summary": result.verdict_summary,
+            "has_no_history": result.has_no_history,
+            "signals": [
+                {"symbol": s.symbol, "max_drawdown_7d_pct": round(s.max_drawdown_7d * 100, 2),
+                 "alert_level": s.alert_level.value, "action_hint": s.action_hint}
+                for s in result.signals
+            ],
+        }
+        console.print(json.dumps(payload, ensure_ascii=False))
+        return
+
+    from datetime import date
+    console.rule(f"今日持仓健康检查  {date.today()}")
+    console.print()
+    style = {"safe": "bold green", "watch": "bold yellow", "danger": "bold red"}[result.verdict]
+    icon = {"safe": "✅", "watch": "⚠️", "danger": "🔴"}[result.verdict]
+    console.print(f"[{style}][结论] {icon}  {result.verdict_summary}[/{style}]")
+    console.print()
+
+    if result.has_no_history:
+        console.print("[yellow]提示：未检测到历史行情数据，请先执行 hiveflow sync --days 30 以启用风险分析。[/yellow]")
+        return
+
+    if result.signals:
+        table = Table(box=box.SIMPLE)
+        table.add_column("币种", style="bold")
+        table.add_column("7日最大回撤", justify="right")
+        table.add_column("状态")
+        for sig in result.signals:
+            label, color = {
+                AlertLevel.NORMAL: ("正常", "green"),
+                AlertLevel.WARNING: ("⚠️ 注意", "yellow"),
+                AlertLevel.DANGER: ("🔴 危险", "red"),
+            }[sig.alert_level]
+            table.add_row(sig.symbol, f"{sig.max_drawdown_7d * 100:.1f}%", f"[{color}]{label}[/{color}]")
+        console.print(table)
+
+    actions = [s.action_hint for s in result.signals if s.action_hint]
+    if actions:
+        console.print("[bold]建议动作[/bold]")
+        for hint in actions:
+            console.print(f"  → {hint}")
 
 
 app.add_typer(positions_app, name="positions")
