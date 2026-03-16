@@ -6,6 +6,7 @@ import base64
 import hashlib
 import hmac
 import json
+import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -131,8 +132,18 @@ class OkxProvider:
         try:
             with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
                 body = json.loads(resp.read())
-        except TimeoutError:
-            raise OkxTimeoutError("网络超时，请稍后重试。")
+        except (TimeoutError, urllib.error.URLError) as e:
+            # urllib wraps socket.timeout in URLError; bare TimeoutError for test mocks
+            if isinstance(e, TimeoutError) or isinstance(getattr(e, "reason", None), TimeoutError):
+                raise OkxTimeoutError("网络超时，请稍后重试。")
+            msg = str(e)
+            if "429" in msg:
+                raise OkxRateLimitError("请求频率超限，请稍后重试。")
+            if "401" in msg:
+                raise OkxAuthError(
+                    "OKX API 鉴权失败（401）。请检查 .env 中的 HIVEFLOW_OKX_API_KEY / _SECRET / _PASSPHRASE。"
+                )
+            raise OkxTimeoutError(f"网络请求失败：{msg}")
         except Exception as e:
             msg = str(e)
             if "429" in msg:
