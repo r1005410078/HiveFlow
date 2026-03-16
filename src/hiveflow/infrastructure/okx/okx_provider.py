@@ -52,6 +52,16 @@ class OkxCandle:
     volume: float
 
 
+@dataclass(frozen=True)
+class OkxGridPosition:
+    symbol: str
+    grid_id: str
+    inst_id: str
+    base_quantity: float
+    quote_quantity: float
+    state: str
+
+
 class OkxProvider:
     def __init__(self, api_key: str, api_secret: str, passphrase: str) -> None:
         self._key = api_key
@@ -109,6 +119,29 @@ class OkxProvider:
                 low=float(row[3]), close=float(row[4]), volume=float(row[5]),
             ))
         return candles
+
+    def fetch_grid_positions(self) -> list[OkxGridPosition]:
+        """拉取现货网格机器人持仓（GET /api/v5/tradingBot/grid/positions?instType=SPOT）。"""
+        try:
+            data = self._get_auth("/api/v5/tradingBot/grid/positions?instType=SPOT")
+        except Exception:
+            # 网格接口可能因权限不足返回错误，静默返回空列表
+            return []
+        result = []
+        for item in data:
+            if item.get("instType") != "SPOT":
+                continue
+            inst_id = item.get("instId", "")
+            symbol = inst_id.split("-")[0].upper()
+            result.append(OkxGridPosition(
+                symbol=symbol,
+                grid_id=str(item.get("algoId", "")),
+                inst_id=inst_id,
+                base_quantity=float(item.get("baseSz") or 0),
+                quote_quantity=float(item.get("quoteSz") or 0),
+                state=str(item.get("state", "unknown")),
+            ))
+        return result
 
     # ── 私有工具 ──────────────────────────────────────────────────────────────
 
