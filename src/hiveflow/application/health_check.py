@@ -63,6 +63,9 @@ def run_health_check(
         return result
 
     for pos in positions:
+        # USDT 是稳定币，不参与回撤计算
+        if pos.symbol == "USDT":
+            continue
         bars = sorted(bars_by_symbol.get(pos.symbol, []), key=lambda b: b.timestamp)[-7:]
         if not bars:
             continue

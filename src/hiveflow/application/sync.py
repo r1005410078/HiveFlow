@@ -43,7 +43,8 @@ def sync_from_okx(
 
     # 1. 先拉取所有数据（任一失败在写入前抛出）
     okx_positions = provider.fetch_positions()
-    inst_ids = [f"{p.symbol}-USDT" for p in okx_positions]
+    # USDT 本身不需要拉 ticker（价格恒为 1），跳过避免无效请求
+    inst_ids = [f"{p.symbol}-USDT" for p in okx_positions if p.symbol != "USDT"]
 
     okx_tickers = provider.fetch_tickers(inst_ids) if inst_ids else []
 

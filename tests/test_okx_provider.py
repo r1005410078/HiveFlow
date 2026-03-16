@@ -23,14 +23,14 @@ def _resp(body: dict, status: int = 200) -> MagicMock:
 # ── 持仓 ──────────────────────────────────────────────────────────────────────
 
 def test_fetch_positions_returns_spot_balances() -> None:
-    """使用 /account/balance，解析 details 列表，跳过 USDT 和余额为 0 的币种。"""
+    """使用 /account/balance，解析 details 列表，包含 USDT，跳过余额为 0 的币种。"""
     payload = {
         "code": "0",
         "data": [{
             "details": [
                 {"ccy": "BTC", "availBal": "0.5", "eqUsd": "20000"},
                 {"ccy": "ETH", "availBal": "3.0", "eqUsd": "9000"},
-                {"ccy": "USDT", "availBal": "100", "eqUsd": "100"},  # 应跳过
+                {"ccy": "USDT", "availBal": "100", "eqUsd": "100"},
                 {"ccy": "SOL", "availBal": "0", "eqUsd": "0"},        # 余额为0，跳过
             ]
         }],
@@ -39,10 +39,12 @@ def test_fetch_positions_returns_spot_balances() -> None:
         m.return_value = _resp(payload)
         p = OkxProvider(api_key="k", api_secret="s", passphrase="p")
         positions = p.fetch_positions()
-    assert len(positions) == 2
-    assert positions[0].symbol == "BTC"
-    assert positions[0].quantity == 0.5
-    assert positions[0].market_value_usdt == 20000.0
+    assert len(positions) == 3
+    symbols = {pos.symbol for pos in positions}
+    assert symbols == {"BTC", "ETH", "USDT"}
+    btc = next(pos for pos in positions if pos.symbol == "BTC")
+    assert btc.quantity == 0.5
+    assert btc.market_value_usdt == 20000.0
 
 
 def test_fetch_positions_raises_on_401() -> None:

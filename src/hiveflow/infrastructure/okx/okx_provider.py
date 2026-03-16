@@ -66,7 +66,7 @@ class OkxProvider:
         details = data[0].get("details", []) if data else []
         for item in details:
             symbol = item.get("ccy", "").upper()
-            if not symbol or symbol == "USDT":
+            if not symbol:
                 continue
             qty = float(item.get("availBal") or 0)
             val = float(item.get("eqUsd") or 0)
