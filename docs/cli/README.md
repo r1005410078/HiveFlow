@@ -141,7 +141,61 @@ uv run hiveflow backtest list --strategy "进攻突破策略"
 - 当前回测命令仍使用 `--file` 读取行情文件。
 - `market-data import/list/summary` 用于把行情沉淀进系统并方便日常核对。
 
-### 3.0.3 回测进阶 Example（参数版）
+### 3.0.3 OKX 每日健康检查 Example
+
+**前提**：在项目根目录创建 `.env` 文件，写入 OKX API Key：
+
+```
+HIVEFLOW_OKX_API_KEY=你的key
+HIVEFLOW_OKX_API_SECRET=你的secret
+HIVEFLOW_OKX_API_PASSPHRASE=你的passphrase
+```
+
+```bash
+# Example 1: 每日两步检查（30 秒流程）
+uv run hiveflow sync                  # 同步 OKX 持仓 + 当前价格
+uv run hiveflow check                 # 输出风险结论
+
+# Example 2: 首次启用风险分析（同步历史 K 线）
+uv run hiveflow sync --days 30        # 同步最近 30 天日线（用于计算 7 日回撤）
+uv run hiveflow check                 # 输出带回撤指标的健康报告
+
+# Example 3: 同步后查看 JSON 输出（给脚本 / AI 消费）
+uv run hiveflow sync --output json
+uv run hiveflow check --output json
+
+# Example 4: 同步更长历史用于更充分的风险计算
+uv run hiveflow sync --days 90        # 最多 100 天（OKX 单次上限）
+uv run hiveflow check --output json
+```
+
+**输出示例（`hiveflow check`）**：
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  今日持仓健康检查  2026-03-16
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[结论] ⚠️  建议关注 — ETH 近7日回撤较大
+
+  币种   7日最大回撤   状态
+  BTC    -3.2%        正常
+  ETH    -12.4%       ⚠️ 注意
+  SOL    -8.1%        正常
+
+建议动作
+  → ETH 回撤偏大，留意是否触发止损线
+```
+
+**阈值说明**：
+
+| 7日最大回撤 | 状态 |
+|---|---|
+| > -10% | 正常 |
+| -10% ~ -20% | ⚠️ 注意 |
+| < -20% | 🔴 危险 |
+
+### 3.0.4 回测进阶 Example（参数版）
 
 ```bash
 # Example A: 带手续费和滑点做更接近真实交易的回测
@@ -727,11 +781,25 @@ HIVEFLOW_DATABASE_URL="sqlite:////Users/rongts/strat-flow/data/dev.db" uv run hi
 
 ## 5. 推荐日常流程
 
-1. `uv run hiveflow bootstrap`（第一次或切换新库时执行）
-2. `uv run hiveflow positions add ...`（录入持仓）
-3. `uv run hiveflow positions list`（核对持仓）
-4. `uv run hiveflow summary`（查看状态摘要）
-5. `uv run hiveflow log ...`（记录关键决策）
+### 首次设置
+
+1. `uv run hiveflow bootstrap`（初始化数据库）
+2. 在 `.env` 中配置 `HIVEFLOW_OKX_API_KEY / _SECRET / _PASSPHRASE`
+3. `uv run hiveflow sync --days 30`（同步 OKX 持仓 + 最近 30 天 K 线）
+4. `uv run hiveflow check`（查看首次健康报告）
+
+### 每日检查（两步，约 30 秒）
+
+```bash
+uv run hiveflow sync     # 同步最新持仓和价格
+uv run hiveflow check    # 输出风险结论
+```
+
+### 策略驱动分析
+
+1. `uv run hiveflow positions list`（核对持仓）
+2. `uv run hiveflow summary`（查看状态摘要）
+3. `uv run hiveflow log ...`（记录关键决策）
 
 ## 6. 常见问题
 
