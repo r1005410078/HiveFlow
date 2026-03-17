@@ -50,6 +50,21 @@ from hiveflow.application.sync import SyncResult, sync_from_okx
 from hiveflow.application.health_check import AlertLevel, HealthCheckResult, run_health_check
 from hiveflow.application.trade import TradeOrder, execute_trades
 from hiveflow.application.skills import list_skills, install_skills, get_skills_dir, get_target_dir
+from hiveflow.application.quant_strategies import (
+    list_strategy_runs,
+    run_quant_strategy,
+)
+from hiveflow.services.strategies import (
+    BaseStrategy,
+    BollingerBandStrategy,
+    EqualWeightStrategy,
+    MaxSharpeStrategy,
+    MeanReversionStrategy,
+    MinVarianceStrategy,
+    MomentumStrategy,
+    MovingAverageCrossStrategy,
+    RiskParityStrategy,
+)
 from hiveflow.db import create_all_tables, get_session
 from sqlmodel import select
 from hiveflow.config import Settings
@@ -70,6 +85,7 @@ market_data_app = typer.Typer(help="行情数据契约命令。")
 backtest_app = typer.Typer(help="策略回测命令。")
 trade_app = typer.Typer(help="交易执行命令。")
 skills_app = typer.Typer(name="skills", help="管理 AI Agent Skills。")
+quant_app = typer.Typer(help="量化策略命令。")
 console = Console()
 JSON_SCHEMA_VERSION = "1.0.0"
 
@@ -183,8 +199,13 @@ def _parse_weights(text: str) -> dict[str, float]:
 
 
 @app.callback()
-def main() -> None:
+def main(
+    database_url: str | None = typer.Option(None, "--database-url", hidden=True, help="覆盖数据库 URL"),
+) -> None:
     """HiveFlow CLI 主入口。"""
+    import os
+    if database_url is not None:
+        os.environ["HIVEFLOW_DATABASE_URL"] = database_url
 
 
 @app.command("bootstrap")
@@ -1849,6 +1870,7 @@ app.add_typer(market_data_app, name="market-data")
 app.add_typer(backtest_app, name="backtest")
 app.add_typer(trade_app, name="trade")
 app.add_typer(skills_app, name="skills")
+app.add_typer(quant_app, name="quant")
 
 
 @skills_app.command("list")
@@ -1919,6 +1941,164 @@ def skills_install_command(
             console.print(f"  [dim]– {skill_name}：{msg}[/dim]")
         else:
             console.print(f"  [green]✓ {skill_name}[/green]：{msg}")
+
+
+# ────────────── quant ──────────────
+
+_BUILTIN_STRATEGIES: dict[str, tuple[type[BaseStrategy], str]] = {
+    "EqualWeightStrategy": (EqualWeightStrategy, "等权重（基准策略）"),
+    "MomentumStrategy": (MomentumStrategy, "动量（按涨幅排名分配权重）"),
+    "MeanReversionStrategy": (MeanReversionStrategy, "均值回归（z-score 反向加权）"),
+    "MovingAverageCrossStrategy": (MovingAverageCrossStrategy, "均线交叉（短期均线在长期均线上方加权）"),
+    "BollingerBandStrategy": (BollingerBandStrategy, "布林带（超卖区域加权）"),
+    "RiskParityStrategy": (RiskParityStrategy, "风险平价（按波动率倒数分配）"),
+    "MaxSharpeStrategy": (MaxSharpeStrategy, "最大夏普（需 PyPortfolioOpt）"),
+    "MinVarianceStrategy": (MinVarianceStrategy, "最小方差（需 PyPortfolioOpt）"),
+}
+
+
+def _coerce_param(value: str) -> int | float | str:
+    """推导 --param 值类型：先 int，再 float，失败保留 str。"""
+    try:
+        return int(value)
+    except ValueError:
+        pass
+    try:
+        return float(value)
+    except ValueError:
+        pass
+    return value
+
+
+@quant_app.command("list")
+def quant_list_command():
+    """列出所有可用量化策略（内置 + 用户配置）。"""
+    table = Table(title="量化策略", box=box.SIMPLE)
+    table.add_column("名称", style="bold")
+    table.add_column("类型")
+    table.add_column("描述")
+    for name, (_, desc) in _BUILTIN_STRATEGIES.items():
+        table.add_row(name, "内置", desc)
+
+    import os
+    env_file = os.environ.get("HIVEFLOW_STRATEGY_FILE")
+    env_class = os.environ.get("HIVEFLOW_STRATEGY_CLASS")
+    if env_file and env_class:
+        table.add_row(env_class, "用户自定义", env_file)
+
+    console.print(table)
+    console.print()
+    console.print("用法：hiveflow quant run --strategy <名称>")
+    console.print("自定义策略：hiveflow quant run --strategy-file <路径> --strategy <类名>")
+
+
+@quant_app.command("run")
+def quant_run_command(
+    strategy: str = typer.Option(..., "--strategy", help="策略类名（内置或自定义）"),
+    strategy_file: str | None = typer.Option(None, "--strategy-file", help="用户自定义策略文件路径"),
+    param: list[str] = typer.Option([], "--param", help="策略参数 key=value（可多次使用）"),
+    apply: bool = typer.Option(False, "--apply", help="写入目标配比（replace 模式）"),
+    output: str = typer.Option("table", "--output", help="输出格式：table / json"),
+):
+    """运行量化策略，输出权重信号。"""
+    settings = Settings()
+
+    parsed_params: dict[str, int | float | str] = {}
+    for p in param:
+        if "=" not in p:
+            console.print(f"[red]无效参数格式：{p}（应为 key=value）[/red]")
+            raise typer.Exit(1)
+        key, val = p.split("=", 1)
+        parsed_params[key.strip()] = _coerce_param(val.strip())
+
+    strategy_class: type[BaseStrategy] | None = None
+    file_path: str | None = strategy_file
+
+    import os
+    if file_path is None and os.environ.get("HIVEFLOW_STRATEGY_FILE"):
+        file_path = os.environ.get("HIVEFLOW_STRATEGY_FILE")
+
+    if file_path:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("_user_strategy", file_path)
+        if spec is None or spec.loader is None:
+            console.print(f"[red]无法加载文件：{file_path}[/red]")
+            raise typer.Exit(1)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        strategy_class = getattr(module, strategy, None)
+        if strategy_class is None:
+            console.print(f"[red]文件 {file_path} 中未找到类 {strategy}[/red]")
+            raise typer.Exit(1)
+    elif strategy in _BUILTIN_STRATEGIES:
+        strategy_class, _ = _BUILTIN_STRATEGIES[strategy]
+    else:
+        console.print(f"[red]未知策略：{strategy}，可用策略请运行 'hiveflow quant list'[/red]")
+        raise typer.Exit(1)
+
+    try:
+        result = run_quant_strategy(
+            strategy_class=strategy_class,
+            strategy_file=file_path,
+            params=parsed_params,
+            apply=apply,
+            settings=settings,
+        )
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+
+    if output == "json":
+        console.print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+        return
+
+    table = Table(title=f"策略运行结果：{result.strategy_name}", box=box.SIMPLE)
+    table.add_column("资产", style="bold")
+    table.add_column("权重", justify="right")
+    for sym, w in sorted(result.weights.items(), key=lambda x: x[1], reverse=True):
+        table.add_row(sym, f"{w:.2%}")
+    console.print(table)
+    console.print(f"[dim]运行 ID：{result.run_id} | 时间：{result.run_at}[/dim]")
+    if apply:
+        console.print("[green]已写入目标配比（TargetAllocation）。[/green]")
+
+
+@quant_app.command("history")
+def quant_history_command(
+    limit: int = typer.Option(10, "--limit", help="显示最近 N 条记录"),
+    run_id: int | None = typer.Option(None, "--id", help="查询指定运行 ID"),
+    output: str = typer.Option("table", "--output", help="输出格式：table / json"),
+):
+    """查看量化策略运行历史。"""
+    settings = Settings()
+    runs = list_strategy_runs(limit=limit, run_id=run_id, settings=settings)
+
+    if not runs:
+        console.print("[dim]暂无运行记录。[/dim]")
+        return
+
+    if output == "json":
+        if run_id is not None and len(runs) == 1:
+            console.print(json.dumps(runs[0].to_dict(), ensure_ascii=False, indent=2))
+        else:
+            console.print(json.dumps([r.to_dict() for r in runs], ensure_ascii=False, indent=2))
+        return
+
+    table = Table(title="策略运行历史", box=box.SIMPLE)
+    table.add_column("ID", style="bold")
+    table.add_column("策略名称")
+    table.add_column("参数")
+    table.add_column("已写入")
+    table.add_column("运行时间")
+    for r in runs:
+        table.add_row(
+            str(r.id),
+            r.strategy_name,
+            str(r.params),
+            "✓" if r.applied else "-",
+            r.run_at,
+        )
+    console.print(table)
 
 
 def run() -> None:
