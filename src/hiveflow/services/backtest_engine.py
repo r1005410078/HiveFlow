@@ -96,3 +96,34 @@ def run_weighted_backtest(
         max_drawdown=max_drawdown,
         sharpe=sharpe,
     )
+
+
+def load_close_prices_from_db(
+    symbols: list[str],
+    settings=None,
+) -> dict[str, list[PriceBar]]:
+    """从 DB 的 MarketBar 表读取 close 序列。"""
+    from sqlmodel import select
+    from hiveflow.db import create_all_tables, get_session
+    from hiveflow.domain.market_data import MarketBar
+
+    create_all_tables(settings)
+    result: dict[str, list[PriceBar]] = {}
+    with get_session(settings) as session:
+        for symbol in symbols:
+            rows = session.exec(
+                select(MarketBar)
+                .where(MarketBar.symbol == symbol)
+                .order_by(MarketBar.timestamp)
+            ).all()
+            if not rows:
+                continue
+            result[symbol] = [
+                PriceBar(
+                    symbol=r.symbol,
+                    timestamp=r.timestamp.isoformat(),
+                    close=r.close,
+                )
+                for r in rows
+            ]
+    return result

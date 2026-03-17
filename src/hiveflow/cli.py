@@ -1576,7 +1576,7 @@ def summary_market_data_command(
 @backtest_app.command("run")
 def run_backtest_command(
     strategy: str = typer.Option(..., "--strategy", "-s", help="策略名称"),
-    file: Path = typer.Option(..., "--file", "-f", help="行情 CSV 文件路径"),
+    file: Path | None = typer.Option(None, "--file", "-f", help="行情 CSV（不填则从 DB 读）"),
     fee_bps: float = typer.Option(0.0, "--fee-bps", help="交易费率（基点）"),
     slippage_bps: float = typer.Option(0.0, "--slippage-bps", help="滑点（基点）"),
     output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
@@ -1589,6 +1589,7 @@ def run_backtest_command(
             prices_file=file,
             fee_bps=fee_bps,
             slippage_bps=slippage_bps,
+            settings=Settings(),
         )
     except (FileNotFoundError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
