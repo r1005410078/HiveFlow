@@ -53,6 +53,15 @@ def _run_lightweight_migrations(engine) -> None:
                     "ALTER TABLE backtestresult ADD COLUMN weights_snapshot TEXT"
                 )
 
+        # gridposition 表：inst_type 列
+        if "gridposition" in tables:
+            gp_cols = conn.exec_driver_sql("PRAGMA table_info('gridposition')").fetchall()
+            gp_col_names = {row[1] for row in gp_cols}
+            if "inst_type" not in gp_col_names:
+                conn.exec_driver_sql(
+                    "ALTER TABLE gridposition ADD COLUMN inst_type VARCHAR DEFAULT 'SPOT'"
+                )
+
 
 @contextmanager
 def get_session(settings: Settings | None = None) -> Iterator[Session]:

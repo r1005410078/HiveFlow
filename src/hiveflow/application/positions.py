@@ -42,6 +42,7 @@ class GridPositionView:
     base_quantity: float
     quote_quantity: float
     state: str
+    inst_type: str = "SPOT"
 
     def to_dict(self) -> dict:
         return {
@@ -51,6 +52,7 @@ class GridPositionView:
             "base_quantity": round(self.base_quantity, 6),
             "quote_quantity": round(self.quote_quantity, 2),
             "state": self.state,
+            "inst_type": self.inst_type,
         }
 
 
@@ -67,6 +69,7 @@ def list_grid_positions(settings=None) -> list["GridPositionView"]:
             base_quantity=r.base_quantity,
             quote_quantity=r.quote_quantity,
             state=r.state,
+            inst_type=getattr(r, "inst_type", "SPOT"),
         )
         for r in rows
     ]

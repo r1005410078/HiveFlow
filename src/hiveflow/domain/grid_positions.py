@@ -14,4 +14,5 @@ class GridPosition(SQLModel, table=True):
     base_quantity: float  # 持有基础资产数量
     quote_quantity: float # 持有报价资产（USDT）数量
     state: str            # running / stopped
+    inst_type: str = Field(default="SPOT")  # SPOT / SWAP / FUTURES
     synced_at: datetime = Field(default_factory=utc_now)

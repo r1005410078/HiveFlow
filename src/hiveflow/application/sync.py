@@ -104,7 +104,7 @@ def sync_from_okx(
             session.add(GridPosition(
                 symbol=g.symbol, grid_id=g.grid_id, inst_id=g.inst_id,
                 base_quantity=g.base_quantity, quote_quantity=g.quote_quantity,
-                state=g.state,
+                state=g.state, inst_type=g.inst_type,
             ))
 
         session.commit()

@@ -60,6 +60,7 @@ class OkxGridPosition:
     base_quantity: float
     quote_quantity: float
     state: str
+    inst_type: str = "SPOT"
 
 
 @dataclass(frozen=True)
@@ -128,25 +129,59 @@ class OkxProvider:
         return candles
 
     def fetch_grid_positions(self) -> list[OkxGridPosition]:
-        """拉取现货网格机器人持仓（GET /api/v5/tradingBot/grid/positions?instType=SPOT）。"""
+        """拉取所有网格机器人持仓（现货 + 合约）。
+
+        先用 orders-algo-pending 获取运行中的网格机器人列表，
+        再逐个调用 grid/positions?algoId=xxx 获取持仓数量。
+        """
+        result: list[OkxGridPosition] = []
+        for inst_type, algo_ord_type in [("SPOT", "grid"), ("SWAP", "contract_grid")]:
+            result.extend(self._fetch_grid_by_type(inst_type, algo_ord_type))
+        return result
+
+    def _fetch_grid_by_type(self, inst_type: str, algo_ord_type: str) -> list[OkxGridPosition]:
         try:
-            data = self._get_auth("/api/v5/tradingBot/grid/positions?instType=SPOT")
-        except OkxAuthError:
-            # 网格接口可能因权限不足返回错误，静默返回空列表
+            algos = self._get_auth(
+                f"/api/v5/tradingBot/grid/orders-algo-pending"
+                f"?instType={inst_type}&algoOrdType={algo_ord_type}"
+            )
+        except (OkxAuthError, OkxTimeoutError):
             return []
+
         result = []
-        for item in data:
-            if item.get("instType") != "SPOT":
+        for algo in algos:
+            algo_id = str(algo.get("algoId", ""))
+            inst_id = algo.get("instId", "")
+            if not algo_id or not inst_id:
                 continue
-            inst_id = item.get("instId", "")
             symbol = inst_id.split("-")[0].upper()
+            try:
+                positions = self._get_auth(
+                    f"/api/v5/tradingBot/grid/positions?algoId={algo_id}&instType={inst_type}"
+                )
+            except (OkxAuthError, OkxTimeoutError):
+                positions = []
+            if inst_type == "SPOT":
+                # 现货网格：baseSz=基础资产数量，quoteSz=USDT数量
+                if positions:
+                    p = positions[0]
+                    base_qty = float(p.get("baseSz") or algo.get("baseSz") or 0)
+                    quote_qty = float(p.get("quoteSz") or algo.get("quoteSz") or 0)
+                else:
+                    base_qty = float(algo.get("baseSz") or 0)
+                    quote_qty = float(algo.get("quoteSz") or 0)
+            else:
+                # 合约网格：baseSz/quoteSz 为空，投入资金在 investment（同 sz）
+                base_qty = 0.0
+                quote_qty = float(algo.get("investment") or algo.get("sz") or 0)
             result.append(OkxGridPosition(
                 symbol=symbol,
-                grid_id=str(item.get("algoId", "")),
+                grid_id=algo_id,
                 inst_id=inst_id,
-                base_quantity=float(item.get("baseSz") or 0),
-                quote_quantity=float(item.get("quoteSz") or 0),
-                state=str(item.get("state", "unknown")),
+                base_quantity=base_qty,
+                quote_quantity=quote_qty,
+                state=str(algo.get("state", "running")),
+                inst_type=inst_type,
             ))
         return result
 
@@ -275,6 +310,10 @@ class OkxProvider:
                 raise OkxAuthError(
                     "OKX API 鉴权失败（401）。请检查 .env 中的 HIVEFLOW_OKX_API_KEY / _SECRET / _PASSPHRASE。"
                 )
+            if "400" in msg:
+                raise OkxAuthError(
+                    f"OKX API 请求无效（400）。可能原因：接口不支持、缺少权限或参数错误。路径：{path}"
+                )
             raise OkxTimeoutError(f"网络请求失败：{msg}")
         except Exception as e:
             msg = str(e)
@@ -289,6 +328,10 @@ class OkxProvider:
             if "401" in msg:
                 raise OkxAuthError(
                     "OKX API 鉴权失败（401）。请检查 .env 中的 HIVEFLOW_OKX_API_KEY / _SECRET / _PASSPHRASE。"
+                )
+            if "400" in msg:
+                raise OkxAuthError(
+                    f"OKX API 请求无效（400）。可能原因：接口不支持、缺少权限或参数错误。路径：{path}"
                 )
             raise OkxTimeoutError(f"网络请求失败：{msg}")
 

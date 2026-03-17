@@ -815,6 +815,7 @@ def list_positions_command(
                 box=box.SIMPLE,
             )
             grid_table.add_column("标的", justify="left")
+            grid_table.add_column("类型", justify="left")
             grid_table.add_column("基础资产", justify="right")
             grid_table.add_column("USDT", justify="right")
             grid_table.add_column("网格 ID", justify="left")
@@ -829,6 +830,7 @@ def list_positions_command(
                 box=box.SIMPLE_HEAVY,
             )
             grid_table.add_column("标的", justify="left", style="#87ff87")
+            grid_table.add_column("类型", justify="left", style="#5f875f")
             grid_table.add_column("基础资产", justify="right", style="#5f875f")
             grid_table.add_column("USDT", justify="right", style="#5f875f")
             grid_table.add_column("网格 ID", justify="left", style="#5f875f")
@@ -838,6 +840,7 @@ def list_positions_command(
         for g in grid_positions:
             grid_table.add_row(
                 g.symbol,
+                g.inst_type,
                 f"{g.base_quantity:.6f}",
                 f"{g.quote_quantity:.2f}",
                 g.grid_id,
