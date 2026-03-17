@@ -33,13 +33,25 @@ def _run_lightweight_migrations(engine) -> None:
         return
 
     with engine.begin() as conn:
-        tables = {row[0] for row in conn.exec_driver_sql("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
-        if "strategy" not in tables:
-            return
-        columns = conn.exec_driver_sql("PRAGMA table_info('strategy')").fetchall()
-        column_names = {row[1] for row in columns}
-        if "dimension" not in column_names:
-            conn.exec_driver_sql("ALTER TABLE strategy ADD COLUMN dimension VARCHAR")
+        tables = {row[0] for row in conn.exec_driver_sql(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()}
+
+        # strategy 表：dimension 列
+        if "strategy" in tables:
+            columns = conn.exec_driver_sql("PRAGMA table_info('strategy')").fetchall()
+            column_names = {row[1] for row in columns}
+            if "dimension" not in column_names:
+                conn.exec_driver_sql("ALTER TABLE strategy ADD COLUMN dimension VARCHAR")
+
+        # backtestresult 表：weights_snapshot 列（独立于 strategy 表检查）
+        if "backtestresult" in tables:
+            bt_cols = conn.exec_driver_sql("PRAGMA table_info('backtestresult')").fetchall()
+            bt_col_names = {row[1] for row in bt_cols}
+            if "weights_snapshot" not in bt_col_names:
+                conn.exec_driver_sql(
+                    "ALTER TABLE backtestresult ADD COLUMN weights_snapshot TEXT"
+                )
 
 
 @contextmanager

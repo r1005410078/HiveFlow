@@ -24,5 +24,7 @@ class BacktestResult(SQLModel, table=True):
     max_drawdown: float
     # Sharpe 比率（简化版）。
     sharpe: float
+    # 权重快照（JSON 字符串，如 {"BTC":0.4,"ETH":0.3,...}）。
+    weights_snapshot: str | None = Field(default=None)
     # 创建时间（UTC）。
     created_at: datetime = Field(default_factory=utc_now)
