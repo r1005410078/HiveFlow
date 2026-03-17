@@ -49,6 +49,7 @@ from hiveflow.services.bootstrap import bootstrap_all
 from hiveflow.application.sync import SyncResult, sync_from_okx
 from hiveflow.application.health_check import AlertLevel, HealthCheckResult, run_health_check
 from hiveflow.application.trade import TradeOrder, execute_trades
+from hiveflow.application.skills import list_skills, install_skills, get_skills_dir, get_target_dir
 from hiveflow.db import create_all_tables, get_session
 from sqlmodel import select
 from hiveflow.config import Settings
@@ -68,6 +69,7 @@ current_app = typer.Typer(help="当前策略命令。")
 market_data_app = typer.Typer(help="行情数据契约命令。")
 backtest_app = typer.Typer(help="策略回测命令。")
 trade_app = typer.Typer(help="交易执行命令。")
+skills_app = typer.Typer(name="skills", help="管理 AI Agent Skills")
 console = Console()
 JSON_SCHEMA_VERSION = "1.0.0"
 
@@ -1846,6 +1848,78 @@ app.add_typer(current_app, name="current")
 app.add_typer(market_data_app, name="market-data")
 app.add_typer(backtest_app, name="backtest")
 app.add_typer(trade_app, name="trade")
+app.add_typer(skills_app, name="skills")
+
+
+@skills_app.command("list")
+def skills_list_command(
+    output: str = typer.Option("table", "--output", help="输出格式：table / json"),
+) -> None:
+    """列出项目内所有 skill 及其安装状态。"""
+    skills_dir = get_skills_dir()
+    target_dir = get_target_dir()
+    skills = list_skills(skills_dir=skills_dir, target_dir=target_dir)
+
+    if not skills:
+        console.print(f"[yellow]未找到 skills（查找目录：{skills_dir}）[/yellow]")
+        console.print("请确保在项目根目录运行，或设置 HIVEFLOW_SKILLS_DIR 环境变量。")
+        return
+
+    if output == "json":
+        import json
+        console.print(json.dumps([{
+            "name": s.name,
+            "installed": s.installed,
+            "source": str(s.source),
+            "target": str(s.target),
+        } for s in skills], indent=2, ensure_ascii=False))
+        return
+
+    table = Table(
+        title="Skills（技能包）",
+        box=box.SIMPLE,
+        show_header=True,
+    )
+    table.add_column("名称", justify="left")
+    table.add_column("状态", justify="left")
+
+    for s in skills:
+        status = "[green]✓ 已安装[/green]" if s.installed else "[yellow]✗ 未安装[/yellow]"
+        table.add_row(s.name, status)
+
+    console.print(table)
+    console.print(f"目标目录：{target_dir}")
+    if any(not s.installed for s in skills):
+        console.print("\n运行 'hiveflow skills install' 安装全部")
+
+
+@skills_app.command("install")
+def skills_install_command(
+    name: str | None = typer.Argument(None, help="指定安装的 skill 名称，不填则安装全部"),
+    force: bool = typer.Option(False, "--force", help="强制覆盖已存在的目录或错误软链接"),
+) -> None:
+    """将 skills/ 目录中的 skill 软链接到 ~/.agents/skills/。"""
+    skills_dir = get_skills_dir()
+    target_dir = get_target_dir()
+
+    if not skills_dir.exists():
+        console.print(f"[red]错误：未找到 skills 目录（{skills_dir}）[/red]")
+        console.print("请确保在项目根目录运行，或设置 HIVEFLOW_SKILLS_DIR 环境变量。")
+        raise typer.Exit(1)
+
+    results = install_skills(name=name, skills_dir=skills_dir, target_dir=target_dir, force=force)
+
+    if not results:
+        console.print(f"[yellow]未找到 skill：{name}[/yellow]")
+        raise typer.Exit(1)
+
+    for skill_name, msg in results:
+        if "warning" in msg.lower():
+            console.print(f"  [yellow]⚠ {skill_name}[/yellow]：{msg}")
+        elif "already" in msg.lower() or "skip" in msg.lower():
+            console.print(f"  [dim]– {skill_name}：{msg}[/dim]")
+        else:
+            console.print(f"  [green]✓ {skill_name}[/green]：{msg}")
 
 
 def run() -> None:
