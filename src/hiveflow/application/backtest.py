@@ -12,6 +12,7 @@ from hiveflow.db import create_all_tables, get_session
 from hiveflow.domain.allocations import TargetAllocation
 from hiveflow.domain.backtests import BacktestResult
 from hiveflow.services.backtest_engine import load_close_prices
+from hiveflow.services.backtest_engine import load_close_prices_from_db
 from hiveflow.services.backtest_engine import run_weighted_backtest
 
 
@@ -84,7 +85,6 @@ def run_backtest_for_strategy(
         prices = load_close_prices(file=prices_file)
         source = str(prices_file)
     else:
-        from hiveflow.services.backtest_engine import load_close_prices_from_db
         prices = load_close_prices_from_db(symbols=list(weights.keys()), settings=settings)
         source = "DB:MarketBar"
 
@@ -104,7 +104,7 @@ def run_backtest_for_strategy(
             total_return=metrics.total_return,
             max_drawdown=metrics.max_drawdown,
             sharpe=metrics.sharpe,
-            weights_snapshot=json.dumps({k: v for k, v in weights.items()}),
+            weights_snapshot=json.dumps(weights),
         )
         session.add(row)
         session.commit()
@@ -112,10 +112,10 @@ def run_backtest_for_strategy(
     return _to_view(row)
 
 
-def list_backtest_results(strategy_name: str | None = None) -> list[BacktestResultView]:
+def list_backtest_results(strategy_name: str | None = None, settings=None) -> list[BacktestResultView]:
     """查询历史回测结果。"""
-    create_all_tables()
-    with get_session() as session:
+    create_all_tables(settings)
+    with get_session(settings) as session:
         rows = session.exec(select(BacktestResult)).all()
     if strategy_name:
         rows = [item for item in rows if item.strategy_name == strategy_name]
