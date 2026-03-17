@@ -27,6 +27,7 @@ def _provider(positions=None, tickers=None, candles=None) -> MagicMock:
     p.fetch_positions.return_value = positions or []
     p.fetch_tickers.return_value = tickers or []
     p.fetch_candles.return_value = candles or []
+    p.fetch_grid_positions.return_value = []
     return p
 
 

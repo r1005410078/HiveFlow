@@ -9,6 +9,7 @@ from sqlmodel import delete, select
 
 from hiveflow.config import Settings
 from hiveflow.db import create_all_tables, get_session
+from hiveflow.domain.grid_positions import GridPosition
 from hiveflow.domain.market_data import MarketBar
 from hiveflow.domain.positions import Position
 from hiveflow.infrastructure.okx.okx_provider import OkxProvider
@@ -21,6 +22,7 @@ class SyncResult:
     prices_synced: int
     candles_synced: int
     total_value_usdt: float
+    grids_synced: int = 0
 
     def to_dict(self) -> dict:
         return {
@@ -29,6 +31,7 @@ class SyncResult:
             "prices_synced": self.prices_synced,
             "candles_synced": self.candles_synced,
             "total_value_usdt": round(self.total_value_usdt, 2),
+            "grids_synced": self.grids_synced,
         }
 
 
@@ -43,6 +46,7 @@ def sync_from_okx(
 
     # 1. 先拉取所有数据（任一失败在写入前抛出）
     okx_positions = provider.fetch_positions()
+    okx_grids = provider.fetch_grid_positions()
     # USDT 本身不需要拉 ticker（价格恒为 1），跳过避免无效请求
     inst_ids = [f"{p.symbol}-USDT" for p in okx_positions if p.symbol != "USDT"]
 
@@ -94,6 +98,15 @@ def sync_from_okx(
                 close=c.close, volume=c.volume,
             ))
 
+        # 网格持仓：全量替换
+        session.exec(delete(GridPosition))
+        for g in okx_grids:
+            session.add(GridPosition(
+                symbol=g.symbol, grid_id=g.grid_id, inst_id=g.inst_id,
+                base_quantity=g.base_quantity, quote_quantity=g.quote_quantity,
+                state=g.state,
+            ))
+
         session.commit()
 
     return SyncResult(
@@ -102,4 +115,5 @@ def sync_from_okx(
         prices_synced=len(okx_tickers),
         candles_synced=len(okx_candles),
         total_value_usdt=total_value,
+        grids_synced=len(okx_grids),
     )
