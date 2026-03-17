@@ -25,6 +25,7 @@ from hiveflow.application.positions import analyze_positions_drift
 from hiveflow.application.positions import export_positions_template
 from hiveflow.application.positions import import_positions_from_csv
 from hiveflow.application.positions import list_positions
+from hiveflow.application.positions import list_grid_positions
 from hiveflow.application.rebalance import preview_rebalance
 from hiveflow.application.risk import export_risk_template
 from hiveflow.application.risk import import_risk_signals_from_csv
@@ -753,49 +754,95 @@ def list_positions_command(
     ui_theme = _validate_theme(theme)
     positions = list_positions()
 
-    if not positions:
+    grid_positions = list_grid_positions()
+
+    if not positions and not grid_positions:
         if output_format == "json":
-            typer.echo("[]")
+            typer.echo('{"free": [], "grid": []}')
         else:
             typer.echo("暂无持仓记录。")
         return
 
     if output_format == "json":
-        payload = [position.to_dict() for position in positions]
+        payload = {
+            "free": [position.to_dict() for position in positions],
+            "grid": [g.to_dict() for g in grid_positions],
+        }
         _print_json(payload=payload, command="positions.list", envelope=envelope)
         return
 
+    # --- 自由持仓 ---
     if ui_theme == "minimal":
-        table = Table(
-            title="当前持仓",
+        console.print(":: 自由持仓 ::")
+        free_table = Table(
             show_lines=False,
             box=box.SIMPLE,
         )
-        table.add_column("标的", justify="left")
-        table.add_column("数量", justify="right")
-        table.add_column("市值", justify="right")
-        table.add_column("权重", justify="right")
+        free_table.add_column("标的", justify="left")
+        free_table.add_column("数量", justify="right")
+        free_table.add_column("市值", justify="right")
+        free_table.add_column("权重", justify="right")
     else:
-        table = Table(
-            title="[bold #5fd75f]:: POSITIONS ::[/bold #5fd75f]",
+        console.print("[bold #5fd75f]:: 自由持仓 ::[/bold #5fd75f]")
+        free_table = Table(
             show_lines=False,
             header_style="bold #5f875f",
             border_style="#5f875f",
             box=box.SIMPLE_HEAVY,
         )
-        table.add_column("标的", justify="left", style="#87ff87")
-        table.add_column("数量", justify="right", style="#5f875f")
-        table.add_column("市值", justify="right", style="#5f875f")
-        table.add_column("权重", justify="right", style="#5f875f")
+        free_table.add_column("标的", justify="left", style="#87ff87")
+        free_table.add_column("数量", justify="right", style="#5f875f")
+        free_table.add_column("市值", justify="right", style="#5f875f")
+        free_table.add_column("权重", justify="right", style="#5f875f")
 
     for position in positions:
-        table.add_row(
+        free_table.add_row(
             position.symbol,
             f"{position.quantity:.6f}",
             f"{position.market_value:.2f}",
             f"{position.weight:.2%}",
         )
-    console.print(table)
+    console.print(free_table)
+
+    # --- 网格持仓 ---
+    if grid_positions:
+        if ui_theme == "minimal":
+            console.print(":: 网格持仓（不参与调仓计算）::")
+            grid_table = Table(
+                show_lines=False,
+                box=box.SIMPLE,
+            )
+            grid_table.add_column("标的", justify="left")
+            grid_table.add_column("基础资产", justify="right")
+            grid_table.add_column("USDT", justify="right")
+            grid_table.add_column("网格 ID", justify="left")
+            grid_table.add_column("交易对", justify="left")
+            grid_table.add_column("状态", justify="left")
+        else:
+            console.print("[bold #5fd75f]:: 网格持仓（不参与调仓计算）::[/bold #5fd75f]")
+            grid_table = Table(
+                show_lines=False,
+                header_style="bold #5f875f",
+                border_style="#5f875f",
+                box=box.SIMPLE_HEAVY,
+            )
+            grid_table.add_column("标的", justify="left", style="#87ff87")
+            grid_table.add_column("基础资产", justify="right", style="#5f875f")
+            grid_table.add_column("USDT", justify="right", style="#5f875f")
+            grid_table.add_column("网格 ID", justify="left", style="#5f875f")
+            grid_table.add_column("交易对", justify="left", style="#5f875f")
+            grid_table.add_column("状态", justify="left", style="#5f875f")
+
+        for g in grid_positions:
+            grid_table.add_row(
+                g.symbol,
+                f"{g.base_quantity:.6f}",
+                f"{g.quote_quantity:.2f}",
+                g.grid_id,
+                g.inst_id,
+                g.state,
+            )
+        console.print(grid_table)
 
 
 @positions_app.command("import")

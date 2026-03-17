@@ -9,6 +9,7 @@ from sqlmodel import select
 from hiveflow.domain.aggregates.position_book import PositionBook
 from hiveflow.domain.aggregates.position_book import PositionInput
 from hiveflow.domain.allocations import TargetAllocation
+from hiveflow.domain.grid_positions import GridPosition
 from hiveflow.domain.positions import Position
 from hiveflow.domain.repositories import PositionRepository
 from hiveflow.db import create_all_tables, get_session
@@ -31,6 +32,44 @@ class PositionView:
             "market_value": round(self.market_value, 2),
             "weight": round(self.weight, 6),
         }
+
+
+@dataclass(frozen=True)
+class GridPositionView:
+    symbol: str
+    grid_id: str
+    inst_id: str
+    base_quantity: float
+    quote_quantity: float
+    state: str
+
+    def to_dict(self) -> dict:
+        return {
+            "symbol": self.symbol,
+            "grid_id": self.grid_id,
+            "inst_id": self.inst_id,
+            "base_quantity": round(self.base_quantity, 6),
+            "quote_quantity": round(self.quote_quantity, 2),
+            "state": self.state,
+        }
+
+
+def list_grid_positions(settings=None) -> list["GridPositionView"]:
+    """返回当前所有网格持仓。"""
+    create_all_tables(settings)
+    with get_session(settings) as session:
+        rows = session.exec(select(GridPosition)).all()
+    return [
+        GridPositionView(
+            symbol=r.symbol,
+            grid_id=r.grid_id,
+            inst_id=r.inst_id,
+            base_quantity=r.base_quantity,
+            quote_quantity=r.quote_quantity,
+            state=r.state,
+        )
+        for r in rows
+    ]
 
 
 @dataclass(frozen=True)

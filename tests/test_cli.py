@@ -165,9 +165,10 @@ def test_positions_list_supports_json_output(tmp_path, monkeypatch) -> None:
     result = runner.invoke(app, ["positions", "list", "--output", "json"])
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
-    assert isinstance(payload, list)
-    assert payload[0]["symbol"] == "BTC"
-    assert payload[0]["market_value"] == 120000.0
+    assert isinstance(payload, dict)
+    assert "free" in payload
+    assert payload["free"][0]["symbol"] == "BTC"
+    assert payload["free"][0]["market_value"] == 120000.0
 
 
 def test_summary_supports_json_output(tmp_path, monkeypatch) -> None:
@@ -229,8 +230,8 @@ def test_positions_import_from_csv_supports_json_output(tmp_path, monkeypatch) -
 
     list_result = runner.invoke(app, ["positions", "list", "--output", "json"])
     assert list_result.exit_code == 0
-    positions = json.loads(list_result.stdout)
-    assert len(positions) == 2
+    data = json.loads(list_result.stdout)
+    assert len(data["free"]) == 2
 
 
 def test_positions_import_replace_mode_overwrites_existing_positions(
@@ -268,7 +269,8 @@ def test_positions_import_replace_mode_overwrites_existing_positions(
     assert import_result.exit_code == 0
 
     list_result = runner.invoke(app, ["positions", "list", "--output", "json"])
-    positions = json.loads(list_result.stdout)
+    data = json.loads(list_result.stdout)
+    positions = data["free"]
     assert len(positions) == 1
     assert positions[0]["symbol"] == "BTC"
 
