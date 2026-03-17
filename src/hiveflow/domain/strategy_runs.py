@@ -9,6 +9,8 @@ from hiveflow.domain.common import utc_now
 
 
 class StrategyRun(SQLModel, table=True):
+    """策略运行记录：量化策略每次执行的参数、权重输出及是否已写入目标配比。"""
+
     id: int | None = Field(default=None, primary_key=True)
     strategy_name: str          # "MomentumStrategy" 或自定义类名
     strategy_file: str | None = Field(default=None)  # 用户文件路径，内置策略为 None
