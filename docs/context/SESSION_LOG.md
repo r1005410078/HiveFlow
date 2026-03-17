@@ -22,3 +22,11 @@
 - 完成 M4 Chunk 1：新增 `backtest run / list`，实现最小回测引擎与结果落库。
 - 增加行情落库能力：新增 `market-data import / list / summary`，支持行情数据沉淀与查询。
 - 协作规范补充：在 `AGENTS.md` 增加约定式提交说明与推荐类型列表，统一中文提交格式。
+
+## 2026-03-17
+
+- 完成 M5 收尾：网格持仓区分合约类型（inst_type: SPOT/SWAP），改用 orders-algo-pending 接口拉取运行中机器人。
+- 完成 Skills 版本控制化：新增 `skills/` 目录纳入项目仓库，迁移 `hiveflow-daily-check` 和 `hiveflow-portfolio-advisor` 的 SKILL.md。
+- 新增 `hiveflow skills list / install` 命令，通过软链接将项目 skills/ 安装到 `~/.agents/skills/`，支持 --force 覆盖。
+- 设计决策：`~/.agents/skills/` 作为统一安装目录，其他平台（Cursor 等）各自软链接到该目录。
+- 全量测试：154 passed。
