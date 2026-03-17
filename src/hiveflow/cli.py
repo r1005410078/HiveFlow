@@ -48,6 +48,7 @@ from hiveflow.application.system import run_doctor
 from hiveflow.services.bootstrap import bootstrap_all
 from hiveflow.application.sync import SyncResult, sync_from_okx
 from hiveflow.application.health_check import AlertLevel, HealthCheckResult, run_health_check
+from hiveflow.application.trade import TradeOrder, execute_trades
 from hiveflow.db import create_all_tables, get_session
 from sqlmodel import select
 from hiveflow.config import Settings
@@ -66,6 +67,7 @@ slots_app = typer.Typer(help="席位管理命令。")
 current_app = typer.Typer(help="当前策略命令。")
 market_data_app = typer.Typer(help="行情数据契约命令。")
 backtest_app = typer.Typer(help="策略回测命令。")
+trade_app = typer.Typer(help="交易执行命令。")
 console = Console()
 JSON_SCHEMA_VERSION = "1.0.0"
 
@@ -1770,6 +1772,66 @@ def check(
             console.print(f"  → {hint}")
 
 
+@trade_app.command("execute")
+def trade_execute_command(
+    orders_json: str = typer.Option(..., "--orders", help='订单列表 JSON，格式：[{"symbol":"BTC","action":"buy","usdt":500}]'),
+    output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
+) -> None:
+    """执行现货市价单（需要 Trade 权限 API Key）。"""
+    import json as _json
+    settings = Settings()
+    if not (settings.okx_trade_api_key and settings.okx_trade_api_secret and settings.okx_trade_passphrase):
+        console.print(
+            "错误：未配置 OKX TRADE API Key。请在 .env 中设置：\n"
+            "  HIVEFLOW_OKX_TRADE_API_KEY / _SECRET / _PASSPHRASE",
+            style="bold red",
+        )
+        raise typer.Exit(code=1)
+
+    try:
+        raw = _json.loads(orders_json)
+        orders = [TradeOrder(symbol=o["symbol"], action=o["action"], usdt=float(o["usdt"])) for o in raw]
+    except Exception as e:
+        console.print(f"[bold red]错误：订单 JSON 格式无效：{e}[/bold red]")
+        raise typer.Exit(code=1)
+
+    console.print("[bold]待执行订单：[/bold]")
+    for o in orders:
+        action_cn = "买入" if o.action == "buy" else "卖出"
+        console.print(f"  {action_cn} {o.symbol}  {o.usdt:.2f} USDT（市价）")
+
+    console.print()
+    confirm = typer.prompt("输入 confirm 确认执行，其他任意内容取消")
+    if confirm.strip().lower() != "confirm":
+        console.print("已取消。")
+        raise typer.Exit(code=0)
+
+    console.print("\n执行中...")
+    results = execute_trades(
+        orders=orders,
+        api_key=settings.okx_trade_api_key,
+        api_secret=settings.okx_trade_api_secret,
+        passphrase=settings.okx_trade_passphrase,
+    )
+
+    has_failure = False
+    success_ids = []
+    for r in results:
+        action_cn = "买入" if r.order.action == "buy" else "卖出"
+        if r.success:
+            console.print(f"  ✅ {action_cn} {r.order.symbol}  {r.order.usdt:.2f} USDT → 订单 ID: {r.order_id}")
+            success_ids.append(r.order_id)
+        else:
+            console.print(f"  ❌ {action_cn} {r.order.symbol}  {r.order.usdt:.2f} USDT → 失败：{r.error_msg}")
+            has_failure = True
+
+    if has_failure:
+        console.print(f"\n[bold yellow]⚠️  部分订单失败，请在 OKX 手动确认账户状态。成功订单 ID：{', '.join(success_ids)}[/bold yellow]")
+        raise typer.Exit(code=1)
+    else:
+        console.print("\n[bold green]执行完成。[/bold green]")
+
+
 app.add_typer(positions_app, name="positions")
 app.add_typer(risk_app, name="risk")
 app.add_typer(targets_app, name="targets")
@@ -1780,6 +1842,7 @@ app.add_typer(slots_app, name="slots")
 app.add_typer(current_app, name="current")
 app.add_typer(market_data_app, name="market-data")
 app.add_typer(backtest_app, name="backtest")
+app.add_typer(trade_app, name="trade")
 
 
 def run() -> None:
