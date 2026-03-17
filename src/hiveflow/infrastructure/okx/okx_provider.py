@@ -124,7 +124,7 @@ class OkxProvider:
         """拉取现货网格机器人持仓（GET /api/v5/tradingBot/grid/positions?instType=SPOT）。"""
         try:
             data = self._get_auth("/api/v5/tradingBot/grid/positions?instType=SPOT")
-        except Exception:
+        except OkxAuthError:
             # 网格接口可能因权限不足返回错误，静默返回空列表
             return []
         result = []

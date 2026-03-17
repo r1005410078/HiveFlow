@@ -5,6 +5,7 @@ from typing import Iterator
 from sqlmodel import Session, SQLModel, create_engine
 
 from hiveflow.config import Settings
+from hiveflow.domain.grid_positions import GridPosition  # noqa: F401
 
 
 def get_engine(settings: Settings | None = None):
