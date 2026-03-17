@@ -1,4 +1,6 @@
 """Skills 管理：列出和安装项目内的 AI Agent skills。"""
+from __future__ import annotations
+
 import os
 import shutil
 from dataclasses import dataclass
@@ -47,7 +49,7 @@ def list_skills(
         linked_correctly = (
             target.is_symlink() and target.resolve() == entry.resolve()
         )
-        installed = linked_correctly
+        installed = target.exists() or target.is_symlink()
         result.append(SkillInfo(
             name=entry.name,
             source=entry,

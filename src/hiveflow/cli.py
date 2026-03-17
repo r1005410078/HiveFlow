@@ -69,7 +69,7 @@ current_app = typer.Typer(help="当前策略命令。")
 market_data_app = typer.Typer(help="行情数据契约命令。")
 backtest_app = typer.Typer(help="策略回测命令。")
 trade_app = typer.Typer(help="交易执行命令。")
-skills_app = typer.Typer(name="skills", help="管理 AI Agent Skills")
+skills_app = typer.Typer(name="skills", help="管理 AI Agent Skills。")
 console = Console()
 JSON_SCHEMA_VERSION = "1.0.0"
 
@@ -1866,7 +1866,6 @@ def skills_list_command(
         return
 
     if output == "json":
-        import json
         console.print(json.dumps([{
             "name": s.name,
             "installed": s.installed,
