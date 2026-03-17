@@ -14,7 +14,7 @@ class SkillInfo:
     name: str
     source: Path       # 项目内 skills/<name>
     target: Path       # ~/.agents/skills/<name>
-    installed: bool        # target 存在且为软链接指向正确 source
+    installed: bool        # target 路径存在（任意形式：目录、软链接等）
     linked_correctly: bool # 软链接指向正确的 source
 
 

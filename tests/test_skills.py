@@ -1,7 +1,6 @@
 """Tests for hiveflow skills list/install functionality."""
 from pathlib import Path
-import pytest
-from hiveflow.application.skills import list_skills, install_skills, SkillInfo
+from hiveflow.application.skills import list_skills, install_skills
 
 
 def _make_skills_dir(tmp_path: Path) -> Path:
