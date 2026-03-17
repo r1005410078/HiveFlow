@@ -44,11 +44,16 @@ hiveflow quant run --strategy Momentum --output json
       │
       ▼
 src/hiveflow/services/strategies/
-  __init__.py        ← 导出内置策略类
-  base.py            ← BaseStrategy + StrategyContext
-  momentum.py        ← MomentumStrategy（内置）
-  mean_reversion.py  ← MeanReversionStrategy（内置）
-  risk_parity.py     ← RiskParityStrategy（内置，需 PyPortfolioOpt）
+  __init__.py          ← 导出内置策略类
+  base.py              ← BaseStrategy + StrategyContext
+  momentum.py          ← MomentumStrategy
+  mean_reversion.py    ← MeanReversionStrategy
+  risk_parity.py       ← RiskParityStrategy（需 PyPortfolioOpt）
+  max_sharpe.py        ← MaxSharpeStrategy（需 PyPortfolioOpt）
+  min_variance.py      ← MinVarianceStrategy（需 PyPortfolioOpt）
+  moving_average.py    ← MovingAverageCrossStrategy
+  bollinger_band.py    ← BollingerBandStrategy
+  equal_weight.py      ← EqualWeightStrategy
       │
       ▼
 src/hiveflow/application/quant_strategies.py   ← 用例逻辑
@@ -158,6 +163,61 @@ CLI 通过 `--param key=value` 传入参数，值按以下顺序推导类型：�
 
 **依赖**：`PyPortfolioOpt`（可选依赖。不安装时降级为等权重分配并打印提示，不报错退出）。
 
+### MaxSharpeStrategy
+
+**逻辑**：最大化夏普比率（收益/波动率），使用 `PyPortfolioOpt` 的均值-方差优化。
+
+**参数**：
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `window` | 60 | 收益率计算窗口 |
+| `min_usdt` | 0.10 | USDT 最低权重 |
+
+**依赖**：`PyPortfolioOpt`（不安装时降级为等权重）。
+
+### MinVarianceStrategy
+
+**逻辑**：最小化组合整体波动率，使用 `PyPortfolioOpt` 的最小方差优化。
+
+**参数**：
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `window` | 60 | 协方差矩阵计算窗口 |
+| `min_usdt` | 0.10 | USDT 最低权重 |
+
+**依赖**：`PyPortfolioOpt`（不安装时降级为等权重）。
+
+### MovingAverageCrossStrategy
+
+**逻辑**：短期均线在长期均线上方的资产为"趋势向上"，按趋势强度分配权重；均线死叉的资产权重降至最低。
+
+**参数**：
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `fast` | 7 | 短期均线天数 |
+| `slow` | 30 | 长期均线天数 |
+| `min_usdt` | 0.10 | USDT 最低权重 |
+
+### BollingerBandStrategy
+
+**逻辑**：价格在布林带下轨附近（超卖）增加权重，价格在上轨附近（超买）减少权重。
+
+**参数**：
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `window` | 20 | 均值/标准差计算窗口 |
+| `num_std` | 2.0 | 布林带宽度（标准差倍数）|
+| `min_usdt` | 0.10 | USDT 最低权重 |
+
+### EqualWeightStrategy
+
+**逻辑**：所有资产（含 USDT）平均分配权重。最简单的基准策略，用于对比其他策略的效果。
+
+**参数**：
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `min_usdt` | 0.10 | USDT 最低权重 |
+
 ---
 
 ## 数据模型
@@ -198,10 +258,15 @@ class StrategyRun(SQLModel, table=True):
 ```
 量化策略
 
-  名称                   类型    描述
-  MomentumStrategy      内置    动量策略（按涨幅排名分配权重）
-  MeanReversionStrategy 内置    均值回归策略（z-score 反向加权）
-  RiskParityStrategy    内置    风险平价策略（按波动率倒数分配）
+  名称                       类型    描述
+  EqualWeightStrategy       内置    等权重（基准策略）
+  MomentumStrategy          内置    动量（按涨幅排名分配权重）
+  MeanReversionStrategy     内置    均值回归（z-score 反向加权）
+  MovingAverageCrossStrategy 内置   均线交叉（短期均线在长期均线上方加权）
+  BollingerBandStrategy     内置    布林带（超卖区域加权）
+  RiskParityStrategy        内置    风险平价（按波动率倒数分配）
+  MaxSharpeStrategy         内置    最大夏普（需 PyPortfolioOpt）
+  MinVarianceStrategy       内置    最小方差（需 PyPortfolioOpt）
 
 用法：hiveflow quant run --strategy <名称>
 自定义策略：hiveflow quant run --strategy-file <路径> --strategy <类名>
@@ -288,11 +353,15 @@ HIVEFLOW_STRATEGY_CLASS=MyMomentum
 
 ## 测试策略
 
-- `test_momentum_strategy.py`：mock prices DataFrame，验证权重之和为 1.0、top_k 约束、min_usdt 约束
-- `test_mean_reversion_strategy.py`：验证 z-score 计算、权重归一化
-- `test_risk_parity_strategy.py`：验证无 PyPortfolioOpt 时降级为等权重
-- `test_quant_strategies.py`：mock 策略，验证落库、--apply 写入 TargetAllocation、DecisionLog 写入、applied 字段更新
-- `test_quant_cli.py`：CLI 集成测试，验证 JSON 输出格式、--param 类型推导
+每个策略文件对应一个测试文件，核心验证点：
+- 权重之和为 1.0
+- `min_usdt` 约束（USDT 权重 ≥ min_usdt）
+- 策略特有约束（top_k、z-score 方向、均线方向等）
+- 无 `PyPortfolioOpt` 时降级为等权重（适用于 RiskParity / MaxSharpe / MinVariance）
+
+集成测试：
+- `test_quant_strategies.py`：mock 策略，验证落库、`--apply` 写入 TargetAllocation、DecisionLog 写入、applied 字段更新
+- `test_quant_cli.py`：CLI 集成测试，验证 JSON 输出格式、`--param` 类型推导
 
 ---
 
