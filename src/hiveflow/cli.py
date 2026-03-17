@@ -1337,6 +1337,22 @@ def generate_targets_command(
     )
 
 
+@targets_app.command("set-from-backtest")
+def targets_set_from_backtest_command(
+    backtest_id: int = typer.Argument(..., help="回测记录 ID（来自 backtest list）"),
+) -> None:
+    """将回测结果的配比设为当前目标配比。"""
+    from hiveflow.application.backtest import set_targets_from_backtest
+    try:
+        weights = set_targets_from_backtest(backtest_id=backtest_id)
+    except ValueError as e:
+        console.print(f"[bold red]错误：{e}[/bold red]")
+        raise typer.Exit(code=1)
+    console.print(f"[bold green]已设置目标配比（来自回测 #{backtest_id}）：[/bold green]")
+    for symbol, weight in sorted(weights.items()):
+        console.print(f"  {symbol}  {weight:.0%}")
+
+
 @rebalance_app.command("preview")
 def preview_rebalance_command(
     strategy: str | None = typer.Option(

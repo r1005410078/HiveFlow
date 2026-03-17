@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from sqlmodel import select
+from sqlmodel import delete, select
 
 from hiveflow.db import create_all_tables, get_session
 from hiveflow.domain.allocations import TargetAllocation
@@ -121,3 +121,28 @@ def list_backtest_results(strategy_name: str | None = None, settings=None) -> li
         rows = [item for item in rows if item.strategy_name == strategy_name]
     ordered = sorted(rows, key=lambda item: item.created_at, reverse=True)
     return [_to_view(item) for item in ordered]
+
+
+def set_targets_from_backtest(backtest_id: int, settings=None) -> dict[str, float]:
+    """从回测结果的 weights_snapshot 设置目标配比。返回写入的配比字典。"""
+    create_all_tables(settings)
+    with get_session(settings) as session:
+        row = session.get(BacktestResult, backtest_id)
+        if row is None:
+            raise ValueError(f"回测记录 #{backtest_id} 不存在。")
+        if not row.weights_snapshot:
+            raise ValueError(f"回测记录 #{backtest_id} 无 weights_snapshot，无法设置目标配比。")
+        weights = json.loads(row.weights_snapshot)
+        strategy_name = row.strategy_name
+
+        session.exec(delete(TargetAllocation).where(
+            TargetAllocation.strategy_name == strategy_name
+        ))
+        for symbol, weight in weights.items():
+            session.add(TargetAllocation(
+                strategy_name=strategy_name,
+                symbol=symbol,
+                target_weight=weight,
+            ))
+        session.commit()
+    return weights
