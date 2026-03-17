@@ -56,8 +56,6 @@ def test_place_order_returns_failure_on_error_code() -> None:
     assert "Insufficient" in result.error_msg
 
 
-# 追加到 tests/test_trade_execute.py
-
 import json as _json
 from typer.testing import CliRunner
 from unittest.mock import patch
