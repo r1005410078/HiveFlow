@@ -62,6 +62,13 @@ class OkxGridPosition:
     state: str
 
 
+@dataclass(frozen=True)
+class OkxOrderResult:
+    order_id: str
+    success: bool
+    error_msg: str = ""
+
+
 class OkxProvider:
     def __init__(self, api_key: str, api_secret: str, passphrase: str) -> None:
         self._key = api_key
@@ -143,7 +150,83 @@ class OkxProvider:
             ))
         return result
 
+    def place_market_order(
+        self,
+        inst_id: str,
+        side: str,
+        usdt_amount: float,
+        current_price: float | None = None,
+    ) -> OkxOrderResult:
+        """下现货市价单。
+        side='buy': sz 以 USDT 计（tgtCcy=quote_ccy）。
+        side='sell': sz 以基础资产计，需传入 current_price 换算。
+        """
+        if side == "buy":
+            sz = str(round(usdt_amount, 2))
+            body: dict = {
+                "instId": inst_id,
+                "tdMode": "cash",
+                "side": "buy",
+                "ordType": "market",
+                "sz": sz,
+                "tgtCcy": "quote_ccy",
+            }
+        else:
+            if current_price is None or current_price <= 0:
+                return OkxOrderResult(order_id="", success=False,
+                                      error_msg="卖单需要提供 current_price")
+            base_sz = round(usdt_amount / current_price, 8)
+            body = {
+                "instId": inst_id,
+                "tdMode": "cash",
+                "side": "sell",
+                "ordType": "market",
+                "sz": str(base_sz),
+            }
+        data = self._post_auth("/api/v5/trade/order", body)
+        if not data:
+            return OkxOrderResult(order_id="", success=False, error_msg="空响应")
+        item = data[0]
+        s_code = str(item.get("sCode", "0"))
+        if s_code != "0":
+            return OkxOrderResult(order_id="", success=False,
+                                   error_msg=item.get("sMsg", "未知错误"))
+        return OkxOrderResult(order_id=str(item.get("ordId", "")), success=True)
+
     # ── 私有工具 ──────────────────────────────────────────────────────────────
+
+    def _post_auth(self, path: str, body: dict) -> list:
+        ts = datetime.now(tz=timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        body_str = json.dumps(body)
+        sign = self._sign("POST", path, ts, body_str)
+        req = urllib.request.Request(
+            BASE_URL + path,
+            data=body_str.encode(),
+            headers={
+                "OK-ACCESS-KEY": self._key,
+                "OK-ACCESS-SIGN": sign,
+                "OK-ACCESS-TIMESTAMP": ts,
+                "OK-ACCESS-PASSPHRASE": self._pass,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "User-Agent": USER_AGENT,
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+                resp_body = json.loads(resp.read())
+        except TimeoutError:
+            raise OkxTimeoutError("网络超时，请稍后重试。")
+        except Exception as e:
+            msg = str(e)
+            if "401" in msg:
+                raise OkxAuthError("OKX Trade API 鉴权失败（401）。")
+            raise OkxTimeoutError(f"网络请求失败：{msg}")
+        code = resp_body.get("code", "0")
+        if code != "0":
+            raise OkxAuthError(f"OKX API 错误 code={code}：{resp_body.get('msg')}")
+        return resp_body.get("data", [])
 
     def _get_auth(self, path: str) -> list:
         ts = datetime.now(tz=timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")

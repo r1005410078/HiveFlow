@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     okx_api_secret: str | None = None
     okx_api_passphrase: str | None = None
 
+    # OKX Trade API（下单专用，需 Trade 权限）
+    okx_trade_api_key: str | None = None
+    okx_trade_api_secret: str | None = None
+    okx_trade_passphrase: str | None = None
+
     model_config = SettingsConfigDict(
         env_prefix="HIVEFLOW_",
         extra="ignore",
