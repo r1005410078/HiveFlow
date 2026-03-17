@@ -5,7 +5,7 @@ from hiveflow.application.sync import sync_from_okx
 from hiveflow.config import Settings
 from hiveflow.db import create_all_tables, get_session
 from hiveflow.domain.grid_positions import GridPosition
-from hiveflow.infrastructure.okx.okx_provider import OkxGridPosition, OkxPosition
+from hiveflow.infrastructure.okx.okx_provider import OkxGridPosition
 
 
 def _settings(tmp_path) -> Settings:
