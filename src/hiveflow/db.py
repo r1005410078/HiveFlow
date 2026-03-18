@@ -49,6 +49,8 @@ def _run_lightweight_migrations(engine) -> None:
         # backtestresult 表：weights_snapshot 列（独立于 strategy 表检查）
         if "backtestresult" in tables:
             bt_cols = conn.exec_driver_sql("PRAGMA table_info('backtestresult')").fetchall()
+            # bt_col_names 是一次性快照；各 ALTER 检查相互独立，
+            # 每条检查不依赖同次迁移中前一条 ALTER 新增的列。
             bt_col_names = {row[1] for row in bt_cols}
             if "weights_snapshot" not in bt_col_names:
                 conn.exec_driver_sql(
