@@ -229,6 +229,108 @@ uv run hiveflow backtest list --strategy "进攻突破策略"
 uv run hiveflow backtest list --strategy "进攻突破策略" --output json
 ```
 
+### 3.0.5 量化策略 Example
+
+```bash
+# Example A: 查看内置量化策略列表
+uv run hiveflow quant list
+
+# Example B: 运行等权重策略并查看配比
+uv run hiveflow quant run --strategy EqualWeight
+
+# Example C: 运行动量策略并直接写入目标持仓
+uv run hiveflow quant run --strategy Momentum --apply
+
+# Example D: 查看历史量化运行记录
+uv run hiveflow quant history --limit 10
+
+# Example E: 动态再平衡回测（每 30 天重新计算权重）
+uv run hiveflow backtest quant-run --strategy Momentum --rebalance-days 30
+
+# Example F: JSON 输出（给脚本/AI 消费）
+uv run hiveflow quant run --strategy EqualWeight --output json
+```
+
+### 3.0.6 回测可视化 Example（M7）
+
+```bash
+# Example A: 查看单次回测权益曲线 + 指标摘要 + 风险指标
+uv run hiveflow backtest show 3
+
+# Example B: 并排对比多次回测
+uv run hiveflow backtest compare 1 2 3
+
+# Example C: JSON 输出（含 equity_curve 数组）
+uv run hiveflow backtest show 3 --output json
+uv run hiveflow backtest compare 1 2 --output json
+```
+
+**`backtest show` 输出示例：**
+
+```
+回测 #3 · MomentumStrategy
+
+  总收益    18.5%
+  最大回撤  -8.2%
+  Sharpe    1.34
+
+  权益曲线（120 期）
+  ▁▁▂▂▃▃▄▅▅▆▆▇▇▇█▇▇▆▇▇▇▇▇▇▇▇█▇▇█▇▇▇█
+
+  创建：2026-03-18
+
+  风险指标
+  年化波动率   18.2%
+  胜率         61.5%
+  Calmar       4.22
+```
+
+### 3.0.7 风险分析 Example（M8）
+
+```bash
+# Example A: 分析全部 MarketBar 资产的风险指标
+uv run hiveflow risk-analysis assets
+
+# Example B: 只分析指定资产
+uv run hiveflow risk-analysis assets --symbols BTC,ETH,SOL
+
+# Example C: JSON 输出（给脚本/AI 消费）
+uv run hiveflow risk-analysis assets --output json
+
+# Example D: 分析某次回测的组合风险
+uv run hiveflow risk-analysis portfolio 3
+
+# Example E: 组合风险 JSON 输出
+uv run hiveflow risk-analysis portfolio 3 --output json
+```
+
+**`risk-analysis assets` 输出示例：**
+
+```
+资产风险分析
+
+  资产    年化波动率   日波动率   历史 MDD   数据点
+  SOL       91.5%      4.8%    -97.1%    365
+  ETH       72.1%      3.8%    -94.2%    365
+  BTC       68.3%      3.6%    -83.4%    365
+
+  相关性矩阵
+            BTC     ETH     SOL
+    BTC    1.00    0.87    0.79
+    ETH    0.87    1.00    0.82
+    SOL    0.79    0.82    1.00
+```
+
+**`risk-analysis portfolio` 输出示例：**
+
+```
+组合风险分析（回测 #3）
+
+  年化波动率   18.2%
+  胜率         61.5%
+  Calmar       4.22
+```
+
 ### 3.1 初始化本地数据库与基础数据
 
 ```bash
