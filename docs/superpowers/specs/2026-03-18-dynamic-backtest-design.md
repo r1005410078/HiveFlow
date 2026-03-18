@@ -48,33 +48,39 @@ hiveflow targets set-from-backtest <id>  # 兼容现有命令
 
 ## 架构
 
+**策略类解析发生在 CLI 层**（与现有 `quant_run_command` 保持一致），application 层只接收已实例化的策略对象：
+
 ```
-CLI: hiveflow backtest quant-run
+CLI: hiveflow backtest quant-run --strategy MomentumStrategy
       │
-      ▼
-application/backtest.py
-  run_quant_backtest(strategy_name, rebalance_days, symbols, fee_bps, ...)
-      │
-      ├─ 从 MarketBar 表加载所有（或指定）symbol 的 PriceBar
-      ├─ 从 BUILTIN_STRATEGIES 实例化策略对象
-      └─ 调用 run_dynamic_backtest(prices, strategy, rebalance_days, ...)
+      ├─ 用 _BUILTIN_STRATEGIES[strategy_name] 解析策略类
+      ├─ 实例化策略对象 strategy_instance = StrategyClass()
+      └─ 调用 run_quant_backtest(strategy=strategy_instance, ...)
            │
            ▼
-      services/backtest_engine.py
-        run_dynamic_backtest()
+      application/backtest.py
+        run_quant_backtest(strategy: BaseStrategy, rebalance_days, symbols, fee_bps, ...)
            │
-           ├─ 将所有时间戳排序，按 rebalance_days 切分为若干期
-           ├─ 对每期：
-           │    ├─ 用截止当前时点的 prices 构建 StrategyContext（无未来偏差）
-           │    ├─ 调用 strategy.compute_weights(ctx)
-           │    │    └─ 若数据不足（< lookback），等权重兜底
-           │    └─ 用本期权重模拟该期内每日收益，扣除交易成本
-           └─ 汇总 equity curve → BacktestMetrics + final_weights
-      │
-      ▼
-application/backtest.py
-  写入 BacktestResult（backtest_type="dynamic"，weights_snapshot=最终期权重）
-  返回 BacktestResultView
+           ├─ 从 MarketBar 表加载所有（或指定）symbol 的 PriceBar
+           └─ 调用 run_dynamic_backtest(prices, strategy, rebalance_days, ...)
+                │
+                ▼
+           services/backtest_engine.py
+             run_dynamic_backtest()
+                │
+                ├─ 将所有时间戳排序，按 rebalance_days 切分为若干期
+                ├─ 对每期：
+                │    ├─ 截取该块起始时点前的 prices 切片 → 转换为 DataFrame
+                │    ├─ 构建 StrategyContext（无未来偏差）
+                │    ├─ 调用 strategy.compute_weights(ctx)
+                │    │    └─ 若抛出异常或数据不足，降级为等权重
+                │    └─ 用本块的 prices 逐日模拟收益，扣除交易成本
+                └─ 汇总 equity curve → BacktestMetrics + final_weights
+           │
+           ▼
+      application/backtest.py
+        写入 BacktestResult（backtest_type="dynamic"，weights_snapshot=最终期权重）
+        返回 BacktestResultView
 ```
 
 ---
@@ -94,18 +100,27 @@ def run_dynamic_backtest(
 
 **执行步骤：**
 
-1. 提取所有 symbol 的公共时间戳，排序后按 `rebalance_days` 分块
+1. 提取所有 symbol 公共时间戳的并集，排序后按 `rebalance_days` 分块，得到若干 `[block_start, block_end)` 区间
 2. 对每个时间块：
-   - 截取该块起始时点前的所有历史 prices 构建 `StrategyContext`
-   - 调用 `strategy.compute_weights(ctx)`；若抛出异常或数据不足，降级为等权重
-   - 用本块的 prices 逐日模拟持有收益（固定权重，不漂移），扣除单次交易成本
+   - 截取 `timestamp < block_start` 的历史 prices（确保无未来偏差），转换为 `pd.DataFrame`：
+     ```python
+     # dict[str, list[PriceBar]] → pd.DataFrame(index=timestamp, columns=symbol)
+     history = {
+         sym: [bar.close for bar in bars if bar.timestamp < block_start_ts]
+         for sym, bars in prices.items()
+     }
+     df = pd.DataFrame(history)  # index 为自然数；若需要 datetime index，用 timestamp 序列构建
+     ```
+   - 构建 `StrategyContext(prices=df, current_positions={}, risk_signals={}, params=strategy.params)`
+   - 调用 `strategy.compute_weights(ctx)`；若抛出任何异常，降级为等权重（所有 symbol 均分）
+   - 用本块区间内的 PriceBar 逐日模拟持有收益（固定权重，不漂移），每期扣除 `(fee_bps + slippage_bps) / 10000` 一次
 3. 积累 equity curve，计算：
    - `total_return = equity_final - 1.0`
    - `max_drawdown = min(value/peak - 1.0)`
-   - `sharpe = mean_daily_ret / std_daily_ret * sqrt(n)`
-4. 返回 `(BacktestMetrics, final_weights)`，其中 `final_weights` 为最后一期权重
+   - `sharpe = mean_daily_ret / std_daily_ret * sqrt(n)`（与现有 `run_weighted_backtest` 公式一致）
+4. 返回 `(BacktestMetrics, final_weights)`，其中 `final_weights` 为最后一期 `compute_weights` 的输出
 
-**无未来偏差保证**：构建 `StrategyContext` 时，`prices` 只包含当前再平衡点**之前**的数据。
+**无未来偏差保证**：步骤 2 中构建 `StrategyContext` 时，`prices` DataFrame 只包含 `timestamp < block_start` 的数据。
 
 ---
 
@@ -127,6 +142,29 @@ class BacktestResult(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utc_now)
 ```
 
+### `BacktestResultView` 和 `_to_view()`（`application/backtest.py`）
+
+`BacktestResultView` dataclass 新增字段，`_to_view()` 映射，`to_dict()` 输出：
+
+```python
+@dataclass(frozen=True)
+class BacktestResultView:
+    ...
+    backtest_type: str        # ← 新增："static" | "dynamic"
+
+    def to_dict(self):
+        return {
+            ...
+            "backtest_type": self.backtest_type,   # ← 新增
+        }
+
+def _to_view(row: BacktestResult) -> BacktestResultView:
+    return BacktestResultView(
+        ...
+        backtest_type=row.backtest_type,   # ← 新增
+    )
+```
+
 ### 轻量迁移（`db.py`）
 
 在 `_run_lightweight_migrations()` 中新增：
@@ -135,7 +173,7 @@ class BacktestResult(SQLModel, table=True):
 # BacktestResult 表补 backtest_type 列
 with engine.connect() as conn:
     try:
-        conn.execute(text("ALTER TABLE backcastresult ADD COLUMN backtest_type TEXT DEFAULT 'static'"))
+        conn.execute(text("ALTER TABLE backtestresult ADD COLUMN backtest_type TEXT DEFAULT 'static'"))
         conn.commit()
     except Exception:
         pass
