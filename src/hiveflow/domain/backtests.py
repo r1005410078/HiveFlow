@@ -28,5 +28,7 @@ class BacktestResult(SQLModel, table=True):
     weights_snapshot: str | None = Field(default=None)
     # 回测类型："static"（静态权重）或 "dynamic"（动态再平衡）。
     backtest_type: str = Field(default="static")
+    # 权益曲线 JSON 数组（如 [1.0, 1.02, ...]），旧记录为 None。
+    equity_curve: str | None = Field(default=None)
     # 创建时间（UTC）。
     created_at: datetime = Field(default_factory=utc_now)
