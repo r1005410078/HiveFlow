@@ -6,9 +6,8 @@
 
 ## 当前位置
 
-- 已完成：Chunk 1 ~ Chunk 30 + M4 + M5 + M6
-- 已完成：Chunk 1 ~ Chunk 30 + M4 + M5 + M6 + M7
-- 当前阶段：M8 规划中
+- 已完成：Chunk 1 ~ Chunk 30 + M4 + M5 + M6 + M7 + M8
+- 当前阶段：M9 规划中
 
 ## 三个里程碑
 
@@ -74,13 +73,21 @@
 - `backtest compare <id1> <id2> ...` 多回测并排对比，含全量 ID 预检与 `--output json`
 - `_sparkline()` 上取整采样（避免截断长曲线），旧记录 NULL 降级提示
 
-## M8：下一阶段（规划中）
+## M8：风险分析引擎（已完成）
+
+已交付：
+- `risk-analysis assets [--symbols] [--output]` 资产年化波动率、日波动率、历史 MDD、Pearson 相关性矩阵
+- `risk-analysis portfolio <id> [--output]` 组合年化波动率、胜率、Calmar ratio（从 BacktestResult.equity_curve 派生）
+- `backtest show` 追加风险指标节（equity_curve 存在时）
+- 无新增第三方依赖，手工实现所有统计计算，年化因子 365
+
+## M9：下一阶段（规划中）
 
 候选方向：
 1. 网格机器人管理（`grid create/list/stop`，OKX Grid Trading API）
-2. 风险分析引擎 v1（从 MarketBar 驱动：波动率、相关性矩阵、最大回撤分布）
-3. 多策略组合（加权混合多个量化策略输出，`portfolio blend`）
-4. 实盘绩效追踪（持仓日志 + 权益曲线与回测对比）
+2. 多策略组合（加权混合多个量化策略输出，`portfolio blend`）
+3. 实盘绩效追踪（持仓日志 + 权益曲线与回测对比）
+4. 多交易所支持
 
 ## 决策规则（防止“抓芝麻”）
 

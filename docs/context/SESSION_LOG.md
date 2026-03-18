@@ -41,3 +41,5 @@
 - 全量测试：204 passed。
 - 完成 M7：回测权益曲线可视化。`BacktestMetrics.curve` 字段，`BacktestResult.equity_curve` 落库（JSON），`BacktestResultView.equity_curve` 视图。新增 `backtest show <id>`（权益曲线 Sparkline + 指标摘要）与 `backtest compare <id1> <id2>...`（多回测并排对比），均支持 `--output json`。Unicode Sparkline 用 8 级块字符（`▁▂▃▄▅▆▇█`），show 宽 40、compare 宽 28，上取整采样避免截断长曲线。旧记录 NULL curve 降级提示。
 - 全量测试：221 passed。
+- 完成 M8：风险分析引擎。新增 `services/risk_engine.py`（compute_volatility / compute_correlation / compute_drawdown / compute_portfolio_risk，纯计算无 DB 依赖，手工实现 Pearson 相关系数），`application/risk_analysis.py`（analyze_asset_risk / analyze_portfolio_risk）。新增 `hiveflow risk-analysis assets`（资产年化波动率、日波动率、历史 MDD、相关性矩阵，支持 --symbols / --output json）与 `risk-analysis portfolio <id>`（组合年化波动率、胜率、Calmar ratio，equity_curve=NULL 时降级提示，exit_code=0）。`backtest show` 追加风险指标节（仅在 equity_curve 存在时显示）。无新增第三方依赖，年化因子 365（加密市场）。
+- 全量测试：247 passed。
