@@ -1,0 +1,10 @@
+{
+  "snapshot_interval": "1h",
+  "auto_sync_positions": true,
+  "_intervals": {
+    "1h": "0 * * * *",
+    "6h": "0 */6 * * *",
+    "daily": "0 9 * * *"
+  },
+  "_comment": "snapshot_interval 支持 1h / 6h / daily。修改后重新运行 hiveflow perf setup-cron 生效。"
+}

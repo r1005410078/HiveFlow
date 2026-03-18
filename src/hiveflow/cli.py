@@ -65,6 +65,13 @@ from hiveflow.application.blend import (
     run_blend,
 )
 from hiveflow.application.risk_analysis import analyze_asset_risk, analyze_portfolio_risk
+from hiveflow.application.perf import (
+    PerfCompareResult,
+    PortfolioSnapshotView,
+    compare_with_backtest,
+    list_snapshots,
+    record_snapshot as _record_snapshot_impl,
+)
 from hiveflow.services.strategies import (
     BaseStrategy,
     BollingerBandStrategy,
@@ -127,6 +134,7 @@ skills_app = typer.Typer(name="skills", help="管理 AI Agent Skills。")
 quant_app = typer.Typer(help="量化策略命令。")
 blend_app = typer.Typer(help="多策略混合命令。")
 risk_analysis_app = typer.Typer(help="资产与组合风险分析。")
+perf_app = typer.Typer(help="实盘绩效追踪命令。")
 console = Console()
 JSON_SCHEMA_VERSION = "1.0.0"
 
@@ -2082,6 +2090,7 @@ app.add_typer(skills_app, name="skills")
 quant_app.add_typer(blend_app, name="blend")
 app.add_typer(quant_app, name="quant")
 app.add_typer(risk_analysis_app, name="risk-analysis")
+app.add_typer(perf_app, name="perf")
 
 
 @skills_app.command("list")
@@ -2528,6 +2537,178 @@ def risk_portfolio_command(
     typer.echo(f"  胜率         {risk['win_rate']:.1%}")
     calmar_str = f"{risk['calmar_ratio']:.2f}" if not math.isinf(risk["calmar_ratio"]) else "∞"
     typer.echo(f"  Calmar       {calmar_str}")
+
+
+def take_perf_snapshot(
+    api_key: str,
+    api_secret: str,
+    passphrase: str,
+    source: str = "manual",
+    settings: Settings | None = None,
+) -> PortfolioSnapshotView:
+    """从 OKX 获取最新持仓，计算总价值，存入快照。可 mock 用于测试。"""
+    provider = OkxProvider(api_key=api_key, api_secret=api_secret, passphrase=passphrase)
+    positions = provider.fetch_positions()
+    total_value = sum(p.market_value or 0.0 for p in positions)
+    positions_data = {
+        p.symbol: {"qty": p.qty, "value_usd": p.market_value}
+        for p in positions
+    }
+    return _record_snapshot_impl(
+        total_value_usd=total_value,
+        positions_data=positions_data,
+        source=source,
+        settings=settings,
+    )
+
+
+@perf_app.command("snapshot")
+def perf_snapshot(
+    source: str = typer.Option("manual", "--source", help="manual | cron"),
+    database_url: str | None = typer.Option(None, "--database-url", envvar="HIVEFLOW_DATABASE_URL", hidden=True),
+):
+    """记录一次实盘组合快照（从 OKX 同步当前持仓价值）。"""
+    settings = Settings(database_url=database_url) if database_url else Settings()
+    api_key = settings.okx_api_key
+    api_secret = settings.okx_api_secret
+    passphrase = settings.okx_api_passphrase
+    if not api_key or not api_secret or not passphrase:
+        console.print(
+            "[red]缺少 OKX 凭证，请设置 HIVEFLOW_OKX_API_KEY / "
+            "HIVEFLOW_OKX_API_SECRET / HIVEFLOW_OKX_API_PASSPHRASE。[/red]"
+        )
+        raise typer.Exit(1)
+    try:
+        view = take_perf_snapshot(
+            api_key=api_key,
+            api_secret=api_secret,
+            passphrase=passphrase,
+            source=source,
+            settings=settings,
+        )
+    except Exception as e:
+        console.print(f"[red]快照失败：{e}[/red]")
+        raise typer.Exit(1)
+    console.print(
+        f"[green]快照已记录：总价值 {view.total_value_usd:.2f} USD "
+        f"（{view.timestamp[:19]}）[/green]"
+    )
+
+
+@perf_app.command("list")
+def perf_list(
+    limit: int = typer.Option(20, "--limit", help="最多显示条数"),
+    output: str = typer.Option("pretty", "--output", callback=_validate_output_format),
+    database_url: str | None = typer.Option(None, "--database-url", envvar="HIVEFLOW_DATABASE_URL", hidden=True),
+):
+    """列出历史实盘快照。"""
+    settings = Settings(database_url=database_url) if database_url else Settings()
+    snaps = list_snapshots(limit=limit, settings=settings)
+    if output == "json":
+        typer.echo(json.dumps([s.to_dict() for s in snaps], ensure_ascii=False))
+        return
+    if not snaps:
+        console.print("[yellow]暂无快照记录，请先运行 `hiveflow perf snapshot`。[/yellow]")
+        return
+    table = Table(title="实盘组合快照", box=box.SIMPLE)
+    table.add_column("ID", style="dim")
+    table.add_column("时间", style="bold")
+    table.add_column("总价值（USD）", style="cyan")
+    table.add_column("来源")
+    table.add_column("备注", style="dim")
+    for s in snaps:
+        table.add_row(
+            str(s.id),
+            s.timestamp[:19],
+            f"{s.total_value_usd:.2f}",
+            s.source,
+            s.notes or "",
+        )
+    console.print(table)
+
+
+@perf_app.command("compare")
+def perf_compare(
+    backtest_id: int = typer.Argument(..., help="回测 ID"),
+    output: str = typer.Option("pretty", "--output", callback=_validate_output_format),
+    database_url: str | None = typer.Option(None, "--database-url", envvar="HIVEFLOW_DATABASE_URL", hidden=True),
+):
+    """对比实盘权益曲线与指定回测，输出 Sparkline + 指标。"""
+    settings = Settings(database_url=database_url) if database_url else Settings()
+    try:
+        result = compare_with_backtest(backtest_id=backtest_id, settings=settings)
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+
+    if output == "json":
+        typer.echo(json.dumps(result.to_dict(), ensure_ascii=False))
+        return
+
+    # Sparkline 并排
+    console.print(f"\n[bold]实盘[/bold] ({result.snapshot_count} 个快照) vs [bold]回测 #{result.backtest_id}[/bold]\n")
+    console.print(f"  实盘 : {result.live_sparkline}")
+    console.print(f"  回测 : {result.backtest_sparkline}\n")
+
+    # 指标表
+    def _fmt_pct(v: float | None) -> str:
+        return f"{v * 100:.2f}%" if v is not None else "N/A"
+
+    table = Table(box=box.SIMPLE)
+    table.add_column("指标", style="bold")
+    table.add_column("实盘", style="cyan")
+    table.add_column("回测", style="green")
+    table.add_row("总收益率", _fmt_pct(result.live_total_return), _fmt_pct(result.backtest_total_return))
+    table.add_row("年化收益率", _fmt_pct(result.live_annual_return), _fmt_pct(result.backtest_annual_return))
+    table.add_row("最大回撤", _fmt_pct(result.live_mdd), _fmt_pct(result.backtest_mdd))
+    console.print(table)
+
+
+@perf_app.command("setup-cron")
+def perf_setup_cron(
+    dry_run: bool = typer.Option(False, "--dry-run", help="只打印 crontab 行，不实际写入"),
+    config_path: str = typer.Option("config/tracking.json", "--config", help="追踪配置文件路径"),
+):
+    """读取 config/tracking.json，安装 perf snapshot 定时任务到系统 crontab。"""
+    import subprocess
+
+    config_file = Path(config_path)
+    if not config_file.exists():
+        console.print(f"[red]配置文件 {config_path} 不存在，请先创建 config/tracking.json。[/red]")
+        raise typer.Exit(1)
+
+    tracking_config = json.loads(config_file.read_text())
+    interval = tracking_config.get("snapshot_interval", "1h")
+    intervals = tracking_config.get("_intervals", {
+        "1h": "0 * * * *",
+        "6h": "0 */6 * * *",
+        "daily": "0 9 * * *",
+    })
+    cron_schedule = intervals.get(interval, "0 * * * *")
+
+    project_dir = Path.cwd().resolve()
+    cron_line = f"{cron_schedule} cd {project_dir} && uv run hiveflow perf snapshot --source cron"
+
+    if dry_run:
+        console.print("[yellow]（dry-run）生成的 crontab 行：[/yellow]")
+        console.print(cron_line)
+        return
+
+    # 读取现有 crontab，去重后追加
+    existing = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
+    current_lines = existing.stdout.strip().splitlines() if existing.returncode == 0 else []
+    # 移除旧的同类行
+    current_lines = [line for line in current_lines if "hiveflow perf snapshot" not in line]
+    current_lines.append(cron_line)
+    new_crontab = "\n".join(current_lines) + "\n"
+
+    proc = subprocess.run(["crontab", "-"], input=new_crontab, text=True, capture_output=True)
+    if proc.returncode != 0:
+        console.print(f"[red]写入 crontab 失败：{proc.stderr}[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"[green]crontab 已更新（间隔：{interval}）：[/green]")
+    console.print(cron_line)
 
 
 def run() -> None:
