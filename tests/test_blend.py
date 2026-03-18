@@ -105,6 +105,18 @@ def test_create_blend_weights_not_normalized_raises(tmp_path):
         )
 
 
+def test_create_blend_mismatched_weights_raises(tmp_path):
+    settings = _settings(tmp_path)
+    create_all_tables(settings)
+    with pytest.raises(ValueError, match="不一致"):
+        create_blend(
+            name="mismatch",
+            strategy_names=["MomentumStrategy", "EqualWeightStrategy"],
+            weights=[0.5, 0.3, 0.2],  # 3 weights for 2 strategies
+            settings=settings,
+        )
+
+
 def test_list_blends(tmp_path):
     settings = _settings(tmp_path)
     create_blend("b1", ["MomentumStrategy"], None, "sharpe", settings=settings)

@@ -2347,7 +2347,7 @@ def blend_list(
     settings = Settings(database_url=database_url) if database_url else Settings()
     blends = list_blends(settings=settings)
     if output == "json":
-        console.print(json.dumps([b.to_dict() for b in blends], ensure_ascii=False))
+        typer.echo(json.dumps([b.to_dict() for b in blends], ensure_ascii=False))
         return
     if not blends:
         console.print("[yellow]暂无 blend 配置。[/yellow]")
@@ -2385,7 +2385,7 @@ def blend_show(
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
     if output == "json":
-        console.print(json.dumps(cfg.to_dict(), ensure_ascii=False))
+        typer.echo(json.dumps(cfg.to_dict(), ensure_ascii=False))
         return
     console.print(Panel(
         f"[bold]{cfg.name}[/bold]\n"
@@ -2412,7 +2412,7 @@ def blend_run(
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
     if output == "json":
-        console.print(json.dumps(result.to_dict(), ensure_ascii=False))
+        typer.echo(json.dumps(result.to_dict(), ensure_ascii=False))
         return
     table = Table(title=f"Blend '{result.name}' 资产权重", box=box.SIMPLE)
     table.add_column("资产", style="bold")

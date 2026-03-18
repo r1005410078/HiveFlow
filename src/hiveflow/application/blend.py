@@ -77,6 +77,10 @@ def create_blend(
             raise ValueError(
                 f"权重之和必须等于 1.0（当前：{total:.4f}）。"
             )
+        if len(weights) != len(strategy_names):
+            raise ValueError(
+                f"权重数量（{len(weights)}）与策略数量（{len(strategy_names)}）不一致。"
+            )
         weights_dict = dict(zip(strategy_names, weights))
     else:
         weights_dict = {}
