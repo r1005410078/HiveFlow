@@ -1761,6 +1761,53 @@ def backtest_show_command(
         typer.echo(f"  创建：{created_date}")
 
 
+@backtest_app.command("compare")
+def backtest_compare_command(
+    ids: list[int] = typer.Argument(..., help="回测记录 ID 列表（空格分隔）"),
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+) -> None:
+    """并排对比多条回测的权益曲线与指标。"""
+    output_format = _validate_output_format(output)
+
+    # 全量预检：先收集所有无效 ID，再输出
+    settings = Settings()
+    errors: list[str] = []
+    results: list = []
+    for bid in ids:
+        try:
+            results.append(get_backtest_result(bid, settings=settings))
+        except ValueError:
+            errors.append(str(bid))
+    if errors:
+        typer.echo(f"错误：以下回测记录不存在：{', '.join(errors)}")
+        raise typer.Exit(code=1)
+
+    if output_format == "json":
+        typer.echo(json.dumps([r.to_dict() for r in results], ensure_ascii=False, indent=2))
+        return
+
+    # 指标对比表
+    typer.echo("策略对比\n")
+    typer.echo(f"  {'ID':>4}  {'策略':<16}  {'类型':<6}  {'周期':>4}  {'总收益':>8}  {'最大回撤':>8}  {'Sharpe':>6}")
+    for r in results:
+        btype = "动态" if r.backtest_type == "dynamic" else "静态"
+        typer.echo(
+            f"  {r.id!s:>4}  {r.strategy_name:<16}  {btype:<6}  {r.periods:>4}  "
+            f"{r.total_return:>+8.1%}  {r.max_drawdown:>8.1%}  {r.sharpe:>6.2f}"
+        )
+
+    # 权益曲线（各起点归一为 1.0，sparkline width=28）
+    typer.echo("\n  权益曲线（各起点归一为 1.0）")
+    for r in results:
+        name = r.strategy_name[:14]
+        if r.equity_curve is not None:
+            curve = json.loads(r.equity_curve)
+            spark = _sparkline(curve, width=28)
+        else:
+            spark = "[无曲线数据]"
+        typer.echo(f"  #{r.id}  {name:<14}  {spark}")
+
+
 @backtest_app.command("quant-run")
 def backtest_quant_run_command(
     strategy: str = typer.Option(..., "--strategy", "-s", help="量化策略类名（如 MomentumStrategy）"),

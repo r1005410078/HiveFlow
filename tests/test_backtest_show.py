@@ -200,3 +200,49 @@ def test_backtest_show_json_output(tmp_path: Path, monkeypatch) -> None:
     data = json.loads(result.output)
     assert "strategy_name" in data
     assert "equity_curve" in data
+
+
+# ─── Task 5：backtest compare ─────────────────────────────────────────────────
+
+def test_backtest_compare_cli(tmp_path: Path, monkeypatch) -> None:
+    """backtest compare <id1> <id2> exit_code=0，输出含两行 sparkline。"""
+    from typer.testing import CliRunner
+    from hiveflow.cli import app
+    _SPARK_CHARS = "▁▂▃▄▅▆▇█"
+    curve1 = [1.0 + i * 0.01 for i in range(20)]
+    curve2 = [1.0 + i * 0.005 for i in range(20)]
+    rid1 = _seed_record(tmp_path, monkeypatch, equity_curve=curve1)
+    rid2 = _seed_record(tmp_path, monkeypatch, equity_curve=curve2)
+    runner = CliRunner()
+    result = runner.invoke(app, ["backtest", "compare", str(rid1), str(rid2)])
+    assert result.exit_code == 0, result.output
+    assert any(c in result.output for c in _SPARK_CHARS)
+
+
+def test_backtest_compare_missing_id(tmp_path: Path, monkeypatch) -> None:
+    """含不存在 ID 时，exit_code=1，输出列出所有无效 ID。"""
+    from typer.testing import CliRunner
+    from hiveflow.cli import app
+    curve = [1.0 + i * 0.01 for i in range(20)]
+    rid = _seed_record(tmp_path, monkeypatch, equity_curve=curve)
+    runner = CliRunner()
+    result = runner.invoke(app, ["backtest", "compare", str(rid), "9999"])
+    assert result.exit_code == 1
+    assert "9999" in result.output
+
+
+def test_backtest_compare_json_output(tmp_path: Path, monkeypatch) -> None:
+    """--output json 应输出含 2 元素的 list，每项含 strategy_name 键。"""
+    from typer.testing import CliRunner
+    from hiveflow.cli import app
+    curve1 = [1.0, 1.02, 1.05]
+    curve2 = [1.0, 1.01, 1.03]
+    rid1 = _seed_record(tmp_path, monkeypatch, equity_curve=curve1)
+    rid2 = _seed_record(tmp_path, monkeypatch, equity_curve=curve2)
+    runner = CliRunner()
+    result = runner.invoke(app, ["backtest", "compare", str(rid1), str(rid2), "--output", "json"])
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+    assert isinstance(data, list)
+    assert len(data) == 2
+    assert all("strategy_name" in item for item in data)
