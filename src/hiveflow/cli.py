@@ -57,6 +57,8 @@ from hiveflow.application.quant_strategies import (
     run_quant_strategy,
 )
 from hiveflow.application.blend import (
+    BlendConfigView,
+    BlendRunResult,
     create_blend,
     get_blend,
     list_blends,
