@@ -331,6 +331,100 @@ uv run hiveflow risk-analysis portfolio 3 --output json
   Calmar       4.22
 ```
 
+### 3.0.8 多策略混合 Example（M9）
+
+```bash
+# Example A: 创建自动优化 blend（权重由 Sharpe 归一化计算）
+uv run hiveflow quant blend create my_blend \
+  --strategies Momentum,EqualWeight,RiskParity
+
+# Example B: 创建手动权重 blend
+uv run hiveflow quant blend create manual_blend \
+  --strategies Momentum,EqualWeight \
+  --weights 0.7,0.3
+
+# Example C: 指定优化指标（calmar / return）
+uv run hiveflow quant blend create calmar_blend \
+  --strategies Momentum,MaxSharpe,MinVariance \
+  --optimize-metric calmar
+
+# Example D: 运行 blend，查看混合后资产权重
+uv run hiveflow quant blend run my_blend
+
+# Example E: 运行并直接写入目标持仓
+uv run hiveflow quant blend run my_blend --apply
+
+# Example F: JSON 输出（给脚本/AI 消费）
+uv run hiveflow quant blend run my_blend --output json
+
+# Example G: 查看所有 blend 配置
+uv run hiveflow quant blend list
+
+# Example H: 查看某个 blend 详情
+uv run hiveflow quant blend show my_blend
+```
+
+**`quant blend run` 输出示例：**
+
+```
+Blend 'my_blend' 资产权重
+
+  资产    权重
+  BTC    0.4200
+  ETH    0.3100
+  SOL    0.1800
+  BNB    0.0900
+```
+
+### 3.0.9 实盘绩效追踪 Example（M9）
+
+```bash
+# Example A: 手动记录一次持仓快照（从 OKX 同步当前持仓价值）
+uv run hiveflow perf snapshot
+
+# Example B: 查看历史快照列表
+uv run hiveflow perf list
+
+# Example C: 查看最近 5 条快照
+uv run hiveflow perf list --limit 5
+
+# Example D: JSON 输出
+uv run hiveflow perf list --output json
+
+# Example E: 对比实盘 vs 回测 #3 的权益曲线
+uv run hiveflow perf compare 3
+
+# Example F: JSON 输出（给脚本/AI 消费）
+uv run hiveflow perf compare 3 --output json
+
+# Example G: 预览将要写入 crontab 的定时行（不实际写入）
+uv run hiveflow perf setup-cron --dry-run
+
+# Example H: 安装定时快照（每小时，读取 config/tracking.json）
+uv run hiveflow perf setup-cron
+```
+
+**`perf compare` 输出示例：**
+
+```
+实盘（10 个快照） vs 回测 #3
+
+  实盘 : ▁▂▂▃▄▄▅▅▆▇
+  回测 : ▁▂▃▄▅▅▆▇▇█
+
+  指标          实盘       回测
+  总收益率      8.00%    18.50%
+  年化收益率   32.10%    55.30%
+  最大回撤     -2.50%    -8.20%
+```
+
+**`perf setup-cron --dry-run` 输出示例：**
+
+```
+（dry-run）生成的 crontab 行：
+0 * * * * cd /path/to/project && uv run hiveflow perf snapshot --source cron
+```
+
 ### 3.1 初始化本地数据库与基础数据
 
 ```bash
