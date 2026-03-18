@@ -37,3 +37,5 @@
 - RiskParity / MaxSharpe / MinVariance 依赖 PyPortfolioOpt（可选），不安装时自动降级为等权重并打印提示。
 - 更新 `hiveflow-portfolio-advisor` Skill，新增 Step 2 量化策略工作流与 JSON 输出示例。
 - 全量测试：193 passed。
+- 完成动态回测：新增 `backtest quant-run --strategy <StrategyName>`，支持每隔 N 天重新计算量化策略权重并回测，结果落库 BacktestResult（backtest_type=dynamic）；backtest list 新增 ID 和类型列。
+- 全量测试：204 passed。
