@@ -15,6 +15,7 @@ from hiveflow.services.backtest_engine import (
     run_weighted_backtest,
 )
 from hiveflow.services.strategies.equal_weight import EqualWeightStrategy
+from hiveflow.application.backtest import get_backtest_result
 
 
 # ─── 辅助函数 ────────────────────────────────────────────────────────────────
@@ -102,7 +103,6 @@ def test_backtest_result_view_has_equity_curve(tmp_path: Path, monkeypatch) -> N
     """BacktestResultView 应有 equity_curve 字段。"""
     curve = [1.0, 1.05, 1.03, 1.08]
     rid = _seed_record(tmp_path, monkeypatch, equity_curve=curve)
-    from hiveflow.application.backtest import get_backtest_result
     view = get_backtest_result(rid)
     assert view.equity_curve == json.dumps(curve)
 
@@ -111,7 +111,6 @@ def test_to_dict_includes_equity_curve(tmp_path: Path, monkeypatch) -> None:
     """to_dict() 应包含 equity_curve 键。"""
     curve = [1.0, 1.02, 0.99]
     rid = _seed_record(tmp_path, monkeypatch, equity_curve=curve)
-    from hiveflow.application.backtest import get_backtest_result
     view = get_backtest_result(rid)
     d = view.to_dict()
     assert "equity_curve" in d
@@ -121,8 +120,6 @@ def test_to_dict_includes_equity_curve(tmp_path: Path, monkeypatch) -> None:
 def test_get_backtest_result_not_found(tmp_path: Path, monkeypatch) -> None:
     """不存在的 ID 应抛出 ValueError。"""
     monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{tmp_path}/bt.db")
-    from hiveflow.db import create_all_tables
     create_all_tables()
-    from hiveflow.application.backtest import get_backtest_result
     with pytest.raises(ValueError, match="不存在"):
         get_backtest_result(9999)
