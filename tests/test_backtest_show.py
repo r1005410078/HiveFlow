@@ -8,7 +8,16 @@ import pytest
 
 from hiveflow.db import create_all_tables, get_session
 from hiveflow.domain.backtests import BacktestResult
+from hiveflow.services.backtest_engine import (
+    BacktestMetrics,
+    PriceBar,
+    run_dynamic_backtest,
+    run_weighted_backtest,
+)
+from hiveflow.services.strategies.equal_weight import EqualWeightStrategy
 
+
+# ─── 辅助函数 ────────────────────────────────────────────────────────────────
 
 def _seed_record(tmp_path: Path, monkeypatch, equity_curve=None) -> int:
     """在临时 DB 中种入一条 BacktestResult，返回其 id。"""
@@ -30,6 +39,15 @@ def _seed_record(tmp_path: Path, monkeypatch, equity_curve=None) -> int:
         return row.id
 
 
+def _make_bars(symbol: str, closes: list[float]) -> list[PriceBar]:
+    return [
+        PriceBar(symbol=symbol, timestamp=f"2026-01-{i+1:02d}T00:00:00Z", close=c)
+        for i, c in enumerate(closes)
+    ]
+
+
+# ─── Task 1：equity_curve 字段 ────────────────────────────────────────────────
+
 def test_backtest_result_has_equity_curve_field(tmp_path: Path, monkeypatch) -> None:
     """BacktestResult 应有 equity_curve 字段，默认为 None。"""
     rid = _seed_record(tmp_path, monkeypatch)
@@ -40,21 +58,7 @@ def test_backtest_result_has_equity_curve_field(tmp_path: Path, monkeypatch) -> 
         assert row.equity_curve is None
 
 
-from hiveflow.services.backtest_engine import (
-    BacktestMetrics,
-    PriceBar,
-    run_dynamic_backtest,
-    run_weighted_backtest,
-)
-from hiveflow.services.strategies.equal_weight import EqualWeightStrategy
-
-
-def _make_bars(symbol: str, closes: list[float]) -> list[PriceBar]:
-    return [
-        PriceBar(symbol=symbol, timestamp=f"2026-01-{i+1:02d}T00:00:00Z", close=c)
-        for i, c in enumerate(closes)
-    ]
-
+# ─── Task 2：BacktestMetrics.curve ───────────────────────────────────────────
 
 def test_backtest_metrics_has_curve() -> None:
     """BacktestMetrics.curve 应存在，长度 == periods + 1，首值为 1.0。"""
