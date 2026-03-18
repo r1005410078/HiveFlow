@@ -136,3 +136,62 @@ def test_run_dynamic_backtest_with_fee() -> None:
     metrics_with_fee, _ = run_dynamic_backtest(prices=prices, strategy=strategy, rebalance_days=7, fee_bps=50.0)
 
     assert metrics_with_fee.total_return < metrics_no_fee.total_return
+
+
+# ─── Task 3 测试：application 层 ─────────────────────────────────────────────
+
+def _seed_market_bars(tmp_path: Path, monkeypatch, n_days: int = 20) -> None:
+    """将测试价格写入 MarketBar 表（MarketBar 所有非空字段均需填写）。"""
+    from datetime import datetime, timezone
+    from hiveflow.domain.market_data import MarketBar
+    from hiveflow.db import create_all_tables, get_session
+    import math
+
+    create_all_tables()
+    with get_session() as session:
+        for day in range(n_days):
+            ts = datetime(2026, 1, day + 1, tzinfo=timezone.utc)
+            btc_close = 100.0 * (1 + 0.01 * math.sin(day))
+            eth_close = 50.0 * (1 + 0.015 * math.cos(day))
+            session.add(MarketBar(
+                symbol="BTC", timestamp=ts,
+                open=btc_close, high=btc_close, low=btc_close, close=btc_close, volume=0.0,
+            ))
+            session.add(MarketBar(
+                symbol="ETH", timestamp=ts,
+                open=eth_close, high=eth_close, low=eth_close, close=eth_close, volume=0.0,
+            ))
+        session.commit()
+
+
+def test_run_quant_backtest_persists(tmp_path: Path, monkeypatch) -> None:
+    """run_quant_backtest 应写入 BacktestResult，backtest_type='dynamic'。"""
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{tmp_path}/bt.db")
+    _seed_market_bars(tmp_path, monkeypatch)
+
+    strategy = EqualWeightStrategy()
+    result = run_quant_backtest(strategy=strategy, rebalance_days=7)
+
+    assert result.strategy_name == "EqualWeightStrategy"
+    assert result.backtest_type == "dynamic"
+    assert result.periods > 0
+    assert result.weights_snapshot is not None
+    weights = json.loads(result.weights_snapshot)
+    assert abs(sum(weights.values()) - 1.0) < 1e-6
+
+
+def test_backtest_list_shows_backtest_type(tmp_path: Path, monkeypatch) -> None:
+    """`list_backtest_results()` 返回含 backtest_type 字段的视图。"""
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{tmp_path}/bt.db")
+    _seed_market_bars(tmp_path, monkeypatch)
+
+    strategy = EqualWeightStrategy()
+    run_quant_backtest(strategy=strategy, rebalance_days=7)
+
+    rows = list_backtest_results()
+    assert len(rows) == 1
+    assert rows[0].backtest_type == "dynamic"
+    # to_dict 也应包含该字段
+    d = rows[0].to_dict()
+    assert "backtest_type" in d
+    assert d["backtest_type"] == "dynamic"

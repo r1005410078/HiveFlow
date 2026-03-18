@@ -28,6 +28,7 @@ class BacktestResultView:
     max_drawdown: float
     sharpe: float
     weights_snapshot: str | None
+    backtest_type: str
     created_at: str
 
     def to_dict(self) -> dict[str, str | float | int | None]:
@@ -41,6 +42,7 @@ class BacktestResultView:
             "max_drawdown": round(self.max_drawdown, 6),
             "sharpe": round(self.sharpe, 6),
             "weights_snapshot": self.weights_snapshot,
+            "backtest_type": self.backtest_type,
             "created_at": self.created_at,
         }
 
@@ -55,6 +57,7 @@ def _to_view(row: BacktestResult) -> BacktestResultView:
         max_drawdown=row.max_drawdown,
         sharpe=row.sharpe,
         weights_snapshot=row.weights_snapshot,
+        backtest_type=row.backtest_type,
         created_at=row.created_at.isoformat(),
     )
 
@@ -105,6 +108,7 @@ def run_backtest_for_strategy(
             max_drawdown=metrics.max_drawdown,
             sharpe=metrics.sharpe,
             weights_snapshot=json.dumps(weights),
+            backtest_type="static",
         )
         session.add(row)
         session.commit()
@@ -124,16 +128,61 @@ def list_backtest_results(strategy_name: str | None = None, settings=None) -> li
 
 
 def run_quant_backtest(
-    strategy_name: str,
-    strategy,
-    prices: dict | None = None,
-    rebalance_interval: int = 1,
+    strategy: "BaseStrategy",
+    rebalance_days: int = 7,
+    symbols: list[str] | None = None,
     fee_bps: float = 0.0,
     slippage_bps: float = 0.0,
     settings=None,
 ) -> BacktestResultView:
-    """执行量化策略动态回测并持久化结果。待实现。"""
-    raise NotImplementedError("run_quant_backtest 尚未实现（Task 3）。")
+    """执行量化策略动态回测并持久化结果。
+
+    strategy: 已实例化的 BaseStrategy 子类
+    rebalance_days: 再平衡周期（天）
+    symbols: 指定资产池；None 时自动从 MarketBar 读取所有 symbol
+    """
+    from hiveflow.domain.market_data import MarketBar
+    from hiveflow.services.backtest_engine import run_dynamic_backtest
+
+    create_all_tables(settings)
+
+    # 解析资产池
+    if symbols is None:
+        with get_session(settings) as session:
+            rows = session.exec(select(MarketBar.symbol).distinct()).all()
+        symbols = list(rows)
+    if not symbols:
+        raise ValueError("MarketBar 中没有数据，请先运行 hiveflow market-data import。")
+
+    prices = load_close_prices_from_db(symbols=symbols, settings=settings)
+    if not prices:
+        raise ValueError("指定 symbol 在 MarketBar 中无数据，请先运行 hiveflow market-data import。")
+
+    metrics, final_weights = run_dynamic_backtest(
+        prices=prices,
+        strategy=strategy,
+        rebalance_days=rebalance_days,
+        fee_bps=fee_bps,
+        slippage_bps=slippage_bps,
+    )
+
+    strategy_name = type(strategy).__name__
+
+    with get_session(settings) as session:
+        row = BacktestResult(
+            strategy_name=strategy_name,
+            prices_file="DB:MarketBar",
+            periods=metrics.periods,
+            total_return=metrics.total_return,
+            max_drawdown=metrics.max_drawdown,
+            sharpe=metrics.sharpe,
+            weights_snapshot=json.dumps(final_weights),
+            backtest_type="dynamic",
+        )
+        session.add(row)
+        session.commit()
+        session.refresh(row)
+    return _to_view(row)
 
 
 def set_targets_from_backtest(backtest_id: int, settings=None) -> dict[str, float]:
