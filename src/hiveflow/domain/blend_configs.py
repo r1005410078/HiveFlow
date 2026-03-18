@@ -15,7 +15,7 @@ class BlendConfig(SQLModel, table=True):
     """多策略混合配置：记录参与混合的策略名称、权重及自动优化设置。"""
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    name: str = Field(sa_column=Column(String, unique=True))  # DB 级唯一约束
+    name: str = Field(sa_column=Column(String, nullable=False, unique=True))  # DB 级唯一约束
     strategy_names: str          # JSON list，如 ["MomentumStrategy", "EqualWeightStrategy"]
     weights: str                 # JSON dict，如 {"MomentumStrategy": 0.6, "EqualWeightStrategy": 0.4}
     auto_optimized: bool         # True = 运行时自动计算权重；False = 使用手动权重
