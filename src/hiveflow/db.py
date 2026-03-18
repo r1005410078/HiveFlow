@@ -7,6 +7,7 @@ from sqlmodel import Session, SQLModel, create_engine
 from hiveflow.config import Settings
 from hiveflow.domain.grid_positions import GridPosition  # noqa: F401
 from hiveflow.domain.strategy_runs import StrategyRun  # noqa: F401
+from hiveflow.domain.blend_configs import BlendConfig  # noqa: F401
 # StrategyRun: SQLModel.metadata.create_all 在首次运行时自动建表，无需迁移分支
 
 
