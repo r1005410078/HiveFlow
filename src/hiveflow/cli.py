@@ -1671,7 +1671,9 @@ def list_backtest_command(
         typer.echo("暂无回测记录。")
         return
     table = Table(title="回测记录", show_lines=False, box=box.SIMPLE)
+    table.add_column("ID", justify="right")
     table.add_column("策略", justify="left")
+    table.add_column("类型")
     table.add_column("周期", justify="right")
     table.add_column("总收益", justify="right")
     table.add_column("最大回撤", justify="right")
@@ -1679,7 +1681,9 @@ def list_backtest_command(
     table.add_column("时间", justify="left")
     for item in rows:
         table.add_row(
+            str(item.id) if item.id is not None else "-",
             item.strategy_name,
+            item.backtest_type,
             str(item.periods),
             f"{item.total_return:.2%}",
             f"{item.max_drawdown:.2%}",
@@ -1687,6 +1691,71 @@ def list_backtest_command(
             item.created_at,
         )
     console.print(table)
+
+
+@backtest_app.command("quant-run")
+def backtest_quant_run_command(
+    strategy: str = typer.Option(..., "--strategy", "-s", help="量化策略类名（如 MomentumStrategy）"),
+    rebalance_days: int = typer.Option(7, "--rebalance-days", help="再平衡周期（天，默认 7）"),
+    symbols: str | None = typer.Option(None, "--symbols", help="资产池，逗号分隔（不填则用 MarketBar 全部）"),
+    fee_bps: float = typer.Option(0.0, "--fee-bps", help="单次再平衡手续费（基点）"),
+    slippage_bps: float = typer.Option(0.0, "--slippage-bps", help="单次再平衡滑点（基点）"),
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+) -> None:
+    """运行量化策略动态回测（每隔 N 天重新计算权重）。"""
+    from hiveflow.application.backtest import run_quant_backtest
+
+    output_format = _validate_output_format(output)
+
+    # 解析策略类
+    if strategy not in _BUILTIN_STRATEGIES:
+        console.print(f"[red]未知策略：{strategy}，可用策略请运行 'hiveflow quant list'[/red]")
+        raise typer.Exit(1)
+    strategy_class, _ = _BUILTIN_STRATEGIES[strategy]
+    strategy_instance = strategy_class()
+
+    # 解析 symbols
+    symbols_list: list[str] | None = None
+    if symbols:
+        symbols_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+
+    try:
+        result = run_quant_backtest(
+            strategy=strategy_instance,
+            rebalance_days=rebalance_days,
+            symbols=symbols_list,
+            fee_bps=fee_bps,
+            slippage_bps=slippage_bps,
+        )
+    except ValueError as exc:
+        console.print(f"[red]回测失败：{exc}[/red]")
+        raise typer.Exit(1)
+
+    if output_format == "json":
+        payload = result.to_dict()
+        payload["strategy"] = result.strategy_name  # 冗余字段方便 Agent 消费
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    table = Table(title="动态回测结果", show_lines=False, box=box.SIMPLE, min_width=80)
+    table.add_column("策略", style="bold", no_wrap=True)
+    table.add_column("类型")
+    table.add_column("再平衡周期")
+    table.add_column("总周期数", justify="right")
+    table.add_column("总收益", justify="right")
+    table.add_column("最大回撤", justify="right")
+    table.add_column("Sharpe", justify="right")
+    table.add_row(
+        result.strategy_name,
+        result.backtest_type,
+        f"{rebalance_days} 天",
+        str(result.periods),
+        f"{result.total_return:.2%}",
+        f"{result.max_drawdown:.2%}",
+        f"{result.sharpe:.2f}",
+    )
+    console.print(table)
+    console.print(f"[dim]回测 ID：{result.id}（可用 'hiveflow targets set-from-backtest {result.id}' 应用）[/dim]")
 
 
 @app.command()

@@ -193,3 +193,68 @@ def test_backtest_list_shows_backtest_type(tmp_path: Path, monkeypatch) -> None:
     d = rows[0].to_dict()
     assert "backtest_type" in d
     assert d["backtest_type"] == "dynamic"
+
+
+# ─── Task 4 测试：CLI ─────────────────────────────────────────────────────────
+
+def test_cli_backtest_quant_run(tmp_path: Path, monkeypatch) -> None:
+    """CLI `backtest quant-run` 应输出策略名和指标。"""
+    from typer.testing import CliRunner
+    from hiveflow.cli import app
+
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{tmp_path}/bt.db")
+    _seed_market_bars(tmp_path)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["backtest", "quant-run", "--strategy", "EqualWeightStrategy"])
+
+    assert result.exit_code == 0, result.output
+    assert "EqualWeightStrategy" in result.output
+    assert "dynamic" in result.output
+
+
+def test_cli_backtest_quant_run_json(tmp_path: Path, monkeypatch) -> None:
+    """`--output json` 输出包含 backtest_type=dynamic 的 JSON。"""
+    from typer.testing import CliRunner
+    from hiveflow.cli import app
+
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{tmp_path}/bt.db")
+    _seed_market_bars(tmp_path)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["backtest", "quant-run", "--strategy", "EqualWeightStrategy", "--output", "json"])
+
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+    assert data["backtest_type"] == "dynamic"
+    assert data["strategy"] == "EqualWeightStrategy"
+
+
+def test_cli_backtest_list_shows_type(tmp_path: Path, monkeypatch) -> None:
+    """`backtest list` 表格应显示 backtest_type 列。"""
+    from typer.testing import CliRunner
+    from hiveflow.cli import app
+
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{tmp_path}/bt.db")
+    _seed_market_bars(tmp_path)
+
+    runner = CliRunner()
+    # 先运行一次动态回测
+    runner.invoke(app, ["backtest", "quant-run", "--strategy", "EqualWeightStrategy"])
+    # 再 list
+    result = runner.invoke(app, ["backtest", "list"])
+
+    assert result.exit_code == 0, result.output
+    assert "dynamic" in result.output
+
+
+def test_cli_backtest_quant_run_unknown_strategy(tmp_path: Path, monkeypatch) -> None:
+    """未知策略名应以非零退出码退出并显示错误。"""
+    from typer.testing import CliRunner
+    from hiveflow.cli import app
+
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{tmp_path}/bt.db")
+    runner = CliRunner()
+    result = runner.invoke(app, ["backtest", "quant-run", "--strategy", "NonExistentStrategy"])
+    assert result.exit_code != 0
+    assert "NonExistentStrategy" in result.output or "未知" in result.output
