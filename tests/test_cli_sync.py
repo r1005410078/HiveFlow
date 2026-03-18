@@ -57,13 +57,13 @@ def test_sync_days_flag_passed_to_usecase(monkeypatch) -> None:
     assert mock_fn.call_args.kwargs.get("days") == 7
 
 
-def test_sync_rejects_days_over_100(monkeypatch) -> None:
+def test_sync_rejects_days_over_500(monkeypatch) -> None:
     monkeypatch.setenv("HIVEFLOW_OKX_API_KEY", "k")
     monkeypatch.setenv("HIVEFLOW_OKX_API_SECRET", "s")
     monkeypatch.setenv("HIVEFLOW_OKX_API_PASSPHRASE", "p")
-    result = CliRunner().invoke(app, ["sync", "--days", "200"])
+    result = CliRunner().invoke(app, ["sync", "--days", "501"])
     assert result.exit_code == 1
-    assert "100" in result.output
+    assert "500" in result.output
 
 
 def test_sync_shows_auth_error(monkeypatch) -> None:

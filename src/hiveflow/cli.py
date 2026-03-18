@@ -1760,7 +1760,7 @@ def backtest_quant_run_command(
 
 @app.command()
 def sync(
-    days: int | None = typer.Option(None, "--days", help="同步最近 N 天 K 线（最大 100）"),
+    days: int | None = typer.Option(None, "--days", help="同步最近 N 天 K 线（超过 100 天自动分页）"),
     output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
 ) -> None:
     """从 OKX 拉取最新持仓和价格，写入本地数据库。"""
@@ -1772,8 +1772,8 @@ def sync(
             style="bold red",
         )
         raise typer.Exit(code=1)
-    if days is not None and not (1 <= days <= 100):
-        console.print("错误：--days 必须在 1 到 100 之间（OKX 单次上限）。", style="bold red")
+    if days is not None and not (1 <= days <= 500):
+        console.print("错误：--days 必须在 1 到 500 之间。", style="bold red")
         raise typer.Exit(code=1)
 
     provider = OkxProvider(

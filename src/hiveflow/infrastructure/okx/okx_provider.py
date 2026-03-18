@@ -113,19 +113,33 @@ class OkxProvider:
         return tickers
 
     def fetch_candles(self, inst_id: str, days: int) -> list[OkxCandle]:
-        """拉取日线 K 线，days 最大 100（OKX 单次限制）。"""
+        """拉取日线 K 线，支持分页（OKX 单次上限 100，超过时自动翻页）。"""
         symbol = inst_id.split("-")[0].upper()
-        limit = min(days, 100)
-        path = f"/api/v5/market/candles?instId={inst_id}&bar=1D&limit={limit}"
-        data = self._get_public(path)
-        candles = []
-        for row in data:
-            ts = datetime.fromtimestamp(int(row[0]) / 1000, tz=timezone.utc)
-            candles.append(OkxCandle(
-                symbol=symbol, timestamp=ts,
-                open=float(row[1]), high=float(row[2]),
-                low=float(row[3]), close=float(row[4]), volume=float(row[5]),
-            ))
+        candles: list[OkxCandle] = []
+        after: str | None = None  # 分页游标（最早一根 K 线的时间戳 ms）
+
+        remaining = days
+        while remaining > 0:
+            limit = min(remaining, 100)
+            path = f"/api/v5/market/candles?instId={inst_id}&bar=1D&limit={limit}"
+            if after is not None:
+                path += f"&after={after}"
+            data = self._get_public(path)
+            if not data:
+                break
+            for row in data:
+                ts = datetime.fromtimestamp(int(row[0]) / 1000, tz=timezone.utc)
+                candles.append(OkxCandle(
+                    symbol=symbol, timestamp=ts,
+                    open=float(row[1]), high=float(row[2]),
+                    low=float(row[3]), close=float(row[4]), volume=float(row[5]),
+                ))
+            # OKX 返回结果按时间降序；最后一条是最早的，用其时间戳作为下一页游标
+            after = data[-1][0]
+            remaining -= len(data)
+            if len(data) < limit:
+                break  # 已无更多数据
+
         return candles
 
     def fetch_grid_positions(self) -> list[OkxGridPosition]:
