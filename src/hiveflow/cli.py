@@ -1731,6 +1731,7 @@ def backtest_show_command(
     output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
 ) -> None:
     """展示单条回测的权益曲线与指标汇总。"""
+    import math
     output_format = _validate_output_format(output)
     try:
         result = get_backtest_result(backtest_id, settings=Settings())
@@ -1772,7 +1773,7 @@ def backtest_show_command(
             typer.echo("  风险指标")
             typer.echo(f"  年化波动率   {risk['annual_vol']:.1%}")
             typer.echo(f"  胜率         {risk['win_rate']:.1%}")
-            calmar_str = f"{risk['calmar_ratio']:.2f}" if risk["calmar_ratio"] != float("inf") else "∞"
+            calmar_str = f"{risk['calmar_ratio']:.2f}" if not math.isinf(risk["calmar_ratio"]) else "∞"
             typer.echo(f"  Calmar       {calmar_str}")
 
 
@@ -2380,6 +2381,7 @@ def risk_portfolio_command(
     output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
 ) -> None:
     """从回测 equity curve 计算组合年化波动率、胜率与 Calmar ratio。"""
+    import math
     output_format = _validate_output_format(output)
     try:
         risk = analyze_portfolio_risk(backtest_id, settings=Settings())
@@ -2393,7 +2395,7 @@ def risk_portfolio_command(
 
     if output_format == "json":
         typer.echo(json.dumps(
-            {k: (v if v != float("inf") else None) for k, v in risk.items()},
+            {k: (None if isinstance(v, float) and (math.isinf(v) or math.isnan(v)) else v) for k, v in risk.items()},
             ensure_ascii=False,
             indent=2,
         ))
@@ -2402,7 +2404,7 @@ def risk_portfolio_command(
     typer.echo(f"组合风险分析（回测 #{backtest_id}）\n")
     typer.echo(f"  年化波动率   {risk['annual_vol']:.1%}")
     typer.echo(f"  胜率         {risk['win_rate']:.1%}")
-    calmar_str = f"{risk['calmar_ratio']:.2f}" if risk["calmar_ratio"] != float("inf") else "∞"
+    calmar_str = f"{risk['calmar_ratio']:.2f}" if not math.isinf(risk["calmar_ratio"]) else "∞"
     typer.echo(f"  Calmar       {calmar_str}")
 
 

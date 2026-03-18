@@ -209,6 +209,20 @@ def test_risk_portfolio_json(tmp_path: Path, monkeypatch) -> None:
     assert "calmar_ratio" in data
 
 
+def test_risk_portfolio_json_inf_calmar(tmp_path: Path, monkeypatch) -> None:
+    """calmar_ratio=inf（无回撤）时，JSON 序列化为 null。"""
+    from typer.testing import CliRunner
+    from hiveflow.cli import app
+    # Strictly ascending curve → no drawdown → calmar = inf → serialized as null
+    curve = [1.0, 1.05, 1.10, 1.15, 1.20]
+    rid = _seed_backtest(tmp_path, monkeypatch, equity_curve=curve)
+    runner = CliRunner()
+    result = runner.invoke(app, ["risk-analysis", "portfolio", str(rid), "--output", "json"])
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+    assert data["calmar_ratio"] is None
+
+
 def test_backtest_show_includes_risk(tmp_path: Path, monkeypatch) -> None:
     """`backtest show` 含 equity_curve 时，输出含"风险指标"节。"""
     from typer.testing import CliRunner
