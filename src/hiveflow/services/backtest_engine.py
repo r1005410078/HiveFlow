@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import pandas as pd
 from csv import DictReader
 from dataclasses import dataclass
 from pathlib import Path
@@ -100,7 +101,7 @@ def run_weighted_backtest(
 
 def run_dynamic_backtest(
     prices: dict[str, list[PriceBar]],
-    strategy: "Any",
+    strategy: "BaseStrategy",
     rebalance_days: int = 7,
     fee_bps: float = 0.0,
     slippage_bps: float = 0.0,
@@ -111,7 +112,6 @@ def run_dynamic_backtest(
     - 历史数据不足（策略抛异常）时降级为等权重
     - 交易成本（fee_bps + slippage_bps）在每个块的第一个周期扣除
     """
-    import pandas as pd
     from hiveflow.services.strategies.base import StrategyContext
 
     symbols = sorted(prices.keys())
