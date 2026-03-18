@@ -90,13 +90,13 @@ def _sparkline(curve: list[float], width: int = 40) -> str:
     """将权益曲线降采样到至多 width 个字符，映射到 8 级 Unicode 块字符。
 
     输出长度规则：
-    - 若 len(curve) >= width：输出恰好 width 个字符
+    - 若 len(curve) >= width：输出至多 width 个字符（完整表示曲线）
     - 若 len(curve) < width：输出 len(curve) 个字符（不补齐）
     - 若 len(curve) < 2：返回 width 个 '─'
     """
     if not curve or len(curve) < 2:
         return "─" * width
-    step = max(1, len(curve) // width)
+    step = max(1, -(-len(curve) // width))  # ceiling division without math import
     sampled = [
         sum(curve[i : i + step]) / len(curve[i : i + step])
         for i in range(0, len(curve), step)
