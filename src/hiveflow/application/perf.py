@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import math
 from dataclasses import dataclass
 from typing import Optional
 
@@ -189,6 +188,8 @@ def compare_with_backtest(
     live_mdd = _compute_mdd(live_curve)
 
     # 计算回测指标
+    if backtest_curve[0] == 0:
+        raise ValueError(f"回测 #{backtest_id} 的 equity_curve 起始值为 0，无法计算收益率。")
     bt_total_return = backtest_curve[-1] / backtest_curve[0] - 1.0
     bt_mdd = _compute_mdd(backtest_curve)
     bt_days = len(backtest_curve) - 1

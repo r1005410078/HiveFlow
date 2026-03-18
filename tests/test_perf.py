@@ -47,7 +47,6 @@ from hiveflow.domain.backtests import BacktestResult
 
 
 def _seed_backtest_with_curve(session, curve: list[float]) -> BacktestResult:
-    import json as _json
     bt = BacktestResult(
         strategy_name="MomentumStrategy",
         prices_file="test.csv",
@@ -55,7 +54,7 @@ def _seed_backtest_with_curve(session, curve: list[float]) -> BacktestResult:
         total_return=curve[-1] / curve[0] - 1.0,
         max_drawdown=-0.1,
         sharpe=1.5,
-        equity_curve=_json.dumps(curve),
+        equity_curve=json.dumps(curve),
     )
     session.add(bt)
     session.commit()
