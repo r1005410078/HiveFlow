@@ -13,6 +13,7 @@ from hiveflow.application.decision_logs import list_decision_logs
 from hiveflow.application.decision_logs import record_decision_log
 from hiveflow.application.current import set_current_strategy
 from hiveflow.application.current import show_current_strategy
+from hiveflow.application.backtest import BacktestResultView
 from hiveflow.application.backtest import get_backtest_result
 from hiveflow.application.backtest import list_backtest_results
 from hiveflow.application.backtest import run_backtest_for_strategy
@@ -1772,7 +1773,7 @@ def backtest_compare_command(
     # 全量预检：先收集所有无效 ID，再输出
     settings = Settings()
     errors: list[str] = []
-    results: list = []
+    results: list[BacktestResultView] = []
     for bid in ids:
         try:
             results.append(get_backtest_result(bid, settings=settings))

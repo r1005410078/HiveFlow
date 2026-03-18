@@ -216,7 +216,8 @@ def test_backtest_compare_cli(tmp_path: Path, monkeypatch) -> None:
     runner = CliRunner()
     result = runner.invoke(app, ["backtest", "compare", str(rid1), str(rid2)])
     assert result.exit_code == 0, result.output
-    assert any(c in result.output for c in _SPARK_CHARS)
+    lines_with_spark = [line for line in result.output.splitlines() if any(c in line for c in _SPARK_CHARS)]
+    assert len(lines_with_spark) >= 2
 
 
 def test_backtest_compare_missing_id(tmp_path: Path, monkeypatch) -> None:
