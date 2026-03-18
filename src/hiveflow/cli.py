@@ -56,6 +56,12 @@ from hiveflow.application.quant_strategies import (
     list_strategy_runs,
     run_quant_strategy,
 )
+from hiveflow.application.blend import (
+    create_blend,
+    get_blend,
+    list_blends,
+    run_blend,
+)
 from hiveflow.application.risk_analysis import analyze_asset_risk, analyze_portfolio_risk
 from hiveflow.services.strategies import (
     BaseStrategy,
@@ -117,6 +123,7 @@ backtest_app = typer.Typer(help="策略回测命令。")
 trade_app = typer.Typer(help="交易执行命令。")
 skills_app = typer.Typer(name="skills", help="管理 AI Agent Skills。")
 quant_app = typer.Typer(help="量化策略命令。")
+blend_app = typer.Typer(help="多策略混合命令。")
 risk_analysis_app = typer.Typer(help="资产与组合风险分析。")
 console = Console()
 JSON_SCHEMA_VERSION = "1.0.0"
@@ -2070,6 +2077,7 @@ app.add_typer(market_data_app, name="market-data")
 app.add_typer(backtest_app, name="backtest")
 app.add_typer(trade_app, name="trade")
 app.add_typer(skills_app, name="skills")
+quant_app.add_typer(blend_app, name="blend")
 app.add_typer(quant_app, name="quant")
 app.add_typer(risk_analysis_app, name="risk-analysis")
 
@@ -2300,6 +2308,118 @@ def quant_history_command(
             r.run_at,
         )
     console.print(table)
+
+
+@blend_app.command("create")
+def blend_create(
+    name: str = typer.Argument(..., help="Blend 配置名称（唯一）"),
+    strategies: str = typer.Option(..., "--strategies", help="逗号分隔的策略名称，如 MomentumStrategy,EqualWeightStrategy"),
+    weights: str | None = typer.Option(None, "--weights", help="逗号分隔的手动权重（可选），如 0.6,0.4"),
+    optimize_metric: str = typer.Option("sharpe", "--optimize-metric", help="自动优化指标：sharpe | calmar | return"),
+    database_url: str | None = typer.Option(None, "--database-url", envvar="HIVEFLOW_DATABASE_URL", hidden=True),
+):
+    """创建多策略混合配置。"""
+    settings = Settings(database_url=database_url) if database_url else Settings()
+    strategy_list = [s.strip() for s in strategies.split(",")]
+    weight_list = [float(w.strip()) for w in weights.split(",")] if weights else None
+    try:
+        cfg = create_blend(
+            name=name,
+            strategy_names=strategy_list,
+            weights=weight_list,
+            optimize_metric=optimize_metric,
+            settings=settings,
+        )
+    except ValueError as e:
+        console.print(f"[red]错误：{e}[/red]")
+        raise typer.Exit(1)
+    console.print(f"[green]Blend 配置 '{cfg.name}' 已创建（auto_optimized={cfg.auto_optimized}）[/green]")
+
+
+@blend_app.command("list")
+def blend_list(
+    output: str = typer.Option("pretty", "--output", callback=_validate_output_format, help="pretty | json"),
+    database_url: str | None = typer.Option(None, "--database-url", envvar="HIVEFLOW_DATABASE_URL", hidden=True),
+):
+    """列出所有 blend 配置。"""
+    settings = Settings(database_url=database_url) if database_url else Settings()
+    blends = list_blends(settings=settings)
+    if output == "json":
+        console.print(json.dumps([b.to_dict() for b in blends], ensure_ascii=False))
+        return
+    if not blends:
+        console.print("[yellow]暂无 blend 配置。[/yellow]")
+        return
+    table = Table(title="Blend 配置列表", box=box.SIMPLE)
+    table.add_column("ID", style="dim")
+    table.add_column("名称", style="bold")
+    table.add_column("策略", style="cyan")
+    table.add_column("自动优化")
+    table.add_column("指标")
+    table.add_column("更新时间", style="dim")
+    for b in blends:
+        table.add_row(
+            str(b.id),
+            b.name,
+            ", ".join(b.strategy_names),
+            "✓" if b.auto_optimized else "手动",
+            b.optimize_metric,
+            b.updated_at[:19],
+        )
+    console.print(table)
+
+
+@blend_app.command("show")
+def blend_show(
+    name: str = typer.Argument(..., help="Blend 配置名称"),
+    output: str = typer.Option("pretty", "--output", callback=_validate_output_format, help="pretty | json"),
+    database_url: str | None = typer.Option(None, "--database-url", envvar="HIVEFLOW_DATABASE_URL", hidden=True),
+):
+    """显示 blend 配置详情。"""
+    settings = Settings(database_url=database_url) if database_url else Settings()
+    try:
+        cfg = get_blend(name=name, settings=settings)
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    if output == "json":
+        console.print(json.dumps(cfg.to_dict(), ensure_ascii=False))
+        return
+    console.print(Panel(
+        f"[bold]{cfg.name}[/bold]\n"
+        f"策略：{', '.join(cfg.strategy_names)}\n"
+        f"自动优化：{'是' if cfg.auto_optimized else '否'}（指标：{cfg.optimize_metric}）\n"
+        f"当前权重：{json.dumps(cfg.weights, ensure_ascii=False)}\n"
+        f"创建：{cfg.created_at[:19]}  更新：{cfg.updated_at[:19]}",
+        title="Blend 配置",
+    ))
+
+
+@blend_app.command("run")
+def blend_run(
+    name: str = typer.Argument(..., help="Blend 配置名称"),
+    apply: bool = typer.Option(False, "--apply", help="写入 TargetAllocation"),
+    output: str = typer.Option("pretty", "--output", callback=_validate_output_format, help="pretty | json"),
+    database_url: str | None = typer.Option(None, "--database-url", envvar="HIVEFLOW_DATABASE_URL", hidden=True),
+):
+    """执行 blend：计算混合后资产权重，可选写入目标配比。"""
+    settings = Settings(database_url=database_url) if database_url else Settings()
+    try:
+        result = run_blend(name=name, apply=apply, settings=settings)
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    if output == "json":
+        console.print(json.dumps(result.to_dict(), ensure_ascii=False))
+        return
+    table = Table(title=f"Blend '{result.name}' 资产权重", box=box.SIMPLE)
+    table.add_column("资产", style="bold")
+    table.add_column("权重", style="cyan")
+    for symbol, w in sorted(result.asset_weights.items(), key=lambda x: -x[1]):
+        table.add_row(symbol, f"{w:.4f}")
+    console.print(table)
+    if result.applied:
+        console.print("[green]已写入 TargetAllocation[/green]")
 
 
 @risk_analysis_app.command("assets")
