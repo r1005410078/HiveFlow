@@ -6,8 +6,8 @@
 
 ## 当前位置
 
-- 已完成：Chunk 1 ~ Chunk 30 + M4 Chunk 0/1
-- 当前阶段：M4 进行中
+- 已完成：Chunk 1 ~ Chunk 30 + M4 + M5 + M6
+- 当前阶段：M7 规划中
 
 ## 三个里程碑
 
@@ -41,18 +41,37 @@
 - 统一 JSON envelope（`--envelope`）与 `--json-schema`
 - 文档与测试收口（全量回归通过）
 
-## M4：行情驱动分析闭环（进行中）
+## M4：行情驱动分析闭环（已完成）
 
 已交付：
 - `market-data template / validate` 行情输入契约与校验
 - `market-data import / list / summary` 行情落库与查询
 - `backtest run / list` 最小回测引擎与结果落库
+- `targets set-from-backtest` 从回测配比直接写入目标
 
-后续：
-1. 风险分析引擎 v1（指标计算从”导入”升级为”计算”）
-2. 资产配比建议闭环（allocation drift/suggest）
-3. 自定义策略 DSL 与发布流程（导入/验证/生效）
-4. AI/Skills 调用契约冻结（schema 版本治理）
+## M5：OKX 交易执行闭环（已完成）
+
+已交付：
+- `positions list` 区分自由持仓与网格持仓（SPOT/SWAP）
+- `trade execute` OKX 现货市价单执行（余额预检 + 确认流程）
+- `skills list / install` Skills 纳入版本控制，软链接安装
+- `hiveflow-daily-check` + `hiveflow-portfolio-advisor` Skills 迁移到 `skills/`
+
+## M6：量化策略管理（已完成）
+
+已交付：
+- `quant list / run / history` 内置 8 种量化策略（EqualWeight / Momentum / MeanReversion / MovingAverageCross / BollingerBand / RiskParity / MaxSharpe / MinVariance）
+- 策略结果落库 StrategyRun，支持 `--apply` 写入目标
+- `backtest quant-run` 量化策略动态再平衡回测（每隔 N 天重新计算权重，无前视偏差）
+- `sync --days` 支持最多 500 天（OKX 分页拉取）
+
+## M7：下一阶段（规划中）
+
+候选方向：
+1. 回测 equity curve 可视化（`backtest show <id>` 输出权益曲线 + 指标对比）
+2. 风险分析引擎 v1（波动率、最大回撤、Sharpe，从 MarketBar 驱动）
+3. 多策略对比回测（`backtest compare --strategies A,B,C`）
+4. 网格机器人管理（`grid create/list/stop`，OKX Grid Trading API）
 
 ## 决策规则（防止“抓芝麻”）
 
