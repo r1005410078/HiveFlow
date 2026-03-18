@@ -30,3 +30,10 @@
 - 新增 `hiveflow skills list / install` 命令，通过软链接将项目 skills/ 安装到 `~/.agents/skills/`，支持 --force 覆盖。
 - 设计决策：`~/.agents/skills/` 作为统一安装目录，其他平台（Cursor 等）各自软链接到该目录。
 - 全量测试：154 passed。
+
+## 2026-03-18
+
+- 完成 M6：新增 `hiveflow quant` 命令组，内置 8 种量化策略（EqualWeight / Momentum / MeanReversion / MovingAverageCross / BollingerBand / RiskParity / MaxSharpe / MinVariance），策略结果落库 StrategyRun，支持 `--apply` 写入 TargetAllocation + DecisionLog。
+- RiskParity / MaxSharpe / MinVariance 依赖 PyPortfolioOpt（可选），不安装时自动降级为等权重并打印提示。
+- 更新 `hiveflow-portfolio-advisor` Skill，新增 Step 2 量化策略工作流与 JSON 输出示例。
+- 全量测试：193 passed。
