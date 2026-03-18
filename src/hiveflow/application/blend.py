@@ -23,7 +23,7 @@ class BlendConfigView:
     id: int | None
     name: str
     strategy_names: list[str]
-    weights: str          # JSON 字符串，保留原始格式供调用方自行解析
+    weights: dict
     auto_optimized: bool
     optimize_metric: str
     created_at: str
@@ -34,7 +34,7 @@ class BlendConfigView:
             "id": self.id,
             "name": self.name,
             "strategy_names": self.strategy_names,
-            "weights": json.loads(self.weights),
+            "weights": self.weights,
             "auto_optimized": self.auto_optimized,
             "optimize_metric": self.optimize_metric,
             "created_at": self.created_at,
@@ -272,7 +272,7 @@ def _to_view(record: BlendConfig) -> BlendConfigView:
         id=record.id,
         name=record.name,
         strategy_names=json.loads(record.strategy_names),
-        weights=record.weights,   # 保留 JSON 字符串
+        weights=json.loads(record.weights),
         auto_optimized=record.auto_optimized,
         optimize_metric=record.optimize_metric,
         created_at=record.created_at.isoformat(),

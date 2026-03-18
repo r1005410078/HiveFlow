@@ -41,6 +41,7 @@ def test_blend_config_create_and_read(tmp_path):
 
 from hiveflow.application.blend import (
     create_blend,
+    get_blend,
     list_blends,
     run_blend,
     BlendRunResult,
@@ -58,9 +59,8 @@ def test_create_blend_manual_weights(tmp_path):
     )
     assert cfg.name == "manual"
     assert cfg.auto_optimized is False
-    parsed = json.loads(cfg.weights)
-    assert abs(parsed["MomentumStrategy"] - 0.6) < 1e-9
-    assert abs(parsed["EqualWeightStrategy"] - 0.4) < 1e-9
+    assert abs(cfg.weights["MomentumStrategy"] - 0.6) < 1e-9
+    assert abs(cfg.weights["EqualWeightStrategy"] - 0.4) < 1e-9
 
 
 def test_create_blend_auto_weights(tmp_path):
@@ -248,3 +248,9 @@ def test_run_blend_apply_writes_target_allocation(tmp_path):
         ).all()
     symbols = {r.symbol for r in rows}
     assert "BTC" in symbols and "ETH" in symbols
+
+
+def test_get_blend_not_found_raises(tmp_path):
+    settings = _settings(tmp_path)
+    with pytest.raises(ValueError, match="不存在"):
+        get_blend(name="nonexistent", settings=settings)
