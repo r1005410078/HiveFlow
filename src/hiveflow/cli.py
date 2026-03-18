@@ -60,9 +60,11 @@ from hiveflow.application.blend import (
     BlendConfigView,
     BlendRunResult,
     create_blend,
+    delete_blend,
     get_blend,
     list_blends,
     run_blend,
+    update_blend,
 )
 from hiveflow.application.risk_analysis import analyze_asset_risk, analyze_portfolio_risk
 from hiveflow.application.perf import (
@@ -2431,6 +2433,53 @@ def blend_run(
     console.print(table)
     if result.applied:
         console.print("[green]已写入 TargetAllocation[/green]")
+
+
+@blend_app.command("update")
+def blend_update(
+    name: str = typer.Argument(..., help="要覆盖的 Blend 配置名称"),
+    strategies: str = typer.Option(..., "--strategies", help="新的逗号分隔策略名称"),
+    weights: str | None = typer.Option(None, "--weights", help="新的逗号分隔手动权重（可选）"),
+    optimize_metric: str = typer.Option("sharpe", "--optimize-metric", help="自动优化指标：sharpe | calmar | return"),
+    database_url: str | None = typer.Option(None, "--database-url", envvar="HIVEFLOW_DATABASE_URL", hidden=True),
+):
+    """覆盖更新 blend 配置（策略、权重、优化指标）。"""
+    settings = Settings(database_url=database_url) if database_url else Settings()
+    strategy_list = [s.strip() for s in strategies.split(",")]
+    weight_list = [float(w.strip()) for w in weights.split(",")] if weights else None
+    try:
+        cfg = update_blend(
+            name=name,
+            strategy_names=strategy_list,
+            weights=weight_list,
+            optimize_metric=optimize_metric,
+            settings=settings,
+        )
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    console.print(f"[green]Blend 配置 '{cfg.name}' 已更新（auto_optimized={cfg.auto_optimized}）[/green]")
+
+
+@blend_app.command("delete")
+def blend_delete(
+    name: str = typer.Argument(..., help="要删除的 Blend 配置名称"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="跳过确认提示"),
+    database_url: str | None = typer.Option(None, "--database-url", envvar="HIVEFLOW_DATABASE_URL", hidden=True),
+):
+    """删除 blend 配置。"""
+    settings = Settings(database_url=database_url) if database_url else Settings()
+    if not yes:
+        confirm = typer.confirm(f"确认删除 Blend 配置 '{name}'？")
+        if not confirm:
+            console.print("[yellow]已取消。[/yellow]")
+            raise typer.Exit(0)
+    try:
+        delete_blend(name=name, settings=settings)
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    console.print(f"[green]Blend 配置 '{name}' 已删除。[/green]")
 
 
 @risk_analysis_app.command("assets")

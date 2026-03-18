@@ -270,6 +270,61 @@ def _apply_blend_weights(
         session.commit()
 
 
+def delete_blend(name: str, settings: Settings | None = None) -> None:
+    """删除指定 BlendConfig，不存在则抛 ValueError。"""
+    app_settings = settings or Settings()
+    create_all_tables(app_settings)
+
+    with get_session(app_settings) as session:
+        row = session.exec(
+            select(BlendConfig).where(BlendConfig.name == name)
+        ).first()
+        if row is None:
+            raise ValueError(f"Blend 配置 '{name}' 不存在。")
+        session.delete(row)
+        session.commit()
+
+
+def update_blend(
+    name: str,
+    strategy_names: list[str],
+    weights: list[float] | None,
+    optimize_metric: str = "sharpe",
+    settings: Settings | None = None,
+) -> BlendConfigView:
+    """覆盖更新指定 BlendConfig 的策略、权重和优化指标，不存在则抛 ValueError。"""
+    app_settings = settings or Settings()
+    create_all_tables(app_settings)
+
+    if weights is not None:
+        total = sum(weights)
+        if abs(total - 1.0) > 0.01:
+            raise ValueError(f"权重之和必须等于 1.0（当前：{total:.4f}）。")
+        if len(weights) != len(strategy_names):
+            raise ValueError(
+                f"权重数量（{len(weights)}）与策略数量（{len(strategy_names)}）不一致。"
+            )
+        weights_dict = dict(zip(strategy_names, weights))
+    else:
+        weights_dict = {}
+
+    with get_session(app_settings) as session:
+        row = session.exec(
+            select(BlendConfig).where(BlendConfig.name == name)
+        ).first()
+        if row is None:
+            raise ValueError(f"Blend 配置 '{name}' 不存在。")
+        row.strategy_names = json.dumps(strategy_names)
+        row.weights = json.dumps(weights_dict)
+        row.auto_optimized = weights is None
+        row.optimize_metric = optimize_metric
+        row.updated_at = utc_now()
+        session.add(row)
+        session.commit()
+        session.refresh(row)
+        return _to_view(row)
+
+
 def _to_view(record: BlendConfig) -> BlendConfigView:
     return BlendConfigView(
         id=record.id,
