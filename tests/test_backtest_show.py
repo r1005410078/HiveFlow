@@ -123,3 +123,80 @@ def test_get_backtest_result_not_found(tmp_path: Path, monkeypatch) -> None:
     create_all_tables()
     with pytest.raises(ValueError, match="不存在"):
         get_backtest_result(9999)
+
+
+# ─── Task 4：sparkline + backtest show ────────────────────────────────────────
+
+def test_sparkline_flat() -> None:
+    """平坦曲线应全部输出最低字符 ▁。"""
+    from hiveflow.cli import _sparkline
+    result = _sparkline([1.0, 1.0, 1.0, 1.0, 1.0], width=5)
+    assert all(c == "▁" for c in result)
+
+
+def test_sparkline_rising() -> None:
+    """上涨曲线末尾字符不低于首字符。"""
+    from hiveflow.cli import _sparkline
+    curve = [1.0 + i * 0.01 for i in range(20)]
+    result = _sparkline(curve, width=10)
+    assert result[-1] >= result[0]
+
+
+def test_sparkline_width() -> None:
+    """输入长度 ≥ width 时，输出恰好 width 个字符。"""
+    from hiveflow.cli import _sparkline
+    curve = [1.0 + i * 0.01 for i in range(50)]
+    result = _sparkline(curve, width=10)
+    assert len(result) == 10
+
+
+def test_backtest_show_cli(tmp_path: Path, monkeypatch) -> None:
+    """种入含非空 equity_curve 的回测记录；show 命令应正常输出。"""
+    from typer.testing import CliRunner
+    from hiveflow.cli import app
+    _SPARK_CHARS = "▁▂▃▄▅▆▇█"
+    curve = [1.0 + i * 0.01 for i in range(20)]
+    rid = _seed_record(tmp_path, monkeypatch, equity_curve=curve)
+    runner = CliRunner()
+    result = runner.invoke(app, ["backtest", "show", str(rid)])
+    assert result.exit_code == 0, result.output
+    assert "TestStrategy" in result.output
+    assert any(c in result.output for c in _SPARK_CHARS)
+
+
+def test_backtest_show_no_curve(tmp_path: Path, monkeypatch) -> None:
+    """equity_curve=NULL 的旧记录应输出降级提示，不报错。"""
+    from typer.testing import CliRunner
+    from hiveflow.cli import app
+    rid = _seed_record(tmp_path, monkeypatch)  # equity_curve=None
+    runner = CliRunner()
+    result = runner.invoke(app, ["backtest", "show", str(rid)])
+    assert result.exit_code == 0, result.output
+    assert "无曲线数据" in result.output
+
+
+def test_backtest_show_missing_id(tmp_path: Path, monkeypatch) -> None:
+    """不存在的 ID 应 exit_code=1，输出含错误提示。"""
+    from typer.testing import CliRunner
+    from hiveflow.cli import app
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{tmp_path}/bt.db")
+    from hiveflow.db import create_all_tables
+    create_all_tables()
+    runner = CliRunner()
+    result = runner.invoke(app, ["backtest", "show", "9999"])
+    assert result.exit_code == 1
+    assert "不存在" in result.output or "错误" in result.output
+
+
+def test_backtest_show_json_output(tmp_path: Path, monkeypatch) -> None:
+    """--output json 应输出可解析的含 strategy_name / equity_curve 键的 dict。"""
+    from typer.testing import CliRunner
+    from hiveflow.cli import app
+    curve = [1.0, 1.02, 1.05]
+    rid = _seed_record(tmp_path, monkeypatch, equity_curve=curve)
+    runner = CliRunner()
+    result = runner.invoke(app, ["backtest", "show", str(rid), "--output", "json"])
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+    assert "strategy_name" in data
+    assert "equity_curve" in data

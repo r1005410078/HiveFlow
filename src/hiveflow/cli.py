@@ -13,6 +13,7 @@ from hiveflow.application.decision_logs import list_decision_logs
 from hiveflow.application.decision_logs import record_decision_log
 from hiveflow.application.current import set_current_strategy
 from hiveflow.application.current import show_current_strategy
+from hiveflow.application.backtest import get_backtest_result
 from hiveflow.application.backtest import list_backtest_results
 from hiveflow.application.backtest import run_backtest_for_strategy
 from hiveflow.application.market_data import export_market_data_template
@@ -82,6 +83,34 @@ strategies_app = typer.Typer(help="策略管理命令。")
 slots_app = typer.Typer(help="席位管理命令。")
 current_app = typer.Typer(help="当前策略命令。")
 market_data_app = typer.Typer(help="行情数据契约命令。")
+_SPARK_CHARS = "▁▂▃▄▅▆▇█"
+
+
+def _sparkline(curve: list[float], width: int = 40) -> str:
+    """将权益曲线降采样到至多 width 个字符，映射到 8 级 Unicode 块字符。
+
+    输出长度规则：
+    - 若 len(curve) >= width：输出恰好 width 个字符
+    - 若 len(curve) < width：输出 len(curve) 个字符（不补齐）
+    - 若 len(curve) < 2：返回 width 个 '─'
+    """
+    if not curve or len(curve) < 2:
+        return "─" * width
+    step = max(1, len(curve) // width)
+    sampled = [
+        sum(curve[i : i + step]) / len(curve[i : i + step])
+        for i in range(0, len(curve), step)
+    ][:width]
+    lo, hi = min(sampled), max(sampled)
+    if lo == hi:
+        return _SPARK_CHARS[0] * len(sampled)
+    bucket = (hi - lo) / (len(_SPARK_CHARS) - 1)
+    return "".join(
+        _SPARK_CHARS[min(int((v - lo) / bucket), len(_SPARK_CHARS) - 1)]
+        for v in sampled
+    )
+
+
 backtest_app = typer.Typer(help="策略回测命令。")
 trade_app = typer.Typer(help="交易执行命令。")
 skills_app = typer.Typer(name="skills", help="管理 AI Agent Skills。")
@@ -1691,6 +1720,45 @@ def list_backtest_command(
             item.created_at,
         )
     console.print(table)
+
+
+@backtest_app.command("show")
+def backtest_show_command(
+    backtest_id: int = typer.Argument(..., help="回测记录 ID"),
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+) -> None:
+    """展示单条回测的权益曲线与指标汇总。"""
+    output_format = _validate_output_format(output)
+    try:
+        result = get_backtest_result(backtest_id, settings=Settings())
+    except ValueError as exc:
+        typer.echo(f"错误：{exc}")
+        raise typer.Exit(code=1)
+
+    if output_format == "json":
+        typer.echo(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+        return
+
+    backtest_type_label = "动态" if result.backtest_type == "dynamic" else "静态"
+    typer.echo(
+        f"回测 #{result.id} · {result.strategy_name} · {backtest_type_label} · {result.periods} 天"
+    )
+    typer.echo("")
+    typer.echo(f"  总收益     最大回撤    Sharpe")
+    typer.echo(
+        f"  {result.total_return:+.1%}    {result.max_drawdown:.1%}       {result.sharpe:.2f}"
+    )
+    typer.echo("")
+    if result.equity_curve is None:
+        typer.echo("  权益曲线")
+        typer.echo("  [历史记录无曲线数据，重新运行回测可获得曲线]")
+    else:
+        curve = json.loads(result.equity_curve)
+        spark = _sparkline(curve, width=40)
+        typer.echo(f"  权益曲线（{result.periods} 期）")
+        typer.echo(f"  {spark}")
+        created_date = result.created_at[:10]
+        typer.echo(f"  创建：{created_date}")
 
 
 @backtest_app.command("quant-run")
