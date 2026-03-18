@@ -68,7 +68,7 @@ class CorrelationMatrix:
 @dataclass(frozen=True)
 class AssetDrawdown:
     symbol: str
-    max_drawdown: float   # 历史最大回撤（负数，如 -0.85）
+    max_drawdown: float   # 历史最大回撤（非正数：回撤时为负数如 -0.85，无回撤时为 0.0）
     periods: int          # 数据点数
 ```
 
@@ -153,23 +153,27 @@ def analyze_asset_risk(
 ) -> tuple[list[AssetRiskView], CorrelationView]:
     """从 MarketBar 读取价格序列，返回各资产风险视图 + 相关性矩阵。
 
-    symbols=None 时使用 MarketBar 中全部 symbol。
-    若 MarketBar 无数据，抛 ValueError。
+    symbols=None 时先查询 MarketBar 全部 distinct symbol（与 run_quant_backtest 相同模式），
+    再调用 load_close_prices_from_db(symbols=resolved_symbols, settings=settings)。
+    若解析后 symbols 为空或 MarketBar 无数据，抛 ValueError。
     """
 
 def analyze_portfolio_risk(
     backtest_id: int,
     settings=None,
-) -> dict:
+) -> dict | None:
     """从 BacktestResult.equity_curve 计算组合级风险。
 
-    不存在时抛 ValueError（同 get_backtest_result）。
-    equity_curve 为 NULL 时抛 ValueError（提示重新运行回测）。
-    返回 compute_portfolio_risk() 的结果字典。
+    - backtest_id 不存在：抛 ValueError
+    - equity_curve 为 NULL：返回 None（CLI 层负责输出降级提示，exit_code=0）
+    - 正常：返回 compute_portfolio_risk() 的结果字典
+
+    注意：NULL curve 返回 None 而非抛错，与 backtest show 处理 equity_curve is None
+    的 CLI 层检查模式一致，避免将非错误场景映射为异常。
     """
 ```
 
-**注意**：`analyze_asset_risk` 复用已有的 `load_close_prices_from_db` 加载价格，不重复读取逻辑。
+**注意**：`analyze_asset_risk` 中 `symbols=None` 的处理步骤与 `run_quant_backtest`（`application/backtest.py` 第 154-157 行）完全对称：先 `session.exec(select(MarketBar.symbol).distinct())` 得到 `resolved_symbols`，再调用 `load_close_prices_from_db`。
 
 ---
 
@@ -240,7 +244,7 @@ equity_curve 为 NULL 时跳过这一节（不额外输出任何内容）。
 |---|---|
 | MarketBar 无数据 | `ValueError`，CLI 输出错误信息 + `raise typer.Exit(code=1)` |
 | backtest_id 不存在 | `ValueError`，CLI 输出错误信息 + `raise typer.Exit(code=1)` |
-| equity_curve 为 NULL（portfolio 命令）| `ValueError`，CLI 输出提示（exit_code=0） |
+| equity_curve 为 NULL（portfolio 命令）| `analyze_portfolio_risk` 返回 `None`，CLI 输出降级提示，exit_code=0 |
 | equity_curve 为 NULL（backtest show 增强）| 跳过风险指标节，不报错 |
 | 某资产数据点 < 2 | 跳过该资产（不计入结果），不报错 |
 | 共同数据点 < 2（相关性）| 对应矩阵位置填 `null`（JSON）或 `N/A`（pretty） |
