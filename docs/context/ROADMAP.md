@@ -7,7 +7,8 @@
 ## 当前位置
 
 - 已完成：Chunk 1 ~ Chunk 30 + M4 + M5 + M6
-- 当前阶段：M7 规划中
+- 已完成：Chunk 1 ~ Chunk 30 + M4 + M5 + M6 + M7
+- 当前阶段：M8 规划中
 
 ## 三个里程碑
 
@@ -65,13 +66,21 @@
 - `backtest quant-run` 量化策略动态再平衡回测（每隔 N 天重新计算权重，无前视偏差）
 - `sync --days` 支持最多 500 天（OKX 分页拉取）
 
-## M7：下一阶段（规划中）
+## M7：回测权益曲线可视化（已完成）
+
+已交付：
+- `BacktestMetrics.curve` + `BacktestResult.equity_curve` 落库（JSON），含轻量迁移
+- `backtest show <id>` 终端 Unicode Sparkline + 指标摘要，支持 `--output json`
+- `backtest compare <id1> <id2> ...` 多回测并排对比，含全量 ID 预检与 `--output json`
+- `_sparkline()` 上取整采样（避免截断长曲线），旧记录 NULL 降级提示
+
+## M8：下一阶段（规划中）
 
 候选方向：
-1. 回测 equity curve 可视化（`backtest show <id>` 输出权益曲线 + 指标对比）
-2. 风险分析引擎 v1（波动率、最大回撤、Sharpe，从 MarketBar 驱动）
-3. 多策略对比回测（`backtest compare --strategies A,B,C`）
-4. 网格机器人管理（`grid create/list/stop`，OKX Grid Trading API）
+1. 网格机器人管理（`grid create/list/stop`，OKX Grid Trading API）
+2. 风险分析引擎 v1（从 MarketBar 驱动：波动率、相关性矩阵、最大回撤分布）
+3. 多策略组合（加权混合多个量化策略输出，`portfolio blend`）
+4. 实盘绩效追踪（持仓日志 + 权益曲线与回测对比）
 
 ## 决策规则（防止“抓芝麻”）
 
