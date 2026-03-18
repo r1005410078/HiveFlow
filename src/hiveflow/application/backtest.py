@@ -34,6 +34,7 @@ class BacktestResultView:
     weights_snapshot: str | None
     backtest_type: str
     created_at: str
+    equity_curve: str | None   # JSON array or None for old records
 
     def to_dict(self) -> dict[str, str | float | int | None]:
         """转换为字典，便于 JSON 输出。"""
@@ -48,6 +49,7 @@ class BacktestResultView:
             "weights_snapshot": self.weights_snapshot,
             "backtest_type": self.backtest_type,
             "created_at": self.created_at,
+            "equity_curve": self.equity_curve,
         }
 
 
@@ -63,7 +65,18 @@ def _to_view(row: BacktestResult) -> BacktestResultView:
         weights_snapshot=row.weights_snapshot,
         backtest_type=row.backtest_type,
         created_at=row.created_at.isoformat(),
+        equity_curve=row.equity_curve,
     )
+
+
+def get_backtest_result(backtest_id: int, settings=None) -> BacktestResultView:
+    """按 ID 查询单条回测结果，不存在时抛 ValueError。"""
+    create_all_tables(settings)
+    with get_session(settings) as session:
+        row = session.get(BacktestResult, backtest_id)
+        if row is None:
+            raise ValueError(f"回测记录 #{backtest_id} 不存在。")
+        return _to_view(row)
 
 
 def _load_target_weights(strategy_name: str, settings=None) -> dict[str, float]:
@@ -113,6 +126,7 @@ def run_backtest_for_strategy(
             sharpe=metrics.sharpe,
             weights_snapshot=json.dumps(weights),
             backtest_type="static",
+            equity_curve=json.dumps(metrics.curve),
         )
         session.add(row)
         session.commit()
@@ -182,6 +196,7 @@ def run_quant_backtest(
             sharpe=metrics.sharpe,
             weights_snapshot=json.dumps(final_weights),
             backtest_type="dynamic",
+            equity_curve=json.dumps(metrics.curve),
         )
         session.add(row)
         session.commit()
