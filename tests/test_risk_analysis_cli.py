@@ -142,6 +142,8 @@ def test_risk_assets_json(tmp_path: Path, monkeypatch) -> None:
     assert "assets" in data
     assert "correlation" in data
     assert isinstance(data["assets"], list)
+    assert "symbols" in data["correlation"]
+    assert "matrix" in data["correlation"]
 
 
 def test_risk_assets_no_data(tmp_path: Path, monkeypatch) -> None:

@@ -2295,7 +2295,7 @@ def risk_assets_command(
     output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
 ) -> None:
     """分析各资产年化波动率、历史最大回撤与相关性矩阵。"""
-    import math as _math
+    import math
     output_format = _validate_output_format(output)
     symbols_list = (
         [s.strip().upper() for s in symbols.split(",") if s.strip()]
@@ -2324,7 +2324,7 @@ def risk_assets_command(
                 "symbols": corr_view.symbols,
                 "matrix": [
                     [
-                        round(val, 4) if not _math.isnan(val) else None
+                        round(val, 4) if not math.isnan(val) else None
                         for val in row
                     ]
                     for row in corr_view.matrix
@@ -2356,7 +2356,7 @@ def risk_assets_command(
     typer.echo(header)
     for i, row in enumerate(corr_view.matrix):
         row_str = f"  {corr_view.symbols[i]:>5}  " + "  ".join(
-            f"{val:>6.2f}" if not _math.isnan(val) else "   N/A"
+            f"{val:>6.2f}" if not math.isnan(val) else "   N/A"
             for val in row
         )
         typer.echo(row_str)
