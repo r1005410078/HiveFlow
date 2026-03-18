@@ -6,8 +6,8 @@
 
 ## 当前位置
 
-- 已完成：Chunk 1 ~ Chunk 30 + M4 + M5 + M6 + M7 + M8
-- 当前阶段：M9 规划中
+- 已完成：Chunk 1 ~ Chunk 30 + M4 + M5 + M6 + M7 + M8 + M9
+- 当前阶段：M10 规划中
 
 ## 三个里程碑
 
@@ -81,13 +81,21 @@
 - `backtest show` 追加风险指标节（equity_curve 存在时）
 - 无新增第三方依赖，手工实现所有统计计算，年化因子 365
 
-## M9：下一阶段（规划中）
+## M9：多策略混合 + 实盘绩效追踪（已完成）
+
+已交付：
+- `quant blend create / run / list / show` 多策略加权混合（手动权重 + 自动优化：sharpe/calmar/return），`--apply` 写入 TargetAllocation
+- `BlendConfig` 实体 + 自动权重归一化校验，策略数量与权重数量不一致时报错
+- `perf snapshot / list` 实盘持仓快照落库（`PortfolioSnapshot`），支持 `--source cron`
+- `perf compare <backtest_id>` 实盘 vs 回测权益曲线 Sparkline 并排 + 指标（总收益率、年化收益率、MDD）
+- `perf setup-cron` 读取 `config/tracking.json` 生成/安装 cron job，支持 `--dry-run`
+
+## M10：下一阶段（规划中）
 
 候选方向：
 1. 网格机器人管理（`grid create/list/stop`，OKX Grid Trading API）
-2. 多策略组合（加权混合多个量化策略输出，`portfolio blend`）
-3. 实盘绩效追踪（持仓日志 + 权益曲线与回测对比）
-4. 多交易所支持
+2. 多交易所支持
+3. 实时推送/告警
 
 ## 决策规则（防止“抓芝麻”）
 

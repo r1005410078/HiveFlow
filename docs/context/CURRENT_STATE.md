@@ -22,6 +22,7 @@
   - `backtest quant-run` 量化策略动态再平衡回测（每隔 N 天重新计算权重，backtest_type=dynamic）
   - **M7：`backtest show <id>` + `backtest compare <id1> <id2> ...`** 回测权益曲线可视化（Unicode Sparkline），equity_curve 字段落库，支持旧记录降级提示与 `--output json`
   - **M8：风险分析引擎** `risk-analysis assets`（资产年化波动率、日波动率、历史 MDD、相关性矩阵）+ `risk-analysis portfolio <id>`（组合年化波动率、胜率、Calmar ratio）；`backtest show` 追加风险指标节
+  - **M9：多策略混合 + 实盘绩效追踪** `quant blend create/run/list/show`（BlendConfig 实体 + 自动/手动权重优化，--apply 写入 TargetAllocation）+ `perf snapshot/list/compare/setup-cron`（PortfolioSnapshot 落库、权益曲线 Sparkline 对比、cron 配置）
 
 ## 当前可用命令（核心）
 
@@ -39,6 +40,8 @@
 - `hiveflow market-data ...`
 - `hiveflow trade execute`
 - `hiveflow quant list / run / history`
+- `hiveflow quant blend create / run / list / show`
+- `hiveflow perf snapshot / list / compare / setup-cron`
 - `hiveflow skills list / install`
 - `hiveflow summary`
 - `hiveflow doctor`
@@ -46,13 +49,11 @@
 
 ## 当前状态说明
 
-- 全量测试最近结果：`247 passed`
+- 全量测试最近结果：`280 passed`
 - `skills/` 目录已纳入版本控制，`~/.agents/skills/hiveflow-*` 为软链接
 - 本地存在未跟踪数据文件：`data/`、`strategies.csv`、`prices.csv`（不应提交）
 
 ## 下一步建议
 
-1. M9：网格机器人创建/管理（`grid create/list/stop`，OKX Grid Trading API）
-2. 多策略组合（加权混合多个量化策略输出，`portfolio blend`）
-3. 实盘绩效追踪（持仓日志 + 权益曲线与回测对比）
-4. 多交易所支持
+1. M10：网格机器人管理（`grid create/list/stop`，OKX Grid Trading API）
+2. 多交易所支持

@@ -43,3 +43,10 @@
 - 全量测试：221 passed。
 - 完成 M8：风险分析引擎。新增 `services/risk_engine.py`（compute_volatility / compute_correlation / compute_drawdown / compute_portfolio_risk，纯计算无 DB 依赖，手工实现 Pearson 相关系数），`application/risk_analysis.py`（analyze_asset_risk / analyze_portfolio_risk）。新增 `hiveflow risk-analysis assets`（资产年化波动率、日波动率、历史 MDD、相关性矩阵，支持 --symbols / --output json）与 `risk-analysis portfolio <id>`（组合年化波动率、胜率、Calmar ratio，equity_curve=NULL 时降级提示，exit_code=0）。`backtest show` 追加风险指标节（仅在 equity_curve 存在时显示）。无新增第三方依赖，年化因子 365（加密市场）。
 - 全量测试：247 passed。
+
+## 2026-03-18
+
+- 决策：M9 选择「多策略混合 + 实盘绩效追踪」，两个功能串联形成 blend→execute→track→compare 链路
+- 设计：BlendConfig + PortfolioSnapshot 两个新实体，blend.py + perf.py 两个新 application 模块
+- 实现：7 个子任务全部交付，含 TDD + 两阶段评审（spec + code quality）
+- 结果：280 tests passed，quant blend 和 perf 命令组已上线
