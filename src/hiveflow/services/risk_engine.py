@@ -121,6 +121,70 @@ def classify_priority_from_risk(risk_waterline: str) -> str:
     return PriorityLevel.LOW
 
 
+def compute_drawdown(prices: dict[str, list[PriceBar]]) -> list[AssetDrawdown]:
+    """计算各资产在给定价格序列中的最大回撤（从峰值到谷值）。
+
+    - max_drawdown 为非正数（回撤为负，无回撤为 0.0）
+    - 结果按 max_drawdown 升序（最大亏损在前）
+    """
+    results: list[AssetDrawdown] = []
+    for symbol, bars in prices.items():
+        if not bars:
+            continue
+        sorted_bars = sorted(bars, key=lambda b: b.timestamp)
+        closes = [b.close for b in sorted_bars]
+        peak = closes[0]
+        max_dd = 0.0
+        for c in closes:
+            if c > peak:
+                peak = c
+            if peak > 0:
+                dd = c / peak - 1.0
+                if dd < max_dd:
+                    max_dd = dd
+        results.append(AssetDrawdown(
+            symbol=symbol,
+            max_drawdown=max_dd,
+            periods=len(sorted_bars),
+        ))
+    return sorted(results, key=lambda x: x.max_drawdown)
+
+
+def compute_portfolio_risk(curve: list[float]) -> dict:
+    """从 equity curve 派生组合级风险指标。
+
+    返回: annual_vol, win_rate（正收益期比例）, calmar_ratio（总收益/|MDD|）
+
+    - len(curve) < 2 → 抛 ValueError
+    - MDD == 0 时 calmar_ratio 为 float('inf')
+    """
+    if len(curve) < 2:
+        raise ValueError("equity curve 至少需要 2 个数据点。")
+    returns = [curve[i] / curve[i - 1] - 1.0 for i in range(1, len(curve))]
+    n = len(returns)
+    mean_r = sum(returns) / n
+    variance = sum((r - mean_r) ** 2 for r in returns) / max(n - 1, 1)
+    daily_vol = math.sqrt(variance)
+    annual_vol = daily_vol * math.sqrt(365)
+    win_rate = sum(1 for r in returns if r > 0) / n
+    peak = curve[0]
+    max_dd = 0.0
+    for v in curve:
+        if v > peak:
+            peak = v
+        if peak > 0:
+            dd = v / peak - 1.0
+            if dd < max_dd:
+                max_dd = dd
+    total_return = curve[-1] / curve[0] - 1.0
+    calmar = total_return / abs(max_dd) if max_dd != 0.0 else float("inf")
+    return {
+        "annual_vol": annual_vol,
+        "win_rate": win_rate,
+        "calmar_ratio": calmar,
+    }
+
+
 def calculate_max_drawdown(bars: list[MarketBar]) -> float:
     """计算最大回撤（负数或 0）。以历史最高收盘价为基准。"""
     if len(bars) < 2:

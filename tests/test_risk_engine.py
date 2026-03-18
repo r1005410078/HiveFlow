@@ -7,8 +7,11 @@ from hiveflow.services.backtest_engine import PriceBar
 from hiveflow.services.risk_engine import (
     AssetVolatility,
     CorrelationMatrix,
+    AssetDrawdown,
     compute_volatility,
     compute_correlation,
+    compute_drawdown,
+    compute_portfolio_risk,
 )
 
 
@@ -94,3 +97,47 @@ def test_compute_correlation_aligns_timestamps() -> None:
     i = result.symbols.index("A")
     j = result.symbols.index("B")
     assert math.isnan(result.matrix[i][j])
+
+
+def test_compute_drawdown_basic() -> None:
+    """100 → 200 → 100：MDD = -0.5。"""
+    prices = {"BTC": _make_bars("BTC", [100.0, 200.0, 100.0])}
+    results = compute_drawdown(prices)
+    assert len(results) == 1
+    assert abs(results[0].max_drawdown - (-0.5)) < 1e-9
+    assert results[0].periods == 3
+
+
+def test_compute_drawdown_flat() -> None:
+    """平坦价格序列 → MDD == 0.0。"""
+    prices = {"USDT": _make_bars("USDT", [1.0, 1.0, 1.0, 1.0])}
+    results = compute_drawdown(prices)
+    assert results[0].max_drawdown == 0.0
+
+
+def test_compute_drawdown_sorts_ascending() -> None:
+    """结果按 max_drawdown 升序（最大亏损在前）。"""
+    prices = {
+        "BTC": _make_bars("BTC", [100.0, 200.0, 50.0]),
+        "ETH": _make_bars("ETH", [100.0, 110.0, 100.0]),
+    }
+    results = compute_drawdown(prices)
+    assert results[0].max_drawdown <= results[1].max_drawdown
+
+
+def test_compute_portfolio_risk_basic() -> None:
+    """curve = [1.0, 1.1, 1.05, 1.2]: win_rate = 2/3, calmar > 0。"""
+    curve = [1.0, 1.1, 1.05, 1.2]
+    result = compute_portfolio_risk(curve)
+    assert "annual_vol" in result
+    assert "win_rate" in result
+    assert "calmar_ratio" in result
+    assert abs(result["win_rate"] - 2 / 3) < 1e-9
+    assert result["calmar_ratio"] > 0
+
+
+def test_compute_portfolio_risk_too_short() -> None:
+    """len(curve) < 2 应抛 ValueError。"""
+    import pytest
+    with pytest.raises(ValueError):
+        compute_portfolio_risk([1.0])
