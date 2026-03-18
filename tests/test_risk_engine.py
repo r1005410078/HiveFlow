@@ -6,7 +6,9 @@ import math
 from hiveflow.services.backtest_engine import PriceBar
 from hiveflow.services.risk_engine import (
     AssetVolatility,
+    CorrelationMatrix,
     compute_volatility,
+    compute_correlation,
 )
 
 
@@ -51,3 +53,44 @@ def test_compute_volatility_insufficient_data() -> None:
     symbols = [v.symbol for v in results]
     assert "BTC" not in symbols
     assert "ETH" in symbols
+
+
+def test_compute_correlation_identity() -> None:
+    """matrix[i][i] == 1.0（自相关为 1）。"""
+    prices = {
+        "BTC": _make_bars("BTC", [100.0, 110.0, 105.0, 115.0]),
+        "ETH": _make_bars("ETH", [50.0, 55.0, 52.0, 57.0]),
+    }
+    result = compute_correlation(prices)
+    assert result.symbols == ["BTC", "ETH"]
+    assert result.matrix[0][0] == 1.0
+    assert result.matrix[1][1] == 1.0
+
+
+def test_compute_correlation_perfect_positive() -> None:
+    """完全相同的收益率序列 → 相关系数 == 1.0。"""
+    closes = [100.0, 110.0, 121.0, 133.1]
+    prices = {
+        "A": _make_bars("A", closes),
+        "B": _make_bars("B", [c * 0.5 for c in closes]),
+    }
+    result = compute_correlation(prices)
+    i = result.symbols.index("A")
+    j = result.symbols.index("B")
+    assert abs(result.matrix[i][j] - 1.0) < 1e-9
+
+
+def test_compute_correlation_aligns_timestamps() -> None:
+    """两资产时间戳错开时，共同收益率点不足 2 → 对应位置为 nan。"""
+    a_bars = [
+        PriceBar(symbol="A", timestamp=f"2026-01-0{i+1}T00:00:00Z", close=c)
+        for i, c in enumerate([100.0, 110.0, 120.0, 130.0])
+    ]
+    b_bars = [
+        PriceBar(symbol="B", timestamp=f"2026-01-0{i+3}T00:00:00Z", close=c)
+        for i, c in enumerate([50.0, 55.0, 60.0, 65.0])
+    ]
+    result = compute_correlation({"A": a_bars, "B": b_bars})
+    i = result.symbols.index("A")
+    j = result.symbols.index("B")
+    assert math.isnan(result.matrix[i][j])
