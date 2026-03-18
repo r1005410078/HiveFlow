@@ -59,13 +59,14 @@ hiveflow perf setup-cron            # 读取配置文件，安装 cron job
 ```python
 class BlendConfig(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    name: str                    # 唯一名称
+    name: str = Field(sa_column=Column(String, unique=True))  # 唯一名称，DB 级约束
     strategy_names: str          # JSON list，如 ["momentum", "equal_weight"]
     weights: str                 # JSON dict，如 {"momentum": 0.6, "equal_weight": 0.4}
     auto_optimized: bool         # 权重是否由系统自动计算
-    optimize_metric: str         # "sharpe" | "calmar" | "return"
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    optimize_metric: str = Field(default="sharpe")  # "sharpe" | "calmar" | "return"
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+    # 注：updated_at 由 Application 层在每次 blend run 后手动更新
 ```
 
 ### `PortfolioSnapshot`（新表）
@@ -73,12 +74,14 @@ class BlendConfig(SQLModel, table=True):
 ```python
 class PortfolioSnapshot(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=utc_now)
     total_value_usd: float       # 总持仓价值（USD）
     positions_json: str          # 持仓快照（JSON）
     source: str                  # "manual" | "cron"
     notes: Optional[str] = None
 ```
+
+> `utc_now` 使用项目已有的 `hiveflow.domain.common.utc_now()`（timezone-aware）。
 
 ---
 
@@ -106,7 +109,7 @@ class PortfolioSnapshot(SQLModel, table=True):
 
 **`blend run` 输出**
 
-读取各策略最新 `StrategyRun` 的 `result_json`（权重字典），按 blend 权重加权平均，
+读取各策略最新 `StrategyRun` 的 `weights` 字段（JSON 权重字典），按 blend 权重加权平均，
 输出混合后的资产权重字典。`--apply` 写入 `TargetAllocation`（复用 `quant run --apply` 逻辑）。
 
 ### 实盘绩效追踪
@@ -114,9 +117,11 @@ class PortfolioSnapshot(SQLModel, table=True):
 **快照机制**
 
 `perf snapshot` 执行：
-1. 从 OKX 同步最新持仓（复用 `positions list` 逻辑）
+1. 从 OKX 同步最新持仓（复用 `positions list` 逻辑，使用可注入的 `OkxProvider`）
 2. 从 `market-data` 取各资产最新价格
 3. 计算总持仓价值（USD），落库 `PortfolioSnapshot`
+
+> 可测试性：`perf snapshot` 命令接受可注入的 `okx_provider` 参数，复用 `trade.py` / `sync.py` 中已有的 mock 模式，确保 CI 无需网络访问。
 
 **定时配置**（`config/tracking.json`）
 
@@ -138,7 +143,10 @@ class PortfolioSnapshot(SQLModel, table=True):
 从 `PortfolioSnapshot` 序列派生实盘权益曲线，与 `BacktestResult.equity_curve` 对比：
 
 - 终端输出：两条 Sparkline 并排（复用 M7 的 `_sparkline()`）
-- 对比指标：总收益率、年化收益率、最大回撤（MDD）
+- 对比指标：
+  - 总收益率（`total_return`，直接从序列首尾计算）
+  - 年化收益率：`(1 + total_return) ^ (365 / days) - 1`，`days` 由快照首尾 `timestamp` 差得出；快照不足 2 条时显示 `N/A`
+  - 最大回撤（MDD，复用 M8 的 `_max_drawdown()` 逻辑）
 - `--output json` 输出结构化数据供 Agent 使用
 
 ---
@@ -160,11 +168,13 @@ class PortfolioSnapshot(SQLModel, table=True):
 遵循 TDD，先写测试再实现：
 
 1. `BlendConfig` CRUD + 权重归一化验证
-2. 自动优化：给定 mock `StrategyRun` + `BacktestResult`，验证权重计算结果
-3. 手动权重：验证归一化检查与错误提示
-4. `PortfolioSnapshot` 落库与查询
-5. `perf compare`：mock 两条 equity_curve，验证 Sparkline 输出与指标计算
-6. `perf setup-cron`：验证生成的 crontab 字符串格式正确（不实际写入 crontab）
+2. `BlendConfig` 重名保护：创建同名 blend 时 Application 层抛出描述性错误（不依赖 DB 异常）
+3. 自动优化：给定 mock `StrategyRun` + `BacktestResult`，验证权重计算结果
+4. 手动权重：验证归一化检查与错误提示
+5. `PortfolioSnapshot` 落库与查询
+6. `perf snapshot`：注入 mock OKX provider（复用 `trade.py` / `sync.py` 的 mock 模式），验证快照落库
+7. `perf compare`：mock 两条 equity_curve，验证 Sparkline 输出与指标计算（含年化收益率公式）
+8. `perf setup-cron`：验证生成的 crontab 字符串格式正确（不实际写入 crontab）
 
 ---
 
@@ -179,7 +189,7 @@ class PortfolioSnapshot(SQLModel, table=True):
 
 ### Phase 2：实盘绩效追踪（后交付）
 - `PortfolioSnapshot` 实体 + 仓储
-- `perf snapshot / list`
+- `perf snapshot / list`（`list` 显示列：id、timestamp、total_value_usd、source、notes）
 - `config/tracking.json` + `perf setup-cron`
 - `perf compare` Sparkline + 指标
 - 测试 + 文档
