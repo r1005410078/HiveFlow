@@ -2549,9 +2549,9 @@ def take_perf_snapshot(
     """从 OKX 获取最新持仓，计算总价值，存入快照。可 mock 用于测试。"""
     provider = OkxProvider(api_key=api_key, api_secret=api_secret, passphrase=passphrase)
     positions = provider.fetch_positions()
-    total_value = sum(p.market_value or 0.0 for p in positions)
+    total_value = sum(p.market_value_usdt or 0.0 for p in positions)
     positions_data = {
-        p.symbol: {"qty": p.qty, "value_usd": p.market_value}
+        p.symbol: {"qty": p.quantity, "value_usd": p.market_value_usdt}
         for p in positions
     }
     return _record_snapshot_impl(
