@@ -38,3 +38,55 @@ def test_backtest_result_has_equity_curve_field(tmp_path: Path, monkeypatch) -> 
         row = session.get(BacktestResult, rid)
         assert hasattr(row, "equity_curve")
         assert row.equity_curve is None
+
+
+from hiveflow.services.backtest_engine import (
+    BacktestMetrics,
+    PriceBar,
+    run_dynamic_backtest,
+    run_weighted_backtest,
+)
+from hiveflow.services.strategies.equal_weight import EqualWeightStrategy
+
+
+def _make_bars(symbol: str, closes: list[float]) -> list[PriceBar]:
+    return [
+        PriceBar(symbol=symbol, timestamp=f"2026-01-{i+1:02d}T00:00:00Z", close=c)
+        for i, c in enumerate(closes)
+    ]
+
+
+def test_backtest_metrics_has_curve() -> None:
+    """BacktestMetrics.curve 应存在，长度 == periods + 1，首值为 1.0。"""
+    prices = {
+        "BTC": _make_bars("BTC", [100.0 + i for i in range(10)]),
+        "ETH": _make_bars("ETH", [50.0 + i * 0.5 for i in range(10)]),
+    }
+    weights = {"BTC": 0.6, "ETH": 0.4}
+    m = run_weighted_backtest(prices=prices, weights=weights)
+    assert hasattr(m, "curve")
+    assert len(m.curve) == m.periods + 1
+    assert m.curve[0] == 1.0
+
+
+def test_run_weighted_backtest_curve() -> None:
+    """上涨序列下 curve[-1] > 1.0。"""
+    prices = {
+        "BTC": _make_bars("BTC", [100.0 * (1 + 0.01 * i) for i in range(20)]),
+        "ETH": _make_bars("ETH", [50.0 * (1 + 0.01 * i) for i in range(20)]),
+    }
+    weights = {"BTC": 0.5, "ETH": 0.5}
+    m = run_weighted_backtest(prices=prices, weights=weights)
+    assert m.curve[-1] > 1.0
+
+
+def test_run_dynamic_backtest_curve() -> None:
+    """动态回测 curve 长度 > 0，首值 == 1.0。"""
+    prices = {
+        "BTC": _make_bars("BTC", [100.0 + i for i in range(30)]),
+        "ETH": _make_bars("ETH", [50.0 + i * 0.5 for i in range(30)]),
+    }
+    strategy = EqualWeightStrategy()
+    (m, _) = run_dynamic_backtest(prices=prices, strategy=strategy, rebalance_days=7)
+    assert len(m.curve) > 0
+    assert m.curve[0] == 1.0

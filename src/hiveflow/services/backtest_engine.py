@@ -26,6 +26,7 @@ class BacktestMetrics:
     total_return: float
     max_drawdown: float
     sharpe: float
+    curve: list[float]  # 从 1.0 开始的逐期权益值；无默认值
 
 
 def load_close_prices(file: Path) -> dict[str, list[PriceBar]]:
@@ -96,6 +97,7 @@ def run_weighted_backtest(
         total_return=equity - 1.0,
         max_drawdown=max_drawdown,
         sharpe=sharpe,
+        curve=curve,
     )
 
 
@@ -218,6 +220,7 @@ def run_dynamic_backtest(
             total_return=equity - 1.0,
             max_drawdown=max_drawdown,
             sharpe=sharpe,
+            curve=curve,
         ),
         final_weights,
     )
