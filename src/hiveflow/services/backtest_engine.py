@@ -98,6 +98,17 @@ def run_weighted_backtest(
     )
 
 
+def run_dynamic_backtest(
+    prices: dict[str, list[PriceBar]],
+    strategy,
+    rebalance_interval: int = 1,
+    fee_bps: float = 0.0,
+    slippage_bps: float = 0.0,
+) -> BacktestMetrics:
+    """基于动态策略的组合回测（动态再平衡）。待实现。"""
+    raise NotImplementedError("run_dynamic_backtest 尚未实现（Task 2）。")
+
+
 def load_close_prices_from_db(
     symbols: list[str],
     settings=None,

@@ -26,5 +26,7 @@ class BacktestResult(SQLModel, table=True):
     sharpe: float
     # 权重快照（JSON 字符串，如 {"BTC":0.4,"ETH":0.3,...}）。
     weights_snapshot: str | None = Field(default=None)
+    # 回测类型："static"（静态权重）或 "dynamic"（动态再平衡）。
+    backtest_type: str = Field(default="static")
     # 创建时间（UTC）。
     created_at: datetime = Field(default_factory=utc_now)

@@ -54,6 +54,10 @@ def _run_lightweight_migrations(engine) -> None:
                 conn.exec_driver_sql(
                     "ALTER TABLE backtestresult ADD COLUMN weights_snapshot TEXT"
                 )
+            if "backtest_type" not in bt_col_names:
+                conn.exec_driver_sql(
+                    "ALTER TABLE backtestresult ADD COLUMN backtest_type VARCHAR DEFAULT 'static'"
+                )
 
         # gridposition 表：inst_type 列
         if "gridposition" in tables:

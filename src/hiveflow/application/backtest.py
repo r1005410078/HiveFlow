@@ -123,6 +123,19 @@ def list_backtest_results(strategy_name: str | None = None, settings=None) -> li
     return [_to_view(item) for item in ordered]
 
 
+def run_quant_backtest(
+    strategy_name: str,
+    strategy,
+    prices: dict | None = None,
+    rebalance_interval: int = 1,
+    fee_bps: float = 0.0,
+    slippage_bps: float = 0.0,
+    settings=None,
+) -> BacktestResultView:
+    """执行量化策略动态回测并持久化结果。待实现。"""
+    raise NotImplementedError("run_quant_backtest 尚未实现（Task 3）。")
+
+
 def set_targets_from_backtest(backtest_id: int, settings=None) -> dict[str, float]:
     """从回测结果的 weights_snapshot 设置目标配比。返回写入的配比字典。"""
     create_all_tables(settings)
