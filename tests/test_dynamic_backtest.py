@@ -4,8 +4,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from hiveflow.application.backtest import list_backtest_results, run_quant_backtest
 from hiveflow.domain.backtests import BacktestResult
 from hiveflow.db import create_all_tables, get_session
@@ -140,7 +138,7 @@ def test_run_dynamic_backtest_with_fee() -> None:
 
 # ─── Task 3 测试：application 层 ─────────────────────────────────────────────
 
-def _seed_market_bars(tmp_path: Path, monkeypatch, n_days: int = 20) -> None:
+def _seed_market_bars(tmp_path: Path, n_days: int = 20) -> None:
     """将测试价格写入 MarketBar 表（MarketBar 所有非空字段均需填写）。"""
     from datetime import datetime, timezone
     from hiveflow.domain.market_data import MarketBar
@@ -167,7 +165,7 @@ def _seed_market_bars(tmp_path: Path, monkeypatch, n_days: int = 20) -> None:
 def test_run_quant_backtest_persists(tmp_path: Path, monkeypatch) -> None:
     """run_quant_backtest 应写入 BacktestResult，backtest_type='dynamic'。"""
     monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{tmp_path}/bt.db")
-    _seed_market_bars(tmp_path, monkeypatch)
+    _seed_market_bars(tmp_path)
 
     strategy = EqualWeightStrategy()
     result = run_quant_backtest(strategy=strategy, rebalance_days=7)
@@ -183,7 +181,7 @@ def test_run_quant_backtest_persists(tmp_path: Path, monkeypatch) -> None:
 def test_backtest_list_shows_backtest_type(tmp_path: Path, monkeypatch) -> None:
     """`list_backtest_results()` 返回含 backtest_type 字段的视图。"""
     monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{tmp_path}/bt.db")
-    _seed_market_bars(tmp_path, monkeypatch)
+    _seed_market_bars(tmp_path)
 
     strategy = EqualWeightStrategy()
     run_quant_backtest(strategy=strategy, rebalance_days=7)

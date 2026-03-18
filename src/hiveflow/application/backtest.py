@@ -15,6 +15,10 @@ from hiveflow.services.backtest_engine import load_close_prices
 from hiveflow.services.backtest_engine import load_close_prices_from_db
 from hiveflow.services.backtest_engine import run_weighted_backtest
 
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from hiveflow.services.strategies.base import BaseStrategy
+
 
 @dataclass(frozen=True)
 class BacktestResultView:
