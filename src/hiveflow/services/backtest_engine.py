@@ -100,13 +100,127 @@ def run_weighted_backtest(
 
 def run_dynamic_backtest(
     prices: dict[str, list[PriceBar]],
-    strategy,
-    rebalance_interval: int = 1,
+    strategy: "Any",
+    rebalance_days: int = 7,
     fee_bps: float = 0.0,
     slippage_bps: float = 0.0,
-) -> BacktestMetrics:
-    """基于动态策略的组合回测（动态再平衡）。待实现。"""
-    raise NotImplementedError("run_dynamic_backtest 尚未实现（Task 2）。")
+) -> "tuple[BacktestMetrics, dict[str, float]]":
+    """动态再平衡回测：每隔 rebalance_days 天重新调用策略计算权重。
+
+    - 每个块的起始时点之前的历史数据传给策略（无未来偏差）
+    - 历史数据不足（策略抛异常）时降级为等权重
+    - 交易成本（fee_bps + slippage_bps）在每个块的第一个周期扣除
+    """
+    import pandas as pd
+    from hiveflow.services.strategies.base import StrategyContext
+
+    symbols = sorted(prices.keys())
+    if not symbols:
+        raise ValueError("没有可用的价格序列。")
+
+    # 收集所有时间戳（跨 symbol 并集，排序）
+    all_timestamps = sorted({
+        bar.timestamp
+        for sym in symbols
+        for bar in prices[sym]
+    })
+    if len(all_timestamps) < 2:
+        raise ValueError("价格序列至少需要 2 个时点。")
+
+    # 构建 symbol → {timestamp: close} 快速查表
+    bar_maps: dict[str, dict[str, float]] = {
+        sym: {bar.timestamp: bar.close for bar in prices[sym]}
+        for sym in symbols
+    }
+
+    # 按 rebalance_days 切分块
+    blocks: list[tuple[str, list[str]]] = []
+    for i in range(0, len(all_timestamps), rebalance_days):
+        block_start = all_timestamps[i]
+        block_ts = all_timestamps[i : i + rebalance_days]
+        blocks.append((block_start, block_ts))
+
+    per_trade_cost = (fee_bps + slippage_bps) / 10000.0
+    equity = 1.0
+    curve = [equity]
+    all_returns: list[float] = []
+    # 初始等权重（用于第一个块的 fallback）
+    equal_weights: dict[str, float] = {sym: 1.0 / len(symbols) for sym in symbols}
+    final_weights = dict(equal_weights)
+
+    for block_start, block_ts in blocks:
+        # 截取 block_start 之前的历史数据
+        hist_ts = [ts for ts in all_timestamps if ts < block_start]
+
+        # 构建 pd.DataFrame(index=range, columns=symbol)
+        if hist_ts:
+            df = pd.DataFrame(
+                {sym: [bar_maps[sym].get(ts, float("nan")) for ts in hist_ts] for sym in symbols}
+            )
+        else:
+            df = pd.DataFrame(columns=symbols)
+
+        # 调用策略；失败时降级为等权重
+        try:
+            ctx = StrategyContext(
+                prices=df,
+                current_positions={},
+                risk_signals={},
+                params=strategy.params,
+            )
+            weights = strategy.compute_weights(ctx)
+            final_weights = dict(weights)
+        except Exception:
+            weights = dict(equal_weights)
+            final_weights = dict(equal_weights)
+
+        # 模拟本块内逐日收益
+        for ts_idx in range(1, len(block_ts)):
+            prev_ts = block_ts[ts_idx - 1]
+            curr_ts = block_ts[ts_idx]
+            period_return = 0.0
+            for sym in symbols:
+                w = weights.get(sym, 0.0)
+                if w == 0.0:
+                    continue
+                prev_close = bar_maps[sym].get(prev_ts)
+                curr_close = bar_maps[sym].get(curr_ts)
+                if prev_close is None or curr_close is None or prev_close <= 0:
+                    continue
+                period_return += w * (curr_close / prev_close - 1.0)
+            # 每块首日扣除再平衡交易成本
+            if ts_idx == 1:
+                period_return -= per_trade_cost
+            all_returns.append(period_return)
+            equity *= 1.0 + period_return
+            curve.append(equity)
+
+    if not all_returns:
+        raise ValueError("无法生成收益序列，请检查数据。")
+
+    # 最大回撤
+    peak = curve[0]
+    max_drawdown = 0.0
+    for value in curve:
+        peak = max(peak, value)
+        dd = value / peak - 1.0
+        max_drawdown = min(max_drawdown, dd)
+
+    # Sharpe（与 run_weighted_backtest 公式一致）
+    mean_ret = sum(all_returns) / len(all_returns)
+    variance = sum((r - mean_ret) ** 2 for r in all_returns) / max(len(all_returns) - 1, 1)
+    std_ret = math.sqrt(variance)
+    sharpe = mean_ret / std_ret * math.sqrt(len(all_returns)) if std_ret > 0 else 0.0
+
+    return (
+        BacktestMetrics(
+            periods=len(all_returns),
+            total_return=equity - 1.0,
+            max_drawdown=max_drawdown,
+            sharpe=sharpe,
+        ),
+        final_weights,
+    )
 
 
 def load_close_prices_from_db(
