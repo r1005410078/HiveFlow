@@ -39,3 +39,5 @@
 - 全量测试：193 passed。
 - 完成动态回测：新增 `backtest quant-run --strategy <StrategyName>`，支持每隔 N 天重新计算量化策略权重并回测，结果落库 BacktestResult（backtest_type=dynamic）；backtest list 新增 ID 和类型列。
 - 全量测试：204 passed。
+- 完成 M7：回测权益曲线可视化。`BacktestMetrics.curve` 字段，`BacktestResult.equity_curve` 落库（JSON），`BacktestResultView.equity_curve` 视图。新增 `backtest show <id>`（权益曲线 Sparkline + 指标摘要）与 `backtest compare <id1> <id2>...`（多回测并排对比），均支持 `--output json`。Unicode Sparkline 用 8 级块字符（`▁▂▃▄▅▆▇█`），show 宽 40、compare 宽 28，上取整采样避免截断长曲线。旧记录 NULL curve 降级提示。
+- 全量测试：221 passed。
