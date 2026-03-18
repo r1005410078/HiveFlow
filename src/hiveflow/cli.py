@@ -1762,6 +1762,18 @@ def backtest_show_command(
         typer.echo(f"  {spark}")
         created_date = result.created_at[:10]
         typer.echo(f"  创建：{created_date}")
+        # 风险指标节（从 equity curve 派生）
+        try:
+            risk = analyze_portfolio_risk(result.id, settings=Settings())
+        except ValueError:
+            risk = None
+        if risk is not None:
+            typer.echo("")
+            typer.echo("  风险指标")
+            typer.echo(f"  年化波动率   {risk['annual_vol']:.1%}")
+            typer.echo(f"  胜率         {risk['win_rate']:.1%}")
+            calmar_str = f"{risk['calmar_ratio']:.2f}" if risk["calmar_ratio"] != float("inf") else "∞"
+            typer.echo(f"  Calmar       {calmar_str}")
 
 
 @backtest_app.command("compare")
@@ -2360,6 +2372,38 @@ def risk_assets_command(
             for val in row
         )
         typer.echo(row_str)
+
+
+@risk_analysis_app.command("portfolio")
+def risk_portfolio_command(
+    backtest_id: int = typer.Argument(..., help="回测记录 ID"),
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+) -> None:
+    """从回测 equity curve 计算组合年化波动率、胜率与 Calmar ratio。"""
+    output_format = _validate_output_format(output)
+    try:
+        risk = analyze_portfolio_risk(backtest_id, settings=Settings())
+    except ValueError as exc:
+        typer.echo(f"错误：{exc}")
+        raise typer.Exit(code=1)
+
+    if risk is None:
+        typer.echo("  [历史记录无曲线数据，重新运行回测可获得组合风险分析]")
+        return
+
+    if output_format == "json":
+        typer.echo(json.dumps(
+            {k: (v if v != float("inf") else None) for k, v in risk.items()},
+            ensure_ascii=False,
+            indent=2,
+        ))
+        return
+
+    typer.echo(f"组合风险分析（回测 #{backtest_id}）\n")
+    typer.echo(f"  年化波动率   {risk['annual_vol']:.1%}")
+    typer.echo(f"  胜率         {risk['win_rate']:.1%}")
+    calmar_str = f"{risk['calmar_ratio']:.2f}" if risk["calmar_ratio"] != float("inf") else "∞"
+    typer.echo(f"  Calmar       {calmar_str}")
 
 
 def run() -> None:

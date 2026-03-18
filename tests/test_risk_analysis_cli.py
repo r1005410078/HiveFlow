@@ -155,3 +155,78 @@ def test_risk_assets_no_data(tmp_path: Path, monkeypatch) -> None:
     runner = CliRunner()
     result = runner.invoke(app, ["risk-analysis", "assets"])
     assert result.exit_code == 1
+
+
+# ─── Task 6：risk-analysis portfolio + backtest show 増強 ─────────────────────
+
+def test_risk_portfolio_cli(tmp_path: Path, monkeypatch) -> None:
+    """risk-analysis portfolio exit_code=0，输出含胜率/Calmar。"""
+    from typer.testing import CliRunner
+    from hiveflow.cli import app
+    curve = [1.0, 1.05, 1.02, 1.1, 1.08, 1.15]
+    rid = _seed_backtest(tmp_path, monkeypatch, equity_curve=curve)
+    runner = CliRunner()
+    result = runner.invoke(app, ["risk-analysis", "portfolio", str(rid)])
+    assert result.exit_code == 0, result.output
+    assert "胜率" in result.output or "win" in result.output.lower()
+    assert "Calmar" in result.output or "calmar" in result.output.lower()
+
+
+def test_risk_portfolio_no_curve(tmp_path: Path, monkeypatch) -> None:
+    """equity_curve=NULL → exit_code=0，含降级提示。"""
+    from typer.testing import CliRunner
+    from hiveflow.cli import app
+    rid = _seed_backtest(tmp_path, monkeypatch, equity_curve=None)
+    runner = CliRunner()
+    result = runner.invoke(app, ["risk-analysis", "portfolio", str(rid)])
+    assert result.exit_code == 0, result.output
+    assert "重新运行" in result.output or "无曲线" in result.output
+
+
+def test_risk_portfolio_missing_id(tmp_path: Path, monkeypatch) -> None:
+    """ID 不存在 → exit_code=1。"""
+    from typer.testing import CliRunner
+    from hiveflow.cli import app
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{tmp_path}/ra.db")
+    create_all_tables()
+    runner = CliRunner()
+    result = runner.invoke(app, ["risk-analysis", "portfolio", "9999"])
+    assert result.exit_code == 1
+
+
+def test_risk_portfolio_json(tmp_path: Path, monkeypatch) -> None:
+    """--output json 输出含 annual_vol / win_rate / calmar_ratio 键的 dict。"""
+    from typer.testing import CliRunner
+    from hiveflow.cli import app
+    curve = [1.0, 1.1, 1.05, 1.2]
+    rid = _seed_backtest(tmp_path, monkeypatch, equity_curve=curve)
+    runner = CliRunner()
+    result = runner.invoke(app, ["risk-analysis", "portfolio", str(rid), "--output", "json"])
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+    assert "annual_vol" in data
+    assert "win_rate" in data
+    assert "calmar_ratio" in data
+
+
+def test_backtest_show_includes_risk(tmp_path: Path, monkeypatch) -> None:
+    """`backtest show` 含 equity_curve 时，输出含"风险指标"节。"""
+    from typer.testing import CliRunner
+    from hiveflow.cli import app
+    curve = [1.0 + i * 0.01 for i in range(20)]
+    rid = _seed_backtest(tmp_path, monkeypatch, equity_curve=curve)
+    runner = CliRunner()
+    result = runner.invoke(app, ["backtest", "show", str(rid)])
+    assert result.exit_code == 0, result.output
+    assert "风险指标" in result.output
+
+
+def test_backtest_show_no_curve_skips_risk(tmp_path: Path, monkeypatch) -> None:
+    """equity_curve=NULL 时，`backtest show` 不含"风险指标"节。"""
+    from typer.testing import CliRunner
+    from hiveflow.cli import app
+    rid = _seed_backtest(tmp_path, monkeypatch, equity_curve=None)
+    runner = CliRunner()
+    result = runner.invoke(app, ["backtest", "show", str(rid)])
+    assert result.exit_code == 0, result.output
+    assert "风险指标" not in result.output
