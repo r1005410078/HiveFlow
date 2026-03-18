@@ -21,9 +21,63 @@ uv run hiveflow positions list --output json
 
 从 `free` 数组提取持仓资产列表（排除 USDT）。
 
-### Step 2：生成候选配比并写入策略
+### Step 2：运行量化策略获取权重信号
 
-根据持仓资产，生成三组候选配比：
+先用内置量化策略生成数学信号，供后续决策参考：
+
+```bash
+uv run hiveflow quant list
+# 查看可用策略
+
+uv run hiveflow quant run --strategy MomentumStrategy --output json
+uv run hiveflow quant run --strategy MeanReversionStrategy --output json
+```
+
+JSON 输出示例（`MomentumStrategy`）：
+
+```json
+{
+  "strategy": "MomentumStrategy",
+  "params": {"lookback_days": 30, "top_k": 3, "min_usdt": 0.1},
+  "weights": {
+    "BTC": 0.45,
+    "ETH": 0.30,
+    "SOL": 0.15,
+    "USDT": 0.10
+  },
+  "run_id": 7,
+  "run_at": "2026-03-17T10:30:00Z"
+}
+```
+
+**分析量化信号的方式：**
+- 对比两个策略的输出权重：动量与均值回归方向一致时，信号更可信
+- 将量化权重与当前持仓对比，判断偏离方向
+- 结合风险信号（`check --output json`）决定是否采纳
+
+**决策框架：**
+- 量化策略 = **数学工具**（确定性，给定输入总是输出同样结果）
+- **是否采纳、如何调整 = Agent/你的判断**，不能盲目跟从
+- 若量化推荐与风险信号矛盾（如动量看涨但回撤 -20%），优先尊重风险信号
+
+**若认可量化结果，直接写入目标：**
+
+```bash
+uv run hiveflow quant run --strategy MomentumStrategy --apply
+```
+
+`--apply` 会以 replace 模式写入 TargetAllocation，并记录 DecisionLog。跳过 Step 3-5，直接到 Step 6。
+
+**若需要微调权重，导出 CSV 后导入：**
+
+```bash
+# 将量化权重导出为 CSV，手动调整后导入
+uv run hiveflow targets import --strategy "MomentumStrategy-adjusted" --mode replace
+```
+
+### Step 3：生成候选配比并写入策略（手动方案）
+
+若量化信号不满足要求，或需要更灵活的配比，手动生成三组候选配比：
 
 **生成规则：**
 - USDT 最低 10%（弹药底线，不可低于此值）
@@ -44,7 +98,7 @@ uv run hiveflow targets import --strategy "激进版" --mode replace
 uv run hiveflow backtest run --strategy "激进版"
 ```
 
-### Step 3：比较回测结果
+### Step 4：比较回测结果
 
 ```bash
 uv run hiveflow backtest list --output json
@@ -58,7 +112,7 @@ uv run hiveflow backtest list --output json
 | 均衡版 | ... | ... | ... |
 | 保守版 | ... | ... | ... |
 
-### Step 4：给出推荐并说明理由
+### Step 5：给出推荐并说明理由
 
 **投资理论框架（按优先级应用）：**
 
@@ -93,13 +147,13 @@ uv run hiveflow backtest list --output json
 - 网格交易：横盘震荡时效果好，当前系统不执行，可以建议手动在 OKX 设置
 - 合约/杠杆：放大收益也放大风险，不在本系统范围内，高风险谨慎参与
 
-### Step 5：用户选定配比后设置目标
+### Step 6：用户选定配比后设置目标
 
 ```bash
 uv run hiveflow targets set-from-backtest <backtest_id>
 ```
 
-### Step 6：预览调仓建议
+### Step 7：预览调仓建议
 
 ```bash
 uv run hiveflow rebalance preview --output json
@@ -110,7 +164,7 @@ uv run hiveflow rebalance preview --output json
 - MEDIUM：建议处理
 - LOW：可选
 
-### Step 7：生成订单并确认执行
+### Step 8：生成订单并确认执行
 
 将调仓建议转换为订单列表，展示给用户：
 
@@ -131,7 +185,7 @@ uv run hiveflow rebalance preview --output json
 uv run hiveflow trade execute --orders '[{"symbol":"ETH","action":"buy","usdt":500},{"symbol":"SOL","action":"sell","usdt":200}]'
 ```
 
-### Step 8：执行后汇报
+### Step 9：执行后汇报
 
 展示执行结果，记录本次调仓决策。
 
