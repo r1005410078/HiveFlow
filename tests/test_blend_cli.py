@@ -116,3 +116,35 @@ def test_blend_run_json_output(tmp_path):
     data = json.loads(result.output)
     assert "asset_weights" in data
     assert "blend_weights" in data
+
+
+def test_blend_update_command(tmp_path):
+    with patch("hiveflow.cli.update_blend", return_value=_view()) as mock_fn:
+        result = runner.invoke(app, [
+            "--database-url", _db_url(tmp_path),
+            "quant", "blend", "update", "test",
+            "--strategies", "MomentumStrategy,EqualWeightStrategy",
+            "--weights", "0.6,0.4",
+        ])
+    assert result.exit_code == 0, result.output
+    assert mock_fn.called
+
+
+def test_blend_delete_command(tmp_path):
+    with patch("hiveflow.cli.delete_blend") as mock_fn:
+        result = runner.invoke(app, [
+            "--database-url", _db_url(tmp_path),
+            "quant", "blend", "delete", "test", "--yes",
+        ])
+    assert result.exit_code == 0, result.output
+    assert mock_fn.called
+
+
+def test_blend_delete_not_found_exits_1(tmp_path):
+    with patch("hiveflow.cli.delete_blend", side_effect=ValueError("Blend 配置 'test' 不存在。")):
+        result = runner.invoke(app, [
+            "--database-url", _db_url(tmp_path),
+            "quant", "blend", "delete", "test", "--yes",
+        ])
+    assert result.exit_code == 1
+    assert "不存在" in result.output

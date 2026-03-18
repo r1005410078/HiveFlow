@@ -335,33 +335,49 @@ uv run hiveflow risk-analysis portfolio 3 --output json
 
 ```bash
 # Example A: 创建自动优化 blend（权重由 Sharpe 归一化计算）
-uv run hiveflow quant blend create my_blend \
-  --strategies Momentum,EqualWeight,RiskParity
+uv run hiveflow quant blend create my_blend1 \
+  --strategies MomentumStrategy,EqualWeightStrategy,RiskParityStrategy
 
 # Example B: 创建手动权重 blend
 uv run hiveflow quant blend create manual_blend \
-  --strategies Momentum,EqualWeight \
+  --strategies MomentumStrategy,EqualWeightStrategy \
   --weights 0.7,0.3
 
 # Example C: 指定优化指标（calmar / return）
 uv run hiveflow quant blend create calmar_blend \
-  --strategies Momentum,MaxSharpe,MinVariance \
+  --strategies MomentumStrategy,EqualWeightStrategy,RiskParityStrategy \
   --optimize-metric calmar
 
 # Example D: 运行 blend，查看混合后资产权重
-uv run hiveflow quant blend run my_blend
+uv run hiveflow quant blend run my_blend1
 
 # Example E: 运行并直接写入目标持仓
-uv run hiveflow quant blend run my_blend --apply
+uv run hiveflow quant blend run my_blend1 --apply
 
 # Example F: JSON 输出（给脚本/AI 消费）
-uv run hiveflow quant blend run my_blend --output json
+uv run hiveflow quant blend run my_blend1 --output json
 
 # Example G: 查看所有 blend 配置
 uv run hiveflow quant blend list
 
 # Example H: 查看某个 blend 详情
-uv run hiveflow quant blend show my_blend
+uv run hiveflow quant blend show my_blend1
+
+# Example I: 覆盖更新 blend（改策略 + 改权重）
+uv run hiveflow quant blend update my_blend1 \
+  --strategies MomentumStrategy,EqualWeightStrategy \
+  --weights 0.7,0.3
+
+# Example J: 覆盖更新为自动优化模式（去掉 --weights）
+uv run hiveflow quant blend update my_blend1 \
+  --strategies MomentumStrategy,EqualWeightStrategy,RiskParityStrategy \
+  --optimize-metric calmar
+
+# Example K: 删除 blend（有确认提示）
+uv run hiveflow quant blend delete my_blend1
+
+# Example L: 删除 blend（跳过确认）
+uv run hiveflow quant blend delete my_blend1 --yes
 ```
 
 **`quant blend run` 输出示例：**

@@ -9,9 +9,11 @@ import pytest
 
 from hiveflow.application.blend import (
     create_blend,
+    delete_blend,
     get_blend,
     list_blends,
     run_blend,
+    update_blend,
 )
 from hiveflow.config import Settings
 from hiveflow.db import create_all_tables, get_session
@@ -270,3 +272,70 @@ def test_get_blend_not_found_raises(tmp_path):
     settings = _settings(tmp_path)
     with pytest.raises(ValueError, match="不存在"):
         get_blend(name="nonexistent", settings=settings)
+
+
+def test_delete_blend(tmp_path):
+    settings = _settings(tmp_path)
+    create_all_tables(settings)
+    create_blend("to_delete", ["MomentumStrategy"], [1.0], settings=settings)
+    delete_blend("to_delete", settings=settings)
+    with pytest.raises(ValueError, match="不存在"):
+        get_blend("to_delete", settings=settings)
+
+
+def test_delete_blend_not_found_raises(tmp_path):
+    settings = _settings(tmp_path)
+    create_all_tables(settings)
+    with pytest.raises(ValueError, match="不存在"):
+        delete_blend("nonexistent", settings=settings)
+
+
+def test_update_blend_strategies_and_weights(tmp_path):
+    settings = _settings(tmp_path)
+    create_all_tables(settings)
+    create_blend("to_update", ["MomentumStrategy"], [1.0], settings=settings)
+    cfg = update_blend(
+        "to_update",
+        strategy_names=["MomentumStrategy", "EqualWeightStrategy"],
+        weights=[0.6, 0.4],
+        optimize_metric="calmar",
+        settings=settings,
+    )
+    assert cfg.strategy_names == ["MomentumStrategy", "EqualWeightStrategy"]
+    assert abs(cfg.weights["MomentumStrategy"] - 0.6) < 1e-9
+    assert cfg.optimize_metric == "calmar"
+    assert cfg.auto_optimized is False
+
+
+def test_update_blend_to_auto_mode(tmp_path):
+    settings = _settings(tmp_path)
+    create_all_tables(settings)
+    create_blend("manual_blend", ["MomentumStrategy"], [1.0], settings=settings)
+    cfg = update_blend(
+        "manual_blend",
+        strategy_names=["MomentumStrategy", "EqualWeightStrategy"],
+        weights=None,  # 切换为自动优化
+        settings=settings,
+    )
+    assert cfg.auto_optimized is True
+    assert cfg.weights == {}
+
+
+def test_update_blend_not_found_raises(tmp_path):
+    settings = _settings(tmp_path)
+    create_all_tables(settings)
+    with pytest.raises(ValueError, match="不存在"):
+        update_blend("nonexistent", ["MomentumStrategy"], [1.0], settings=settings)
+
+
+def test_update_blend_mismatched_weights_raises(tmp_path):
+    settings = _settings(tmp_path)
+    create_all_tables(settings)
+    create_blend("mismatch_update", ["MomentumStrategy"], [1.0], settings=settings)
+    with pytest.raises(ValueError, match="不一致"):
+        update_blend(
+            "mismatch_update",
+            strategy_names=["MomentumStrategy", "EqualWeightStrategy"],
+            weights=[0.5, 0.3, 0.2],  # 3 个权重给 2 个策略
+            settings=settings,
+        )
