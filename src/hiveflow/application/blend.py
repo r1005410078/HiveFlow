@@ -112,8 +112,7 @@ def list_blends(settings: Settings | None = None) -> list[BlendConfigView]:
         rows = session.exec(
             select(BlendConfig).order_by(BlendConfig.created_at.desc())
         ).all()
-
-    return [_to_view(r) for r in rows]
+        return [_to_view(r) for r in rows]
 
 
 def get_blend(name: str, settings: Settings | None = None) -> BlendConfigView:
@@ -125,10 +124,9 @@ def get_blend(name: str, settings: Settings | None = None) -> BlendConfigView:
         row = session.exec(
             select(BlendConfig).where(BlendConfig.name == name)
         ).first()
-
-    if row is None:
-        raise ValueError(f"Blend 配置 '{name}' 不存在。")
-    return _to_view(row)
+        if row is None:
+            raise ValueError(f"Blend 配置 '{name}' 不存在。")
+        return _to_view(row)
 
 
 def _compute_auto_weights(
@@ -217,13 +215,14 @@ def run_blend(
     if total_w > 0:
         asset_weights = {k: v / total_w for k, v in asset_weights.items()}
 
-    # 4. 更新 BlendConfig.updated_at + 写入已计算的 blend_weights
+    # 4. 更新 BlendConfig.updated_at + 写入已计算的 blend_weights（仅自动优化模式）
     with get_session(app_settings) as session:
         row = session.exec(
             select(BlendConfig).where(BlendConfig.name == name)
         ).first()
         if row:
-            row.weights = json.dumps(blend_weights)
+            if config.auto_optimized:
+                row.weights = json.dumps(blend_weights)
             row.updated_at = utc_now()
             session.commit()
 

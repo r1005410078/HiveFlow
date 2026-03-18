@@ -7,9 +7,17 @@ from pathlib import Path
 
 import pytest
 
+from hiveflow.application.blend import (
+    create_blend,
+    get_blend,
+    list_blends,
+    run_blend,
+)
 from hiveflow.config import Settings
 from hiveflow.db import create_all_tables, get_session
+from hiveflow.domain.backtests import BacktestResult
 from hiveflow.domain.blend_configs import BlendConfig
+from hiveflow.domain.strategy_runs import StrategyRun
 
 
 def _settings(tmp_path: Path) -> Settings:
@@ -37,15 +45,6 @@ def test_blend_config_create_and_read(tmp_path):
         assert record.optimize_metric == "sharpe"
         assert record.created_at is not None
         assert record.updated_at is not None
-
-
-from hiveflow.application.blend import (
-    create_blend,
-    get_blend,
-    list_blends,
-    run_blend,
-    BlendRunResult,
-)
 
 
 def test_create_blend_manual_weights(tmp_path):
@@ -114,10 +113,6 @@ def test_list_blends(tmp_path):
     assert len(blends) == 2
     names = [b.name for b in blends]
     assert "b1" in names and "b2" in names
-
-
-from hiveflow.domain.strategy_runs import StrategyRun
-from hiveflow.domain.backtests import BacktestResult
 
 
 def _seed_strategy_run(
@@ -248,6 +243,15 @@ def test_run_blend_apply_writes_target_allocation(tmp_path):
         ).all()
     symbols = {r.symbol for r in rows}
     assert "BTC" in symbols and "ETH" in symbols
+
+
+def test_run_blend_missing_strategy_run_raises(tmp_path):
+    settings = _settings(tmp_path)
+    create_all_tables(settings)
+    # 不 seed StrategyRun 记录
+    create_blend("missing_run", ["MomentumStrategy"], [1.0], "sharpe", settings=settings)
+    with pytest.raises(ValueError, match="没有运行记录"):
+        run_blend(name="missing_run", apply=False, settings=settings)
 
 
 def test_get_blend_not_found_raises(tmp_path):
