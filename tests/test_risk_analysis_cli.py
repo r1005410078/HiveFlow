@@ -108,3 +108,48 @@ def test_analyze_portfolio_risk_missing_id(tmp_path: Path, monkeypatch) -> None:
     create_all_tables()
     with pytest.raises(ValueError, match="不存在"):
         analyze_portfolio_risk(9999)
+
+
+# ─── Task 5：risk-analysis assets CLI ────────────────────────────────────────
+
+def test_risk_assets_cli(tmp_path: Path, monkeypatch) -> None:
+    """risk-analysis assets exit_code=0，输出含资产名与相关性矩阵标题。"""
+    from typer.testing import CliRunner
+    from hiveflow.cli import app
+    _seed_market_bars(tmp_path, monkeypatch, {
+        "BTC": [100.0, 110.0, 105.0, 115.0, 110.0],
+        "ETH": [50.0, 55.0, 52.0, 57.0, 54.0],
+    })
+    runner = CliRunner()
+    result = runner.invoke(app, ["risk-analysis", "assets"])
+    assert result.exit_code == 0, result.output
+    assert "BTC" in result.output
+    assert "相关性" in result.output
+
+
+def test_risk_assets_json(tmp_path: Path, monkeypatch) -> None:
+    """--output json 输出含 assets 和 correlation 键的 dict。"""
+    from typer.testing import CliRunner
+    from hiveflow.cli import app
+    _seed_market_bars(tmp_path, monkeypatch, {
+        "BTC": [100.0, 110.0, 105.0, 115.0],
+        "ETH": [50.0, 55.0, 52.0, 57.0],
+    })
+    runner = CliRunner()
+    result = runner.invoke(app, ["risk-analysis", "assets", "--output", "json"])
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+    assert "assets" in data
+    assert "correlation" in data
+    assert isinstance(data["assets"], list)
+
+
+def test_risk_assets_no_data(tmp_path: Path, monkeypatch) -> None:
+    """MarketBar 空时 exit_code=1。"""
+    from typer.testing import CliRunner
+    from hiveflow.cli import app
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{tmp_path}/ra.db")
+    create_all_tables()
+    runner = CliRunner()
+    result = runner.invoke(app, ["risk-analysis", "assets"])
+    assert result.exit_code == 1

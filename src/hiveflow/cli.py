@@ -56,6 +56,7 @@ from hiveflow.application.quant_strategies import (
     list_strategy_runs,
     run_quant_strategy,
 )
+from hiveflow.application.risk_analysis import analyze_asset_risk, analyze_portfolio_risk
 from hiveflow.services.strategies import (
     BaseStrategy,
     BollingerBandStrategy,
@@ -116,6 +117,7 @@ backtest_app = typer.Typer(help="策略回测命令。")
 trade_app = typer.Typer(help="交易执行命令。")
 skills_app = typer.Typer(name="skills", help="管理 AI Agent Skills。")
 quant_app = typer.Typer(help="量化策略命令。")
+risk_analysis_app = typer.Typer(help="资产与组合风险分析。")
 console = Console()
 JSON_SCHEMA_VERSION = "1.0.0"
 
@@ -2056,6 +2058,7 @@ app.add_typer(backtest_app, name="backtest")
 app.add_typer(trade_app, name="trade")
 app.add_typer(skills_app, name="skills")
 app.add_typer(quant_app, name="quant")
+app.add_typer(risk_analysis_app, name="risk-analysis")
 
 
 @skills_app.command("list")
@@ -2284,6 +2287,79 @@ def quant_history_command(
             r.run_at,
         )
     console.print(table)
+
+
+@risk_analysis_app.command("assets")
+def risk_assets_command(
+    symbols: str | None = typer.Option(None, "--symbols", help="资产列表，逗号分隔（不填则用 MarketBar 全部）"),
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+) -> None:
+    """分析各资产年化波动率、历史最大回撤与相关性矩阵。"""
+    import math as _math
+    output_format = _validate_output_format(output)
+    symbols_list = (
+        [s.strip().upper() for s in symbols.split(",") if s.strip()]
+        if symbols
+        else None
+    )
+    try:
+        asset_views, corr_view = analyze_asset_risk(symbols=symbols_list, settings=Settings())
+    except ValueError as exc:
+        typer.echo(f"错误：{exc}")
+        raise typer.Exit(code=1)
+
+    if output_format == "json":
+        payload = {
+            "assets": [
+                {
+                    "symbol": v.symbol,
+                    "annual_vol": round(v.annual_vol, 6),
+                    "daily_vol": round(v.daily_vol, 6),
+                    "max_drawdown": round(v.max_drawdown, 6),
+                    "periods": v.periods,
+                }
+                for v in asset_views
+            ],
+            "correlation": {
+                "symbols": corr_view.symbols,
+                "matrix": [
+                    [
+                        round(val, 4) if not _math.isnan(val) else None
+                        for val in row
+                    ]
+                    for row in corr_view.matrix
+                ],
+            },
+        }
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    typer.echo("资产风险分析\n")
+    tbl = Table(show_lines=False, box=box.SIMPLE)
+    tbl.add_column("资产")
+    tbl.add_column("年化波动率", justify="right")
+    tbl.add_column("日波动率", justify="right")
+    tbl.add_column("历史 MDD", justify="right")
+    tbl.add_column("数据点", justify="right")
+    for v in asset_views:
+        tbl.add_row(
+            v.symbol,
+            f"{v.annual_vol:.1%}",
+            f"{v.daily_vol:.2%}",
+            f"{v.max_drawdown:.1%}",
+            str(v.periods),
+        )
+    console.print(tbl)
+
+    typer.echo("\n  相关性矩阵")
+    header = "        " + "  ".join(f"{s:>6}" for s in corr_view.symbols)
+    typer.echo(header)
+    for i, row in enumerate(corr_view.matrix):
+        row_str = f"  {corr_view.symbols[i]:>5}  " + "  ".join(
+            f"{val:>6.2f}" if not _math.isnan(val) else "   N/A"
+            for val in row
+        )
+        typer.echo(row_str)
 
 
 def run() -> None:
