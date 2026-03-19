@@ -1266,6 +1266,43 @@ def test_positions_drift_supports_json_output(tmp_path, monkeypatch) -> None:
     assert any(item["drift_level"] in {"high", "medium", "low"} for item in payload["items"])
 
 
+def test_positions_drift_ignores_tiny_positions(tmp_path, monkeypatch) -> None:
+    # 验证极小持仓不会参与偏离分析，避免噪声仓位干扰结果。
+    db_path = tmp_path / "positions-drift-small.db"
+    positions_path = tmp_path / "positions-drift-small.csv"
+    targets_path = tmp_path / "targets-drift-small.csv"
+    strategies_path = tmp_path / "strategies-drift-small.csv"
+    positions_path.write_text(
+        "symbol,quantity,market_value,weight\nBTC,0.000001,0.009,0.000001\nETH,2,20000,0.10\nUSDT,1,20000,0.20\n",
+        encoding="utf-8",
+    )
+    targets_path.write_text(
+        "strategy_name,symbol,target_weight\n进攻突破策略,BTC,0.50\n进攻突破策略,ETH,0.30\n进攻突破策略,USDT,0.20\n",
+        encoding="utf-8",
+    )
+    strategies_path.write_text(
+        (
+            "name,category,thesis,market_regime,backtest_summary\n"
+            "进攻突破策略,进攻型,顺势突破+风控,趋势市,年化 18%\n"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+    runner.invoke(app, ["positions", "import", "--file", str(positions_path), "--mode", "replace"])
+    runner.invoke(app, ["targets", "import", "--file", str(targets_path), "--mode", "replace"])
+    runner.invoke(app, ["strategies", "import", "--file", str(strategies_path), "--mode", "replace"])
+    runner.invoke(app, ["current", "set-strategy", "--name", "进攻突破策略"])
+
+    result = runner.invoke(app, ["positions", "drift", "--output", "json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    symbols = {item["symbol"] for item in payload["items"]}
+    assert payload["count"] == 2
+    assert "BTC" not in symbols
+    assert symbols == {"ETH", "USDT"}
+
+
 def test_rebalance_preview_json_contains_explanation_and_risk_gate(tmp_path, monkeypatch) -> None:
     # 验证 rebalance JSON 含解释字段，且高风险买入会被门控为 hold。
     db_path = tmp_path / "rebalance-explain.db"

@@ -50,3 +50,8 @@
 - 设计：BlendConfig + PortfolioSnapshot 两个新实体，blend.py + perf.py 两个新 application 模块
 - 实现：7 个子任务全部交付，含 TDD + 两阶段评审（spec + code quality）
 - 结果：280 tests passed，quant blend 和 perf 命令组已上线
+
+## 2026-03-19
+
+- 修复：`positions drift` 与 `check` 统一忽略 `market_value <= 0.01 USDT` 的极小持仓，避免噪声仓位干扰分析。
+- 验证：新增回归测试并通过，`tests/test_health_check.py`、`tests/test_cli.py`、`tests/test_cli_check.py` 均已绿色。

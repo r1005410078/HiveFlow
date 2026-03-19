@@ -7,6 +7,7 @@ from enum import Enum
 from hiveflow.domain.market_data import MarketBar
 from hiveflow.domain.positions import Position
 from hiveflow.services.risk_engine import calculate_max_drawdown
+from hiveflow.services.position_filters import is_small_position_market_value
 
 WARNING_DD = -0.10
 DANGER_DD = -0.20
@@ -63,6 +64,8 @@ def run_health_check(
         return result
 
     for pos in positions:
+        if is_small_position_market_value(pos.market_value):
+            continue
         # USDT 是稳定币，不参与回撤计算
         if pos.symbol == "USDT":
             continue

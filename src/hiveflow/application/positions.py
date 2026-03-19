@@ -16,6 +16,7 @@ from hiveflow.db import create_all_tables, get_session
 from hiveflow.infrastructure.repositories.sqlmodel_position_repository import (
     SQLModelPositionRepository,
 )
+from hiveflow.services.position_filters import is_small_position_market_value
 
 
 @dataclass(frozen=True)
@@ -213,7 +214,14 @@ def analyze_positions_drift(strategy_name: str | None = None) -> list[PositionDr
         positions = session.exec(select(Position)).all()
         targets = session.exec(select(TargetAllocation)).all()
 
-    actual = {item.symbol: item.weight for item in positions}
+    ignored_symbols = {
+        item.symbol for item in positions if is_small_position_market_value(item.market_value)
+    }
+    actual = {
+        item.symbol: item.weight
+        for item in positions
+        if item.symbol not in ignored_symbols
+    }
 
     filtered_targets = (
         [item for item in targets if item.strategy_name == strategy_name]
@@ -222,6 +230,8 @@ def analyze_positions_drift(strategy_name: str | None = None) -> list[PositionDr
     )
     target: dict[str, float] = {}
     for item in filtered_targets:
+        if item.symbol in ignored_symbols:
+            continue
         target[item.symbol] = target.get(item.symbol, 0.0) + item.target_weight
 
     symbols = sorted(set(actual) | set(target))

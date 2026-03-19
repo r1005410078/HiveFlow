@@ -52,6 +52,8 @@
 - 全量测试最近结果：`280 passed`
 - `skills/` 目录已纳入版本控制，`~/.agents/skills/hiveflow-*` 为软链接
 - 本地存在未跟踪数据文件：`data/`、`strategies.csv`、`prices.csv`（不应提交）
+- 本次增量：`positions drift` 与 `check` 已忽略 `market_value <= 0.01 USDT` 的极小持仓，避免噪声仓位干扰结果
+- 本次验证：`uv run pytest tests/test_health_check.py tests/test_cli.py -q`（`72 passed`）、`uv run pytest tests/test_cli_check.py -q`（`4 passed`）
 
 ## 下一步建议
 

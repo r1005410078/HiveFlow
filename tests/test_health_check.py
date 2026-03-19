@@ -60,3 +60,16 @@ def test_mixed_levels_worst_wins() -> None:
         },
     )
     assert result.verdict == "danger"
+
+
+def test_tiny_positions_are_ignored() -> None:
+    tiny_btc = Position(symbol="BTC", quantity=0.000001, market_value=0.009, weight=0.000001)
+    result = run_health_check(
+        positions=[tiny_btc, _pos("ETH", 1.0)],
+        bars_by_symbol={
+            "BTC": _bars("BTC", [100, 80, 75, 72, 70, 69, 68]),
+            "ETH": _bars("ETH", [100, 102, 101, 103, 104, 105, 106]),
+        },
+    )
+    assert [signal.symbol for signal in result.signals] == ["ETH"]
+    assert result.verdict == "safe"
