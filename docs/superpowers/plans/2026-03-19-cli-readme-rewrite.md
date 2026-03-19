@@ -1,3 +1,35 @@
+# CLI README 新手文档重写 Implementation Plan
+
+> **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** 将 `docs/cli/README.md` 重写为以用户故事为骨架的新手入门文档，替换现有 1029 行命令参考文档。
+
+**Architecture:** 首页导航表（锚点链接）+ 五个独立场景章节 + 附录。每个场景以用户故事开头，步骤可直接复制执行，关键命令含预期输出示例。
+
+**Tech Stack:** Markdown，无代码改动，仅文档重写。
+
+**Spec:** `docs/superpowers/specs/2026-03-18-cli-readme-redesign.md`
+
+---
+
+## Chunk 1: 文档骨架 + 准备工作
+
+### Task 1: 新建文档，写入首页导航与准备工作
+
+**Files:**
+- Modify: `docs/cli/README.md`（全量替换）
+
+- [ ] **Step 1: 备份现有文档**
+
+```bash
+cp docs/cli/README.md docs/cli/README.old.md
+```
+
+- [ ] **Step 2: 写入文档标题、首页导航表**
+
+内容如下（完整写入，不省略）：
+
+```markdown
 # HiveFlow 新手入门
 
 HiveFlow 是一个本地运行的加密资产组合管理工具，帮你追踪持仓健康、运行量化策略、对比回测与实盘表现。
@@ -11,7 +43,11 @@ HiveFlow 是一个本地运行的加密资产组合管理工具，帮你追踪�
 | 跑量化回测，找最优配置 | [场景三：量化回测——找历史最优策略](#场景三量化回测找历史最优策略约-15-分钟) |
 | 混合多个策略，自动优化权重 | [场景四：多策略混合优化](#场景四多策略混合优化约-5-分钟) |
 | 对比实盘和回测的差距 | [场景五：实盘 vs 回测对比](#场景五实盘-vs-回测对比持续追踪) |
+```
 
+- [ ] **Step 3: 写入准备工作章节**
+
+```markdown
 ---
 
 ## 准备工作
@@ -49,7 +85,27 @@ HIVEFLOW_OKX_API_PASSPHRASE=你的passphrase
 ```
 
 > OKX API Key 在 OKX 官网 → 个人中心 → API 管理 中创建。创建时权限选"读取"+"交易"，如需执行调仓则需开启交易权限。
+```
 
+- [ ] **Step 4: 提交**
+
+```bash
+git add docs/cli/README.md docs/cli/README.old.md
+git commit -m "docs: 新手文档骨架 + 准备工作章节"
+```
+
+---
+
+## Chunk 2: 场景一 + 场景二
+
+### Task 2: 写入场景一（演示数据体验）
+
+**Files:**
+- Modify: `docs/cli/README.md`
+
+- [ ] **Step 1: 写入场景一章节**
+
+```markdown
 ---
 
 ## 场景一：从零到第一份调仓建议（约 10 分钟）
@@ -121,7 +177,23 @@ uv run hiveflow rebalance preview
 ```
 
 > 当某个标的风险水位为 `high` 时，`buy` 建议会自动变为 `hold`（风险门控）。
+```
 
+- [ ] **Step 2: 提交**
+
+```bash
+git add docs/cli/README.md
+git commit -m "docs: 新手文档场景一（演示数据体验）"
+```
+
+### Task 3: 写入场景二（每日健康检查）
+
+**Files:**
+- Modify: `docs/cli/README.md`
+
+- [ ] **Step 1: 写入场景二章节**
+
+```markdown
 ---
 
 ## 场景二：每日持仓健康检查（约 1 分钟）
@@ -180,7 +252,27 @@ uv run hiveflow check
 uv run hiveflow perf setup-cron --dry-run    # 预览将写入的定时任务
 uv run hiveflow perf setup-cron              # 实际安装
 ```
+```
 
+- [ ] **Step 2: 提交**
+
+```bash
+git add docs/cli/README.md
+git commit -m "docs: 新手文档场景二（每日健康检查）"
+```
+
+---
+
+## Chunk 3: 场景三 + 场景四
+
+### Task 4: 写入场景三（量化回测）
+
+**Files:**
+- Modify: `docs/cli/README.md`
+
+- [ ] **Step 1: 写入场景三章节**
+
+```markdown
 ---
 
 ## 场景三：量化回测——找历史最优策略（约 15 分钟）
@@ -278,7 +370,23 @@ uv run hiveflow risk-analysis assets
 uv run hiveflow targets set-from-backtest 3    # 替换 3 为目标回测 ID
 uv run hiveflow rebalance preview              # 查看对应的调仓建议
 ```
+```
 
+- [ ] **Step 2: 提交**
+
+```bash
+git add docs/cli/README.md
+git commit -m "docs: 新手文档场景三（量化回测）"
+```
+
+### Task 5: 写入场景四（多策略混合）
+
+**Files:**
+- Modify: `docs/cli/README.md`
+
+- [ ] **Step 1: 写入场景四章节**
+
+```markdown
 ---
 
 ## 场景四：多策略混合优化（约 5 分钟）
@@ -351,7 +459,27 @@ uv run hiveflow quant blend update my_blend \
   --strategies MomentumStrategy,EqualWeightStrategy \
   --weights 0.6,0.4
 ```
+```
 
+- [ ] **Step 2: 提交**
+
+```bash
+git add docs/cli/README.md
+git commit -m "docs: 新手文档场景四（多策略混合）"
+```
+
+---
+
+## Chunk 4: 场景五 + 附录 + 收尾
+
+### Task 6: 写入场景五（实盘追踪）
+
+**Files:**
+- Modify: `docs/cli/README.md`
+
+- [ ] **Step 1: 写入场景五章节**
+
+```markdown
 ---
 
 ## 场景五：实盘 vs 回测对比（持续追踪）
@@ -407,7 +535,24 @@ uv run hiveflow perf compare 3    # 替换 3 为你的回测 ID
 ```
 
 实盘收益低于回测是正常现象（回测不含手续费、滑点和市场冲击），关注的重点是**趋势方向是否一致**。
+```
 
+- [ ] **Step 2: 提交**
+
+```bash
+git add docs/cli/README.md
+git commit -m "docs: 新手文档场景五（实盘 vs 回测追踪）"
+```
+
+### Task 7: 写入附录 + 最终清理
+
+**Files:**
+- Modify: `docs/cli/README.md`
+- Delete: `docs/cli/README.old.md`（确认无需保留后删除）
+
+- [ ] **Step 1: 写入附录章节**
+
+```markdown
 ---
 
 ## 遇到问题？
@@ -445,4 +590,27 @@ uv run hiveflow quant blend create --help
 uv run hiveflow summary --output json
 uv run hiveflow rebalance preview --output json
 uv run hiveflow backtest show 3 --output json
+```
+```
+
+- [ ] **Step 2: 确认文档完整性**
+
+检查：
+- 首页导航表的锚点链接是否与各章节标题完全对应
+- 每个场景都有用户故事一句话
+- 每个步骤的命令都带 `uv run hiveflow` 前缀
+- 输出示例覆盖场景一、二、三、四、五
+
+- [ ] **Step 3: 删除备份文件**
+
+```bash
+rm docs/cli/README.old.md
+```
+
+- [ ] **Step 4: 最终提交**
+
+```bash
+git add docs/cli/README.md
+git rm docs/cli/README.old.md
+git commit -m "docs: CLI README 新手入门文档完成"
 ```
