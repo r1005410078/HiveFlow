@@ -1,0 +1,171 @@
+import json
+from datetime import datetime, timedelta, timezone
+
+from sqlmodel import select
+from typer.testing import CliRunner
+
+from hiveflow.cli import app
+from hiveflow.db import get_session
+from hiveflow.db import create_all_tables
+from hiveflow.domain.market_data import MarketBar
+from hiveflow.domain.positions import Position
+from hiveflow.domain.system_logs import SystemLog
+
+
+def test_signal_command_group_is_available() -> None:
+    result = CliRunner().invoke(app, ["signal", "--help"])
+    assert result.exit_code == 0
+
+
+def test_style_command_group_is_available() -> None:
+    result = CliRunner().invoke(app, ["style", "--help"])
+    assert result.exit_code == 0
+
+
+def test_signal_snapshot_json_returns_strict_failure_and_writes_system_log(
+    tmp_path, monkeypatch
+) -> None:
+    db_path = tmp_path / "signal-cli.db"
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["signal", "snapshot", "--output", "json"])
+    assert result.exit_code == 1
+
+    payload = json.loads(result.stdout)
+    assert payload["code"] == "E_SIGNAL_REQUIRED_MISSING"
+    assert payload["context"] == "signal.snapshot"
+    assert payload["trace_id"]
+    assert "details" in payload
+    assert "missing_signals" in payload["details"]
+    assert payload["details"]["strict_mode"] is True
+
+    with get_session() as session:
+        rows = session.exec(select(SystemLog)).all()
+    assert len(rows) == 1
+    assert rows[0].error_code == "E_SIGNAL_REQUIRED_MISSING"
+    assert rows[0].context == "signal.snapshot"
+
+
+def test_style_backtest_rank_json_returns_strict_failure_and_writes_system_log(
+    tmp_path, monkeypatch
+) -> None:
+    db_path = tmp_path / "style-cli.db"
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["style", "backtest-rank", "--output", "json"])
+    assert result.exit_code == 1
+
+    payload = json.loads(result.stdout)
+    assert payload["code"] == "E_STYLE_EVAL_FAILED"
+    assert payload["context"] == "style.backtest-rank"
+    assert payload["trace_id"]
+    assert payload["details"]["strict_mode"] is True
+    assert payload["details"]["completed_styles"] == []
+
+    with get_session() as session:
+        rows = session.exec(select(SystemLog)).all()
+    assert len(rows) == 1
+    assert rows[0].error_code == "E_STYLE_EVAL_FAILED"
+    assert rows[0].context == "style.backtest-rank"
+
+
+def _seed_market_and_positions(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "signal-ok.db"
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    create_all_tables()
+
+    start = datetime(2025, 10, 1, tzinfo=timezone.utc)
+    with get_session() as session:
+        for i in range(120):
+            ts = start + timedelta(days=i)
+            # BTC：震荡上行
+            btc_close = 100 + i * 0.8 + (i % 7) * 0.3
+            # ETH：缓慢上行
+            eth_close = 60 + i * 0.5 + (i % 5) * 0.2
+            # SOL：高波动，便于风险与相关性信号计算
+            sol_close = 30 + i * 0.7 + ((i % 9) - 4) * 0.6
+            for symbol, close in (
+                ("BTC", btc_close),
+                ("ETH", eth_close),
+                ("SOL", sol_close),
+            ):
+                session.add(
+                    MarketBar(
+                        symbol=symbol,
+                        timestamp=ts,
+                        open=close * 0.995,
+                        high=close * 1.01,
+                        low=close * 0.99,
+                        close=close,
+                        volume=1000.0 + i * 3,
+                    )
+                )
+
+        session.add(Position(symbol="BTC", quantity=0.5, market_value=800.0, weight=0.5))
+        session.add(Position(symbol="ETH", quantity=2.0, market_value=500.0, weight=0.3))
+        session.add(Position(symbol="SOL", quantity=20.0, market_value=300.0, weight=0.2))
+        session.commit()
+
+
+def test_signal_snapshot_json_success_with_seed_data(tmp_path, monkeypatch) -> None:
+    _seed_market_and_positions(tmp_path, monkeypatch)
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["signal", "snapshot", "--output", "json"])
+    assert result.exit_code == 0, result.stdout
+
+    payload = json.loads(result.stdout)
+    assert "signals" in payload
+    assert isinstance(payload["signals"], list)
+    assert len(payload["signals"]) == 24
+    assert payload["as_of"]
+    assert "data_window" in payload
+    assert "category_metrics" in payload
+    assert "conflict_matrix" in payload
+
+    first = payload["signals"][0]
+    assert set(
+        [
+            "signal_key",
+            "category",
+            "symbol",
+            "as_of",
+            "state",
+            "value",
+            "threshold",
+            "triggered",
+            "confidence",
+            "explanation",
+        ]
+    ).issubset(first.keys())
+
+
+def test_signal_trend_json_outputs_only_trend_category(tmp_path, monkeypatch) -> None:
+    _seed_market_and_positions(tmp_path, monkeypatch)
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["signal", "trend", "--output", "json"])
+    assert result.exit_code == 0, result.stdout
+
+    payload = json.loads(result.stdout)
+    assert payload["category"] == "trend"
+    assert len(payload["signals"]) == 6
+    assert all(item["category"] == "trend" for item in payload["signals"])
+
+
+def test_style_backtest_rank_json_success_with_seed_data(tmp_path, monkeypatch) -> None:
+    _seed_market_and_positions(tmp_path, monkeypatch)
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["style", "backtest-rank", "--output", "json"])
+    assert result.exit_code == 0, result.stdout
+
+    payload = json.loads(result.stdout)
+    assert payload["sort_key"] == "calmar"
+    assert "rank_table" in payload
+    assert len(payload["rank_table"]) == 4
+    assert "styles" in payload
+    assert len(payload["styles"]) == 4
+    assert "recommended_style" not in payload

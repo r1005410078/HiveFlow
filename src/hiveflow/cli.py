@@ -13,6 +13,16 @@ from hiveflow.application.decision_logs import list_decision_logs
 from hiveflow.application.decision_logs import record_decision_log
 from hiveflow.application.current import set_current_strategy
 from hiveflow.application.current import show_current_strategy
+from hiveflow.application.error_protocol import ErrorCode, build_error_payload, new_trace_id
+from hiveflow.application.signals import (
+    SIGNALS_BY_CATEGORY,
+    SignalPipelineError,
+    build_signal_category,
+    build_signal_snapshot,
+    signal_keys_of,
+)
+from hiveflow.application.system_logs import record_system_log
+from hiveflow.application.style_backtest import StyleBacktestError, run_style_backtest_rank
 from hiveflow.application.backtest import BacktestResultView
 from hiveflow.application.backtest import get_backtest_result
 from hiveflow.application.backtest import list_backtest_results
@@ -137,6 +147,8 @@ quant_app = typer.Typer(help="量化策略命令。")
 blend_app = typer.Typer(help="多策略混合命令。")
 risk_analysis_app = typer.Typer(help="资产与组合风险分析。")
 perf_app = typer.Typer(help="实盘绩效追踪命令。")
+signal_app = typer.Typer(help="信号系统命令。")
+style_app = typer.Typer(help="风格回测排名命令。")
 console = Console()
 JSON_SCHEMA_VERSION = "1.0.0"
 
@@ -247,6 +259,313 @@ def _parse_weights(text: str) -> dict[str, float]:
     if not result:
         raise typer.BadParameter("weights 不能为空。")
     return result
+
+
+def _emit_strict_failure(
+    *,
+    code: ErrorCode,
+    context: str,
+    message: str,
+    details: dict,
+    hint: dict | str | None,
+    output: str,
+) -> None:
+    """统一输出严格模式失败对象，并记录系统日志。"""
+    trace_id = new_trace_id()
+    payload = build_error_payload(
+        code=code,
+        message=message,
+        context=context,
+        details=details,
+        hint=hint,
+        trace_id=trace_id,
+    )
+    record_system_log(
+        trace_id=payload["trace_id"],
+        error_code=payload["code"],
+        context=payload["context"],
+        message=payload["message"],
+        details=payload["details"],
+        hint=payload["hint"],
+    )
+
+    if output == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        console.print(f"[red]{message}[/red]")
+        console.print(f"[dim]code={payload['code']} trace_id={payload['trace_id']}[/dim]")
+    raise typer.Exit(1)
+
+
+@signal_app.command("trend")
+def signal_trend_command(
+    output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
+) -> None:
+    """输出趋势类信号。"""
+    try:
+        payload = build_signal_category("trend", settings=Settings())
+    except SignalPipelineError as exc:
+        _emit_strict_failure(
+            code=ErrorCode.SIGNAL_REQUIRED_MISSING,
+            context=exc.context or "signal.trend",
+            message=exc.message,
+            details=exc.details,
+            hint=exc.hint,
+            output=output,
+        )
+        return
+
+    if output == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    table = Table(title="Trend Signals", box=box.SIMPLE)
+    table.add_column("signal_key")
+    table.add_column("state")
+    table.add_column("value", justify="right")
+    table.add_column("triggered")
+    for item in payload["signals"]:
+        table.add_row(
+            item["signal_key"],
+            item["state"],
+            str(item["value"]),
+            "✓" if item["triggered"] else "-",
+        )
+    console.print(table)
+
+
+@signal_app.command("risk")
+def signal_risk_command(
+    output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
+) -> None:
+    """输出风险类信号。"""
+    try:
+        payload = build_signal_category("risk", settings=Settings())
+    except SignalPipelineError as exc:
+        _emit_strict_failure(
+            code=ErrorCode.SIGNAL_REQUIRED_MISSING,
+            context=exc.context or "signal.risk",
+            message=exc.message,
+            details=exc.details,
+            hint=exc.hint,
+            output=output,
+        )
+        return
+
+    if output == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    table = Table(title="Risk Signals", box=box.SIMPLE)
+    table.add_column("signal_key")
+    table.add_column("state")
+    table.add_column("value", justify="right")
+    table.add_column("triggered")
+    for item in payload["signals"]:
+        table.add_row(
+            item["signal_key"],
+            item["state"],
+            str(item["value"]),
+            "✓" if item["triggered"] else "-",
+        )
+    console.print(table)
+
+
+@signal_app.command("confirm")
+def signal_confirm_command(
+    output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
+) -> None:
+    """输出确认类信号。"""
+    try:
+        payload = build_signal_category("confirm", settings=Settings())
+    except SignalPipelineError as exc:
+        _emit_strict_failure(
+            code=ErrorCode.SIGNAL_REQUIRED_MISSING,
+            context=exc.context or "signal.confirm",
+            message=exc.message,
+            details=exc.details,
+            hint=exc.hint,
+            output=output,
+        )
+        return
+
+    if output == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    table = Table(title="Confirm Signals", box=box.SIMPLE)
+    table.add_column("signal_key")
+    table.add_column("state")
+    table.add_column("value", justify="right")
+    table.add_column("triggered")
+    for item in payload["signals"]:
+        table.add_row(
+            item["signal_key"],
+            item["state"],
+            str(item["value"]),
+            "✓" if item["triggered"] else "-",
+        )
+    console.print(table)
+
+
+@signal_app.command("regime")
+def signal_regime_command(
+    output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
+) -> None:
+    """输出市场状态类信号。"""
+    try:
+        payload = build_signal_category("regime", settings=Settings())
+    except SignalPipelineError as exc:
+        _emit_strict_failure(
+            code=ErrorCode.SIGNAL_REQUIRED_MISSING,
+            context=exc.context or "signal.regime",
+            message=exc.message,
+            details=exc.details,
+            hint=exc.hint,
+            output=output,
+        )
+        return
+
+    if output == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    table = Table(title="Regime Signals", box=box.SIMPLE)
+    table.add_column("signal_key")
+    table.add_column("state")
+    table.add_column("value", justify="right")
+    table.add_column("triggered")
+    for item in payload["signals"]:
+        table.add_row(
+            item["signal_key"],
+            item["state"],
+            str(item["value"]),
+            "✓" if item["triggered"] else "-",
+        )
+    console.print(table)
+
+
+@signal_app.command("quality")
+def signal_quality_command(
+    output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
+) -> None:
+    """输出质量类信号。"""
+    try:
+        payload = build_signal_category("quality", settings=Settings())
+    except SignalPipelineError as exc:
+        _emit_strict_failure(
+            code=ErrorCode.SIGNAL_REQUIRED_MISSING,
+            context=exc.context or "signal.quality",
+            message=exc.message,
+            details=exc.details,
+            hint=exc.hint,
+            output=output,
+        )
+        return
+
+    if output == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    table = Table(title="Quality Signals", box=box.SIMPLE)
+    table.add_column("signal_key")
+    table.add_column("state")
+    table.add_column("value", justify="right")
+    table.add_column("triggered")
+    for item in payload["signals"]:
+        table.add_row(
+            item["signal_key"],
+            item["state"],
+            str(item["value"]),
+            "✓" if item["triggered"] else "-",
+        )
+    console.print(table)
+
+
+@signal_app.command("snapshot")
+def signal_snapshot_command(
+    output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
+) -> None:
+    """输出聚合信号快照。"""
+    try:
+        payload = build_signal_snapshot(settings=Settings())
+    except SignalPipelineError as exc:
+        _emit_strict_failure(
+            code=ErrorCode.SIGNAL_REQUIRED_MISSING,
+            context=exc.context or "signal.snapshot",
+            message=exc.message,
+            details=exc.details
+            or {
+                "strict_mode": True,
+                "missing_signals": signal_keys_of(),
+                "missing_categories": list(SIGNALS_BY_CATEGORY.keys()),
+            },
+            hint=exc.hint or {"action": "sync_and_compute_signals", "suggested_sync_days": 90},
+            output=output,
+        )
+        return
+
+    if output == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    console.print(
+        f"[bold]Signal Snapshot[/bold] as_of={payload['as_of']} symbol={payload['symbol']}"
+    )
+    cat_table = Table(title="Category Metrics", box=box.SIMPLE)
+    cat_table.add_column("category")
+    cat_table.add_column("count", justify="right")
+    cat_table.add_column("triggered", justify="right")
+    cat_table.add_column("confidence_avg", justify="right")
+    for category, stats in payload["category_metrics"].items():
+        cat_table.add_row(
+            category,
+            str(stats["count"]),
+            str(stats["triggered_count"]),
+            f"{stats['confidence_avg']:.3f}",
+        )
+    console.print(cat_table)
+
+
+@style_app.command("backtest-rank")
+def style_backtest_rank_command(
+    output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
+) -> None:
+    """输出风格回测排名。"""
+    try:
+        payload = run_style_backtest_rank(settings=Settings())
+    except StyleBacktestError as exc:
+        _emit_strict_failure(
+            code=ErrorCode.STYLE_EVAL_FAILED,
+            context=exc.context or "style.backtest-rank",
+            message=exc.message,
+            details=exc.details,
+            hint=exc.hint,
+            output=output,
+        )
+        return
+
+    if output == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    table = Table(title="Style Backtest Rank", box=box.SIMPLE)
+    table.add_column("rank", justify="right")
+    table.add_column("style")
+    table.add_column("return", justify="right")
+    table.add_column("max_dd", justify="right")
+    table.add_column("sharpe", justify="right")
+    table.add_column("calmar", justify="right")
+    for row in payload["rank_table"]:
+        table.add_row(
+            str(row["rank"]),
+            row["style_name"],
+            f"{row['total_return']:.2%}",
+            f"{row['max_drawdown']:.2%}",
+            f"{row['sharpe']:.2f}",
+            f"{row['calmar']:.2f}",
+        )
+    console.print(table)
 
 
 @app.callback()
@@ -2093,6 +2412,8 @@ quant_app.add_typer(blend_app, name="blend")
 app.add_typer(quant_app, name="quant")
 app.add_typer(risk_analysis_app, name="risk-analysis")
 app.add_typer(perf_app, name="perf")
+app.add_typer(signal_app, name="signal")
+app.add_typer(style_app, name="style")
 
 
 @skills_app.command("list")

@@ -63,3 +63,10 @@
 - 决策：冻结两层信号分层（关键层 12、增强层 12）与关键层参数寻优框架（`Calmar` 最大化，`MDD >= -20%`，Grid Search，每信号候选上限 500）。
 - 决策：冻结 `market_regime_label v1` 判定公式，并将风格回测与现有 `backtest quant-run` 的关系、排序规则、报告字段契约写入设计文档。
 - 结果：形成可执行设计稿 `docs/superpowers/specs/2026-03-20-signal-system-heavy-expansion-design.md`，待进入实现计划阶段。
+- 实现：落地 Phase 1 Step 1（`signal trend/risk/confirm/regime/quality/snapshot` + `style backtest-rank` 命令骨架），引入全局错误协议 `error_protocol` 与系统日志表 `systemlog`。
+- 行为：严格模式下命令返回结构化错误对象（含 `trace_id` 与 `details/hint`），并写入系统日志，CLI 退出码为 1。
+- 测试：新增 `tests/test_signal_cli.py`（4 例）并通过；回归通过 `tests/test_cli.py`（66 例）与 `tests/test_cli_check.py`（4 例）。
+- 实现：完成 Phase 1 Step 2，`signal snapshot` / `signal trend|risk|confirm|regime|quality` 从“骨架失败”升级为“真实计算输出”，支持 24 信号统一字段协议、`category_metrics` 与 `conflict_matrix`。
+- 实现：新增 `style_backtest.py`，`style backtest-rank` 已复用 `backtest quant-run` 对 4 个风格批量回测并输出 `rank_table`、`sort_key`、`tie_breaker`（不含任何推荐字段）。
+- 行为：数据不足或缺失时仍按严格模式失败并写系统日志；数据充足时命令返回结构化成功结果（`--output json` 可直接供 Agent 消费）。
+- 测试：扩展 `tests/test_signal_cli.py` 到 7 例（成功 + 失败路径），并通过；回归通过 `tests/test_cli.py`、`tests/test_cli_check.py`、`tests/test_dynamic_backtest.py`、`tests/test_quant_cli.py` 共 `86 passed`。

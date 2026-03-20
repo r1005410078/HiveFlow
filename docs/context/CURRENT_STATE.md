@@ -55,7 +55,10 @@
 - 本次增量：`positions drift` 与 `check` 已忽略 `market_value <= 0.01 USDT` 的极小持仓，避免噪声仓位干扰结果
 - 本次验证：`uv run pytest tests/test_health_check.py tests/test_cli.py -q`（`72 passed`）、`uv run pytest tests/test_cli_check.py -q`（`4 passed`）
 - 方案冻结：完成 `Signal System` 重型扩展 Phase 1 设计定稿（严格模式、全局错误码、两层信号分层、关键层参数寻优网格、风格回测排名契约），详见 `docs/superpowers/specs/2026-03-20-signal-system-heavy-expansion-design.md`
-- 当前阶段：文档与方案已收口，待进入实现计划与开发阶段
+- 当前阶段：Phase 1 实现中（已完成 Step 1 + Step 2）
+- 本次实现进展（Phase 1 / Step 1）：已落地 `signal` 与 `style` 命令骨架、全局错误协议、系统日志表与日志写入；严格模式失败返回结构化错误并落库。新增测试 `tests/test_signal_cli.py`，并通过 `uv run pytest tests/test_signal_cli.py -q`、`uv run pytest tests/test_cli.py -q`、`uv run pytest tests/test_cli_check.py -q`
+- 本次实现进展（Phase 1 / Step 2）：`signal snapshot` 与 `signal trend/risk/confirm/regime/quality` 已支持真实信号计算并输出统一 JSON（24 信号 + `category_metrics` + `conflict_matrix`）；`style backtest-rank` 已联动 `backtest quant-run` 批量执行 4 风格回测并输出 `rank_table`（仅指标排名，不含推荐字段）
+- 本次验证：`uv run pytest tests/test_signal_cli.py -q`（`7 passed`）、`uv run pytest tests/test_cli.py tests/test_cli_check.py tests/test_dynamic_backtest.py tests/test_quant_cli.py -q`（`86 passed`）
 
 ## 下一步建议
 
