@@ -898,6 +898,7 @@ def context_daily_command(
 
     started = perf_counter()
     app_settings = Settings()
+    window_sizes = _parse_windows(windows)
 
     signal_rows = list_signal_snapshots(limit=1, settings=app_settings)
     if not signal_rows:
@@ -1010,8 +1011,6 @@ def context_daily_command(
         "signal_latest": get_signal_snapshot(record_id=signal_rows[0].id, settings=app_settings),
         "style_latest": get_style_backtest_result(record_id=style_rows[0].id, settings=app_settings),
     }
-
-    window_sizes = _parse_windows(windows)
 
     windows_payload: dict[str, dict] = {}
     window_failures: list[dict] = []

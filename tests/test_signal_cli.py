@@ -1,4 +1,5 @@
 import json
+import pytest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
@@ -301,6 +302,27 @@ def test_context_daily_supports_custom_windows(tmp_path, monkeypatch) -> None:
     assert payload["summary"]["window_count_failed"] == 0
     assert payload["summary"]["window_count_requested"] == 2
     assert payload["summary"]["windows_requested"] == [12, 24]
+
+
+@pytest.mark.parametrize(
+    "windows",
+    [
+        "",
+        "0,24",
+        "abc,24",
+        "24,,7",
+    ],
+)
+def test_context_daily_rejects_invalid_windows_option(tmp_path, monkeypatch, windows: str) -> None:
+    db_path = tmp_path / "invalid-windows.db"
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    create_all_tables()
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["context", "daily", "--output", "json", "--windows", windows],
+    )
+    assert result.exit_code == 2
 
 
 def test_signal_snapshot_json_returns_strict_failure_and_writes_system_log(
