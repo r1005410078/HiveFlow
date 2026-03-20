@@ -153,6 +153,15 @@ def test_signal_trend_json_outputs_only_trend_category(tmp_path, monkeypatch) ->
     assert payload["category"] == "trend"
     assert len(payload["signals"]) == 6
     assert all(item["category"] == "trend" for item in payload["signals"])
+    assert all(item["signal_key"] in {
+        "golden_cross",
+        "death_cross",
+        "breakout_20d",
+        "breakdown_20d",
+        "momentum_20d",
+        "macd_cross",
+    } for item in payload["signals"])
+    assert all(item["state"] in {"bullish", "neutral", "bearish"} for item in payload["signals"])
 
 
 def test_style_backtest_rank_json_success_with_seed_data(tmp_path, monkeypatch) -> None:
@@ -169,3 +178,32 @@ def test_style_backtest_rank_json_success_with_seed_data(tmp_path, monkeypatch) 
     assert "styles" in payload
     assert len(payload["styles"]) == 4
     assert "recommended_style" not in payload
+
+
+def test_signal_trend_pretty_table_headers_are_chinese(tmp_path, monkeypatch) -> None:
+    _seed_market_and_positions(tmp_path, monkeypatch)
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["signal", "trend"])
+    assert result.exit_code == 0, result.stdout
+    assert "信号键" in result.stdout
+    assert "状态" in result.stdout
+    assert "数值" in result.stdout
+    assert "触发" in result.stdout
+    assert "金叉" in result.stdout
+    assert any(label in result.stdout for label in ("看多", "看空", "中性"))
+    assert "golden_cross" not in result.stdout
+
+
+def test_style_backtest_rank_pretty_table_headers_are_chinese(tmp_path, monkeypatch) -> None:
+    _seed_market_and_positions(tmp_path, monkeypatch)
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["style", "backtest-rank"])
+    assert result.exit_code == 0, result.stdout
+    assert "排名" in result.stdout
+    assert "风格" in result.stdout
+    assert "总收益" in result.stdout
+    assert "最大回撤" in result.stdout
+    assert "夏普" in result.stdout
+    assert "卡玛" in result.stdout

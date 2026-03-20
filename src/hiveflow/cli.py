@@ -152,6 +152,49 @@ style_app = typer.Typer(help="风格回测排名命令。")
 console = Console()
 JSON_SCHEMA_VERSION = "1.0.0"
 
+_SIGNAL_KEY_LABELS: dict[str, str] = {
+    "golden_cross": "金叉",
+    "death_cross": "死叉",
+    "breakout_20d": "20日突破",
+    "breakdown_20d": "20日跌破",
+    "momentum_20d": "20日动量",
+    "macd_cross": "MACD 交叉",
+    "max_drawdown_7d": "7日最大回撤",
+    "max_drawdown_30d": "30日最大回撤",
+    "atr_volatility_14d": "14日 ATR 波动",
+    "vol_regime_shift": "波动率状态切换",
+    "concentration_risk": "集中度风险",
+    "correlation_spike": "相关性抬升",
+    "volume_breakout_confirm": "放量突破确认",
+    "multi_timeframe_confirm": "多周期确认",
+    "signal_consensus": "信号一致性",
+    "trend_persistence": "趋势持续性",
+    "market_regime_label": "市场状态标签",
+    "trend_strength_adx": "ADX 趋势强度",
+    "volatility_regime_label": "波动状态标签",
+    "local_breadth_proxy": "本地宽度代理",
+    "data_freshness": "数据新鲜度",
+    "data_completeness": "数据完整度",
+    "signal_stability": "信号稳定性",
+    "confidence_score": "置信分数",
+}
+
+_SIGNAL_CATEGORY_LABELS: dict[str, str] = {
+    "trend": "趋势",
+    "risk": "风险",
+    "confirm": "确认",
+    "regime": "状态",
+    "quality": "质量",
+}
+
+_SIGNAL_STATE_LABELS: dict[str, dict[str, str]] = {
+    "trend": {"bullish": "看多", "neutral": "中性", "bearish": "看空"},
+    "confirm": {"bullish": "看多", "neutral": "中性", "bearish": "看空"},
+    "regime": {"bullish": "看多", "neutral": "中性", "bearish": "看空"},
+    "risk": {"low": "低风险", "medium": "中风险", "high": "高风险"},
+    "quality": {"good": "良好", "warning": "预警", "bad": "异常"},
+}
+
 
 def _level_style(count: int, medium_threshold: int = 1, high_threshold: int = 5) -> str:
     """根据数量返回颜色等级样式。"""
@@ -261,6 +304,16 @@ def _parse_weights(text: str) -> dict[str, float]:
     return result
 
 
+def _signal_key_label(signal_key: str) -> str:
+    """信号键中文名（用于 pretty 输出）。"""
+    return _SIGNAL_KEY_LABELS.get(signal_key, signal_key)
+
+
+def _signal_state_label(category: str, state: str) -> str:
+    """信号状态中文名（用于 pretty 输出）。"""
+    return _SIGNAL_STATE_LABELS.get(category, {}).get(state, state)
+
+
 def _emit_strict_failure(
     *,
     code: ErrorCode,
@@ -319,15 +372,15 @@ def signal_trend_command(
         typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
         return
 
-    table = Table(title="Trend Signals", box=box.SIMPLE)
-    table.add_column("signal_key")
-    table.add_column("state")
-    table.add_column("value", justify="right")
-    table.add_column("triggered")
+    table = Table(title="趋势信号", box=box.SIMPLE)
+    table.add_column("信号键")
+    table.add_column("状态")
+    table.add_column("数值", justify="right")
+    table.add_column("触发")
     for item in payload["signals"]:
         table.add_row(
-            item["signal_key"],
-            item["state"],
+            _signal_key_label(item["signal_key"]),
+            _signal_state_label(item["category"], item["state"]),
             str(item["value"]),
             "✓" if item["triggered"] else "-",
         )
@@ -356,15 +409,15 @@ def signal_risk_command(
         typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
         return
 
-    table = Table(title="Risk Signals", box=box.SIMPLE)
-    table.add_column("signal_key")
-    table.add_column("state")
-    table.add_column("value", justify="right")
-    table.add_column("triggered")
+    table = Table(title="风险信号", box=box.SIMPLE)
+    table.add_column("信号键")
+    table.add_column("状态")
+    table.add_column("数值", justify="right")
+    table.add_column("触发")
     for item in payload["signals"]:
         table.add_row(
-            item["signal_key"],
-            item["state"],
+            _signal_key_label(item["signal_key"]),
+            _signal_state_label(item["category"], item["state"]),
             str(item["value"]),
             "✓" if item["triggered"] else "-",
         )
@@ -393,15 +446,15 @@ def signal_confirm_command(
         typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
         return
 
-    table = Table(title="Confirm Signals", box=box.SIMPLE)
-    table.add_column("signal_key")
-    table.add_column("state")
-    table.add_column("value", justify="right")
-    table.add_column("triggered")
+    table = Table(title="确认信号", box=box.SIMPLE)
+    table.add_column("信号键")
+    table.add_column("状态")
+    table.add_column("数值", justify="right")
+    table.add_column("触发")
     for item in payload["signals"]:
         table.add_row(
-            item["signal_key"],
-            item["state"],
+            _signal_key_label(item["signal_key"]),
+            _signal_state_label(item["category"], item["state"]),
             str(item["value"]),
             "✓" if item["triggered"] else "-",
         )
@@ -430,15 +483,15 @@ def signal_regime_command(
         typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
         return
 
-    table = Table(title="Regime Signals", box=box.SIMPLE)
-    table.add_column("signal_key")
-    table.add_column("state")
-    table.add_column("value", justify="right")
-    table.add_column("triggered")
+    table = Table(title="市场状态信号", box=box.SIMPLE)
+    table.add_column("信号键")
+    table.add_column("状态")
+    table.add_column("数值", justify="right")
+    table.add_column("触发")
     for item in payload["signals"]:
         table.add_row(
-            item["signal_key"],
-            item["state"],
+            _signal_key_label(item["signal_key"]),
+            _signal_state_label(item["category"], item["state"]),
             str(item["value"]),
             "✓" if item["triggered"] else "-",
         )
@@ -467,15 +520,15 @@ def signal_quality_command(
         typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
         return
 
-    table = Table(title="Quality Signals", box=box.SIMPLE)
-    table.add_column("signal_key")
-    table.add_column("state")
-    table.add_column("value", justify="right")
-    table.add_column("triggered")
+    table = Table(title="质量信号", box=box.SIMPLE)
+    table.add_column("信号键")
+    table.add_column("状态")
+    table.add_column("数值", justify="right")
+    table.add_column("触发")
     for item in payload["signals"]:
         table.add_row(
-            item["signal_key"],
-            item["state"],
+            _signal_key_label(item["signal_key"]),
+            _signal_state_label(item["category"], item["state"]),
             str(item["value"]),
             "✓" if item["triggered"] else "-",
         )
@@ -510,16 +563,16 @@ def signal_snapshot_command(
         return
 
     console.print(
-        f"[bold]Signal Snapshot[/bold] as_of={payload['as_of']} symbol={payload['symbol']}"
+        f"[bold]信号快照[/bold] as_of={payload['as_of']} symbol={payload['symbol']}"
     )
-    cat_table = Table(title="Category Metrics", box=box.SIMPLE)
-    cat_table.add_column("category")
-    cat_table.add_column("count", justify="right")
-    cat_table.add_column("triggered", justify="right")
-    cat_table.add_column("confidence_avg", justify="right")
+    cat_table = Table(title="分类统计", box=box.SIMPLE)
+    cat_table.add_column("分类")
+    cat_table.add_column("数量", justify="right")
+    cat_table.add_column("触发数", justify="right")
+    cat_table.add_column("平均置信度", justify="right")
     for category, stats in payload["category_metrics"].items():
         cat_table.add_row(
-            category,
+            _SIGNAL_CATEGORY_LABELS.get(category, category),
             str(stats["count"]),
             str(stats["triggered_count"]),
             f"{stats['confidence_avg']:.3f}",
@@ -549,13 +602,13 @@ def style_backtest_rank_command(
         typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
         return
 
-    table = Table(title="Style Backtest Rank", box=box.SIMPLE)
-    table.add_column("rank", justify="right")
-    table.add_column("style")
-    table.add_column("return", justify="right")
-    table.add_column("max_dd", justify="right")
-    table.add_column("sharpe", justify="right")
-    table.add_column("calmar", justify="right")
+    table = Table(title="风格回测排名", box=box.SIMPLE)
+    table.add_column("排名", justify="right")
+    table.add_column("风格")
+    table.add_column("总收益", justify="right")
+    table.add_column("最大回撤", justify="right")
+    table.add_column("夏普", justify="right")
+    table.add_column("卡玛", justify="right")
     for row in payload["rank_table"]:
         table.add_row(
             str(row["rank"]),
@@ -1210,7 +1263,7 @@ def list_positions_command(
             grid_table.add_column("标的", justify="left")
             grid_table.add_column("类型", justify="left")
             grid_table.add_column("基础资产", justify="right")
-            grid_table.add_column("USDT", justify="right")
+            grid_table.add_column("稳定币数量", justify="right")
             grid_table.add_column("网格 ID", justify="left")
             grid_table.add_column("交易对", justify="left")
             grid_table.add_column("状态", justify="left")
@@ -1225,7 +1278,7 @@ def list_positions_command(
             grid_table.add_column("标的", justify="left", style="#87ff87")
             grid_table.add_column("类型", justify="left", style="#5f875f")
             grid_table.add_column("基础资产", justify="right", style="#5f875f")
-            grid_table.add_column("USDT", justify="right", style="#5f875f")
+            grid_table.add_column("稳定币数量", justify="right", style="#5f875f")
             grid_table.add_column("网格 ID", justify="left", style="#5f875f")
             grid_table.add_column("交易对", justify="left", style="#5f875f")
             grid_table.add_column("状态", justify="left", style="#5f875f")
@@ -2041,13 +2094,13 @@ def list_backtest_command(
         typer.echo("暂无回测记录。")
         return
     table = Table(title="回测记录", show_lines=False, box=box.SIMPLE)
-    table.add_column("ID", justify="right")
+    table.add_column("编号", justify="right")
     table.add_column("策略", justify="left")
     table.add_column("类型")
     table.add_column("周期", justify="right")
     table.add_column("总收益", justify="right")
     table.add_column("最大回撤", justify="right")
-    table.add_column("Sharpe", justify="right")
+    table.add_column("夏普比率", justify="right")
     table.add_column("时间", justify="left")
     for item in rows:
         table.add_row(
@@ -2213,7 +2266,7 @@ def backtest_quant_run_command(
     table.add_column("总周期数", justify="right")
     table.add_column("总收益", justify="right")
     table.add_column("最大回撤", justify="right")
-    table.add_column("Sharpe", justify="right")
+    table.add_column("夏普比率", justify="right")
     table.add_row(
         result.strategy_name,
         result.backtest_type,
@@ -2628,7 +2681,7 @@ def quant_history_command(
         return
 
     table = Table(title="策略运行历史", box=box.SIMPLE)
-    table.add_column("ID", style="bold")
+    table.add_column("编号", style="bold")
     table.add_column("策略名称")
     table.add_column("参数")
     table.add_column("已写入")
@@ -2685,7 +2738,7 @@ def blend_list(
         console.print("[yellow]暂无 blend 配置。[/yellow]")
         return
     table = Table(title="Blend 配置列表", box=box.SIMPLE)
-    table.add_column("ID", style="dim")
+    table.add_column("编号", style="dim")
     table.add_column("名称", style="bold")
     table.add_column("策略", style="cyan")
     table.add_column("自动优化")
@@ -2981,7 +3034,7 @@ def perf_list(
         console.print("[yellow]暂无快照记录，请先运行 `hiveflow perf snapshot`。[/yellow]")
         return
     table = Table(title="实盘组合快照", box=box.SIMPLE)
-    table.add_column("ID", style="dim")
+    table.add_column("编号", style="dim")
     table.add_column("时间", style="bold")
     table.add_column("总价值（USD）", style="cyan")
     table.add_column("来源")
