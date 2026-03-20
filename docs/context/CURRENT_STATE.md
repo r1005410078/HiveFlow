@@ -111,5 +111,5 @@
 
 ## 下一步建议
 
-1. 信号模块进入“维护模式”：仅做缺陷修复与契约稳定性增强
-2. 如需新能力，先形成新里程碑需求文档，再进入实现
+1. 已进入 M11 规划阶段：先按 `docs/superpowers/plans/2026-03-20-m11-signal-contractization-plan.md` 完成契约与 schema 对齐
+2. M11 执行顺序建议：Phase A（契约）→ Phase B（消费闭环）→ Phase C（演进规则）

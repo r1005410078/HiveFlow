@@ -125,5 +125,8 @@
 - 测试：扩展窗口场景断言 `window_audit_schema_version` 并通过；`tests/test_signal_cli.py` 保持 `25 passed`，回归集合保持 `122 passed`。
 - 文档：Signal Phase 2.14 新增 `docs/context/WINDOW_AUDIT_CONTRACT.md`，明确 `window_audit` 的字段语义、版本规则（`v1`）与成功/失败示例。
 - 文档：`docs/cli/README.md` 与 `docs/context/SIGNAL_ACCEPTANCE_CHECKLIST.md` 已同步引用该契约，并更新信号模块测试基线为 `25/122`。
+- 决策：选择“先立新里程碑再开发”，启动 M11 规划，不继续无规划增量开发。
+- 文档：新增 `docs/superpowers/plans/2026-03-20-m11-signal-contractization-plan.md`，定义目标、边界、Phase A/B/C 与验收标准。
+- 文档：`ROADMAP` 新增 M11（规划中）段落，`CURRENT_STATE` 的“下一步建议”已切换为 M11 执行顺序。
 - 决策：M10 需求整体砍掉，不进入实现排期；`ROADMAP` 已同步标记为“已取消”。
 - 文档：新增信号模块一页验收清单 `docs/context/SIGNAL_ACCEPTANCE_CHECKLIST.md`，用于版本验收与回归核对。
