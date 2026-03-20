@@ -94,5 +94,8 @@
 - 测试：新增 decision_boundary 断言并通过；`tests/test_cli_check.py + tests/test_risk_analysis_cli.py + tests/test_signal_cli.py` 共 `38 passed`，回归集合 `102 passed`。
 - 实现：Signal Phase 2 起步，`context daily` 增加交易窗口分组输出 `windows.w24/w7/w30`，每窗口包含 `check/drift/signal/style/source_meta`；并在窗口内实时重跑 `style backtest-rank`。
 - 测试：更新 `context daily` 成功路径断言（窗口结构 + 三窗口独立 run_id）并通过；`tests/test_signal_cli.py` `18 passed`，回归集合 `122 passed`。
+- 实现：Signal Phase 2.1 增加窗口级严格策略 `--strict-window all|partial`，并新增 `summary` 字段（`latency_ms`、成功/失败窗口计数、`window_failures`）。
+- 行为：`all` 模式保持严格失败；`partial` 模式允许部分窗口失败并返回可用窗口结果。
+- 测试：新增 `strict-window` 两条用例（partial 成功 + all 失败）并通过；`tests/test_signal_cli.py` 更新为 `20 passed`。
 - 决策：M10 需求整体砍掉，不进入实现排期；`ROADMAP` 已同步标记为“已取消”。
 - 文档：新增信号模块一页验收清单 `docs/context/SIGNAL_ACCEPTANCE_CHECKLIST.md`，用于版本验收与回归核对。

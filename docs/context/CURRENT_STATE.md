@@ -80,6 +80,8 @@
 - 本次验证：`uv run pytest tests/test_cli_check.py tests/test_risk_analysis_cli.py tests/test_signal_cli.py -q`（`38 passed`），`uv run pytest tests/test_cli.py tests/test_dynamic_backtest.py tests/test_quant_cli.py tests/test_positions_list_grid.py tests/test_perf_cli.py tests/test_blend_cli.py -q`（`102 passed`）。
 - 本次实现进展（Signal Phase 2 起步）：`context daily` 新增按交易窗口分组输出 `windows.w24/w7/w30`，每个窗口包含 `check/drift/signal/style/source_meta`；`style` 在各窗口下实时重跑并返回独立 `run_id`。
 - 本次验证：`uv run pytest tests/test_signal_cli.py -q`（`18 passed`），`uv run pytest tests/test_cli_check.py tests/test_risk_analysis_cli.py tests/test_cli.py tests/test_dynamic_backtest.py tests/test_quant_cli.py tests/test_positions_list_grid.py tests/test_perf_cli.py tests/test_blend_cli.py -q`（`122 passed`）。
+- 本次实现进展（Signal Phase 2.1）：`context daily` 新增 `--strict-window all|partial`。`all` 模式下任一窗口失败即严格失败；`partial` 模式下返回成功并在 `summary.window_failures` 标注失败窗口。新增 `summary`（`latency_ms/window_count_success/window_count_failed/window_failures`）。
+- 本次验证：新增窗口失败策略测试通过，`uv run pytest tests/test_signal_cli.py -q`（`20 passed`），回归集合保持 `122 passed`。
 
 ## 下一步建议
 

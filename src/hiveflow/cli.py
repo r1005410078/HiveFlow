@@ -1,5 +1,6 @@
 import json
 from datetime import datetime, timezone
+from time import perf_counter
 from pathlib import Path
 from typing import Any
 
@@ -261,6 +262,14 @@ def _validate_positive_hours(value: int) -> int:
     if value <= 0:
         raise typer.BadParameter("max-age-hours 必须大于 0。")
     return value
+
+
+def _validate_strict_window(value: str) -> str:
+    """校验窗口严格模式。"""
+    normalized = value.strip().lower()
+    if normalized not in {"all", "partial"}:
+        raise typer.BadParameter("strict-window 仅支持 all 或 partial。")
+    return normalized
 
 
 def _calc_age_hours(as_of_text: str) -> float | None:
@@ -851,12 +860,14 @@ def context_daily_command(
     json_schema: bool = typer.Option(False, "--json-schema", help="输出 JSON schema 后退出"),
     strict_source: str = typer.Option("latest", "--strict-source", callback=_validate_strict_source),
     max_age_hours: int = typer.Option(24, "--max-age-hours", callback=_validate_positive_hours),
+    strict_window: str = typer.Option("all", "--strict-window", callback=_validate_strict_window),
 ) -> None:
     """聚合每日 Agent 决策上下文（仅输出数据，不做推荐）。"""
     if json_schema:
         _print_json_schema("context.daily")
         return
 
+    started = perf_counter()
     app_settings = Settings()
 
     signal_rows = list_signal_snapshots(limit=1, settings=app_settings)
@@ -972,46 +983,48 @@ def context_daily_command(
     }
 
     windows: dict[str, dict] = {}
+    window_failures: list[dict] = []
     for size in (24, 7, 30):
         window_key = f"w{size}"
         try:
             win_signal = build_signal_snapshot(settings=app_settings, window_bars=size)
         except SignalPipelineError as exc:
-            _emit_strict_failure(
-                code=ErrorCode.SIGNAL_REQUIRED_MISSING,
-                context="context.daily",
-                message=f"窗口 {window_key} 信号生成失败，严格模式中断。",
-                details={
-                    "strict_mode": True,
-                    "window_key": window_key,
-                    "component": "signal",
-                    "reason": exc.message,
-                    "error_details": exc.details,
-                },
-                hint=exc.hint or {"action": "sync_and_compute_signals"},
-                output=output,
-            )
-            return
+            failure = {
+                "window_key": window_key,
+                "component": "signal",
+                "reason": exc.message,
+                "details": exc.details,
+            }
+            window_failures.append(failure)
+            if strict_window == "all":
+                continue
+            windows[window_key] = {
+                "window_size": size,
+                "status": "failed",
+                "error": failure,
+            }
+            continue
         try:
             win_style = run_style_backtest_rank(settings=app_settings, window_bars=size)
         except StyleBacktestError as exc:
-            _emit_strict_failure(
-                code=ErrorCode.STYLE_EVAL_FAILED,
-                context="context.daily",
-                message=f"窗口 {window_key} 风格评估失败，严格模式中断。",
-                details={
-                    "strict_mode": True,
-                    "window_key": window_key,
-                    "component": "style",
-                    "reason": exc.message,
-                    "error_details": exc.details,
-                },
-                hint=exc.hint or {"action": "run_style_backtest_rank"},
-                output=output,
-            )
-            return
+            failure = {
+                "window_key": window_key,
+                "component": "style",
+                "reason": exc.message,
+                "details": exc.details,
+            }
+            window_failures.append(failure)
+            if strict_window == "all":
+                continue
+            windows[window_key] = {
+                "window_size": size,
+                "status": "failed",
+                "error": failure,
+            }
+            continue
         windows[window_key] = {
             "window_size": size,
+            "status": "ok",
             "check": payload["check"],
             "drift": payload["drift"],
             "signal": win_signal,
@@ -1023,7 +1036,34 @@ def context_daily_command(
                 "style_run_id": win_style.get("run_id"),
             },
         }
+
+    if strict_window == "all" and window_failures:
+        _emit_strict_failure(
+            code=ErrorCode.PIPELINE_ABORTED_STRICT,
+            context="context.daily",
+            message="窗口计算失败，严格模式中断。",
+            details={
+                "strict_mode": True,
+                "strict_window": strict_window,
+                "window_failures": window_failures,
+            },
+            hint={"action": "fix_window_pipeline"},
+            output=output,
+        )
+        return
+
+    success_count = sum(
+        1 for item in windows.values()
+        if isinstance(item, dict) and item.get("status") == "ok"
+    )
+    failed_count = len(window_failures)
     payload["windows"] = windows
+    payload["summary"] = {
+        "latency_ms": round((perf_counter() - started) * 1000, 3),
+        "window_count_success": success_count,
+        "window_count_failed": failed_count,
+        "window_failures": window_failures,
+    }
 
     if output == "json":
         _print_json(payload=payload, command="context.daily", envelope=envelope)

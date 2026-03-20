@@ -1,5 +1,6 @@
 import json
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 from sqlmodel import select
 from typer.testing import CliRunner
@@ -12,6 +13,7 @@ from hiveflow.domain.positions import Position
 from hiveflow.domain.signal_snapshots import SignalSnapshot
 from hiveflow.domain.style_backtest_results import StyleBacktestResult
 from hiveflow.domain.system_logs import SystemLog
+from hiveflow.application.style_backtest import StyleBacktestError
 
 
 def test_signal_command_group_is_available() -> None:
@@ -188,6 +190,90 @@ def test_context_daily_fresh_succeeds_with_relaxed_max_age(tmp_path, monkeypatch
     assert payload["source_meta"]["max_age_hours"] == 5000
     assert "signal_latest" in payload
     assert "style_latest" in payload
+
+
+def test_context_daily_strict_window_partial_returns_success_with_failures(
+    tmp_path, monkeypatch
+) -> None:
+    _seed_market_and_positions(tmp_path, monkeypatch)
+    runner = CliRunner()
+    assert runner.invoke(app, ["signal", "snapshot", "--output", "json"]).exit_code == 0
+    assert runner.invoke(app, ["style", "backtest-rank", "--output", "json"]).exit_code == 0
+
+    original = __import__("hiveflow.cli", fromlist=["run_style_backtest_rank"]).run_style_backtest_rank
+
+    def _patched_style(*, settings=None, rebalance_days=7, symbols=None, window_bars=None, fee_bps=0.0, slippage_bps=0.0):
+        if window_bars == 7:
+            raise StyleBacktestError(
+                context="style.backtest-rank",
+                message="mocked window failure",
+                details={"strict_mode": True, "failed_style": "w7"},
+                hint={"action": "mock"},
+            )
+        return original(
+            settings=settings,
+            rebalance_days=rebalance_days,
+            symbols=symbols,
+            window_bars=window_bars,
+            fee_bps=fee_bps,
+            slippage_bps=slippage_bps,
+        )
+
+    with patch("hiveflow.cli.run_style_backtest_rank", side_effect=_patched_style):
+        result = runner.invoke(
+            app,
+            ["context", "daily", "--output", "json", "--strict-window", "partial"],
+        )
+
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["summary"]["window_count_failed"] == 1
+    assert payload["summary"]["window_count_success"] == 2
+    assert len(payload["summary"]["window_failures"]) == 1
+    assert payload["summary"]["window_failures"][0]["window_key"] == "w7"
+    assert payload["windows"]["w7"]["status"] == "failed"
+
+
+def test_context_daily_strict_window_all_fails_when_any_window_failed(
+    tmp_path, monkeypatch
+) -> None:
+    _seed_market_and_positions(tmp_path, monkeypatch)
+    runner = CliRunner()
+    assert runner.invoke(app, ["signal", "snapshot", "--output", "json"]).exit_code == 0
+    assert runner.invoke(app, ["style", "backtest-rank", "--output", "json"]).exit_code == 0
+
+    original = __import__("hiveflow.cli", fromlist=["run_style_backtest_rank"]).run_style_backtest_rank
+
+    def _patched_style(*, settings=None, rebalance_days=7, symbols=None, window_bars=None, fee_bps=0.0, slippage_bps=0.0):
+        if window_bars == 7:
+            raise StyleBacktestError(
+                context="style.backtest-rank",
+                message="mocked window failure",
+                details={"strict_mode": True, "failed_style": "w7"},
+                hint={"action": "mock"},
+            )
+        return original(
+            settings=settings,
+            rebalance_days=rebalance_days,
+            symbols=symbols,
+            window_bars=window_bars,
+            fee_bps=fee_bps,
+            slippage_bps=slippage_bps,
+        )
+
+    with patch("hiveflow.cli.run_style_backtest_rank", side_effect=_patched_style):
+        result = runner.invoke(
+            app,
+            ["context", "daily", "--output", "json", "--strict-window", "all"],
+        )
+
+    assert result.exit_code == 1, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["code"] == "E_PIPELINE_ABORTED_STRICT"
+    assert payload["context"] == "context.daily"
+    assert payload["details"]["strict_window"] == "all"
+    assert len(payload["details"]["window_failures"]) == 1
+    assert payload["details"]["window_failures"][0]["window_key"] == "w7"
 
 
 def test_signal_snapshot_json_returns_strict_failure_and_writes_system_log(
