@@ -203,6 +203,14 @@ uv run hiveflow style show <id> --output json
 
 `show` 返回字段与实时命令保持一致（包含 `feature_set_version`、`symbols_hash`、`objective`、`constraints`、`best_candidate` 等），方便 Agent 做可复现分析。
 
+**一条命令给 Agent 喂日常上下文（推荐）**
+
+```bash
+uv run hiveflow context daily --output json
+```
+
+该命令会一次性聚合输出 `check + drift + signal_latest + style_latest`，适合作为 Agent 的标准输入。
+
 **严格模式与系统日志（排障）**
 
 当 `signal` / `style` 因数据缺失失败时，命令会返回结构化错误并写入系统日志表（含 `trace_id`）：

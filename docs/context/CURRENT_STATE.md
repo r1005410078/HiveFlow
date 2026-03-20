@@ -66,6 +66,9 @@
 - 本次实现进展（Phase 1 / Step 4.1）：`signal show` / `style show` 历史回放补齐元数据与报告字段，保证“实时输出”和“历史回放”契约一致；并新增 SQLite 轻量迁移自动补列（兼容旧库）。
 - 本次验证：`uv run pytest tests/test_signal_cli.py::test_signal_snapshot_history_and_show_json tests/test_signal_cli.py::test_style_backtest_rank_history_and_show_json -q`（`2 passed`），`uv run pytest tests/test_signal_cli.py -q`（`11 passed`），回归 `106 passed`。
 - 文档收口：`docs/cli/README.md` 场景二已更新为当前真实流程（`sync/check/drift/signal snapshot`、`<=0.01 USDT` 极小持仓忽略、`signal/style` history/show、严格模式系统日志查询）。
+- 本次实现进展（Phase 1 / Step 5）：新增 `context daily` 聚合命令（`hiveflow context daily`），一次性输出 `check + drift + signal_latest + style_latest` 的结构化上下文，保持“系统只输出数据，不做推荐”。
+- 行为：严格模式下若缺少 `signal` 或 `style` 历史记录即失败并返回结构化错误对象（含 `trace_id`），同时写入系统日志。
+- 本次验证：新增用例覆盖命令可用性、缺失历史失败、完整上下文成功；`uv run pytest tests/test_signal_cli.py -q`（`14 passed`），回归集合 `106 passed`。
 
 ## 下一步建议
 

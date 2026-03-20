@@ -79,3 +79,6 @@
 - 兼容：`db.py` 新增 SQLite 轻量迁移，旧库自动补齐新增列（无需手工迁移）。
 - 测试：新增断言覆盖历史回放元数据与报告字段；定向用例 `2 passed`，`tests/test_signal_cli.py` `11 passed`，回归集合 `106 passed`。
 - 文档：补完 `docs/cli/README.md` 场景二，明确每日健康检查推荐流程（`sync/check/drift/signal snapshot`）、`<=0.01 USDT` 极小持仓忽略规则、`signal/style` 历史回放命令及严格模式系统日志排障方式。
+- 实现：新增 `hiveflow context daily` 命令，聚合输出 `check`、`drift`、`signal_latest`、`style_latest`，作为 Agent 的标准日常上下文输入（仅数据，不推荐）。
+- 行为：严格模式下如果缺少 `signal`/`style` 历史记录会结构化失败并写系统日志，避免输出部分降级结果。
+- 测试：新增 3 条 `context daily` 用例（命令可用、缺失历史失败、完整上下文成功）；`tests/test_signal_cli.py` `14 passed`，回归集合 `106 passed`。

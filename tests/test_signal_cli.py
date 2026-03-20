@@ -22,6 +22,51 @@ def test_style_command_group_is_available() -> None:
     assert result.exit_code == 0
 
 
+def test_context_command_group_is_available() -> None:
+    result = CliRunner().invoke(app, ["context", "--help"])
+    assert result.exit_code == 0
+
+
+def test_context_daily_json_strict_failure_when_missing_signal_history(
+    tmp_path, monkeypatch
+) -> None:
+    _seed_market_and_positions(tmp_path, monkeypatch)
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["context", "daily", "--output", "json"])
+    assert result.exit_code == 1, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["code"] == "E_SIGNAL_REQUIRED_MISSING"
+    assert payload["context"] == "context.daily"
+    assert payload["details"]["strict_mode"] is True
+
+
+def test_context_daily_json_success_with_latest_snapshots(tmp_path, monkeypatch) -> None:
+    _seed_market_and_positions(tmp_path, monkeypatch)
+    runner = CliRunner()
+
+    signal_result = runner.invoke(app, ["signal", "snapshot", "--output", "json"])
+    assert signal_result.exit_code == 0, signal_result.stdout
+    style_result = runner.invoke(app, ["style", "backtest-rank", "--output", "json"])
+    assert style_result.exit_code == 0, style_result.stdout
+
+    result = runner.invoke(app, ["context", "daily", "--output", "json"])
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+
+    assert "as_of" in payload
+    assert "check" in payload
+    assert "drift" in payload
+    assert "signal_latest" in payload
+    assert "style_latest" in payload
+    assert payload["check"]["verdict"] in {"safe", "watch", "danger"}
+    assert isinstance(payload["drift"]["items"], list)
+    assert len(payload["signal_latest"]["signals"]) == 24
+    assert len(payload["style_latest"]["rank_table"]) == 4
+    assert payload["signal_latest"]["feature_set_version"] == "signal-v1.0"
+    assert payload["style_latest"]["objective"] == "calmar"
+
+
 def test_signal_snapshot_json_returns_strict_failure_and_writes_system_log(
     tmp_path, monkeypatch
 ) -> None:

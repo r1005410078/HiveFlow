@@ -159,6 +159,7 @@ risk_analysis_app = typer.Typer(help="资产与组合风险分析。")
 perf_app = typer.Typer(help="实盘绩效追踪命令。")
 signal_app = typer.Typer(help="信号系统命令。")
 style_app = typer.Typer(help="风格回测排名命令。")
+context_app = typer.Typer(help="Agent 上下文聚合命令。")
 console = Console()
 JSON_SCHEMA_VERSION = "1.0.0"
 
@@ -805,6 +806,87 @@ def style_show_command(
             f"{row['calmar']:.2f}",
         )
     console.print(table)
+
+
+@context_app.command("daily")
+def context_daily_command(
+    output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
+) -> None:
+    """聚合每日 Agent 决策上下文（仅输出数据，不做推荐）。"""
+    app_settings = Settings()
+
+    signal_rows = list_signal_snapshots(limit=1, settings=app_settings)
+    if not signal_rows:
+        _emit_strict_failure(
+            code=ErrorCode.SIGNAL_REQUIRED_MISSING,
+            context="context.daily",
+            message="缺少 signal 快照历史，请先执行 signal snapshot。",
+            details={
+                "strict_mode": True,
+                "missing_component": "signal_latest",
+            },
+            hint={"action": "run_signal_snapshot"},
+            output=output,
+        )
+        return
+
+    style_rows = list_style_backtest_results(limit=1, settings=app_settings)
+    if not style_rows:
+        _emit_strict_failure(
+            code=ErrorCode.STYLE_EVAL_FAILED,
+            context="context.daily",
+            message="缺少 style 回测历史，请先执行 style backtest-rank。",
+            details={
+                "strict_mode": True,
+                "missing_component": "style_latest",
+            },
+            hint={"action": "run_style_backtest_rank"},
+            output=output,
+        )
+        return
+
+    positions, bars_by_symbol = _load_check_data(app_settings)
+    check_result = run_health_check(positions=positions, bars_by_symbol=bars_by_symbol)
+    current = show_current_strategy().current_strategy
+    drift_items = analyze_positions_drift(strategy_name=current)
+
+    payload = {
+        "as_of": signal_rows[0].as_of,
+        "check": {
+            "verdict": check_result.verdict,
+            "summary": check_result.verdict_summary,
+            "has_no_history": check_result.has_no_history,
+            "signals": [
+                {
+                    "symbol": s.symbol,
+                    "max_drawdown_7d_pct": round(s.max_drawdown_7d * 100, 2),
+                    "alert_level": s.alert_level.value,
+                    "action_hint": s.action_hint,
+                }
+                for s in check_result.signals
+            ],
+        },
+        "drift": {
+            "strategy": current,
+            "count": len(drift_items),
+            "items": [item.to_dict() for item in drift_items],
+        },
+        "signal_latest": get_signal_snapshot(record_id=signal_rows[0].id, settings=app_settings),
+        "style_latest": get_style_backtest_result(record_id=style_rows[0].id, settings=app_settings),
+    }
+
+    if output == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    console.print(f"[bold]每日上下文[/bold] as_of={payload['as_of']}")
+    console.print(f"健康结论：{payload['check']['summary']}")
+    console.print(f"持仓偏离条目：{payload['drift']['count']}")
+    console.print(
+        "最新快照："
+        f" signal={payload['signal_latest']['snapshot_id']} "
+        f"style={payload['style_latest']['run_id']}"
+    )
 
 
 @app.callback()
@@ -2653,6 +2735,7 @@ app.add_typer(risk_analysis_app, name="risk-analysis")
 app.add_typer(perf_app, name="perf")
 app.add_typer(signal_app, name="signal")
 app.add_typer(style_app, name="style")
+app.add_typer(context_app, name="context")
 
 
 @skills_app.command("list")
