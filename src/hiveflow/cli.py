@@ -1070,6 +1070,9 @@ def context_daily_command(
     window_keys_failed = list(dict.fromkeys(
         f["window_key"] for f in window_failures if "window_key" in f
     ))
+    window_count_failed = len(window_failures)
+    window_count_success = max(0, len(window_sizes) - window_count_failed)
+    window_count_total_computed = window_count_success + window_count_failed
     window_status_map = {
         key: ("ok" if item.get("status") == "ok" else "failed")
         for key, item in windows_payload.items()
@@ -1086,6 +1089,9 @@ def context_daily_command(
                 "strict_window": strict_window,
                 "windows_requested": list(window_sizes),
                 "window_count_requested": len(window_sizes),
+                "window_count_success": window_count_success,
+                "window_count_failed": window_count_failed,
+                "window_count_total_computed": window_count_total_computed,
                 "window_keys_failed": window_keys_failed,
                 "window_status_map": window_status_map,
                 "window_failures": window_failures,
@@ -1095,11 +1101,6 @@ def context_daily_command(
         )
         return
 
-    success_count = sum(
-        1 for item in windows_payload.values()
-        if isinstance(item, dict) and item.get("status") == "ok"
-    )
-    failed_count = len(window_failures)
     ok_windows = {
         key: item for key, item in windows_payload.items()
         if isinstance(item, dict) and item.get("status") == "ok"
@@ -1170,8 +1171,9 @@ def context_daily_command(
         "latency_ms": round((perf_counter() - started) * 1000, 3),
         "windows_requested": list(window_sizes),
         "window_count_requested": len(window_sizes),
-        "window_count_success": success_count,
-        "window_count_failed": failed_count,
+        "window_count_success": window_count_success,
+        "window_count_failed": window_count_failed,
+        "window_count_total_computed": window_count_total_computed,
         "window_keys_success": window_keys_success,
         "window_keys_failed": window_keys_failed,
         "window_status_map": window_status_map,

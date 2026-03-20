@@ -94,6 +94,8 @@
 - 本次验证：新增窗口键列表断言并通过；`tests/test_signal_cli.py` 保持 `25 passed`，回归集合保持 `122 passed`。
 - 本次实现进展（Signal Phase 2.7）：新增 `summary.window_status_map`（窗口键到状态的直接映射），并在 `strict-window=all` 失败详情同步输出 `window_status_map`。
 - 本次验证：扩展窗口场景断言后通过；`tests/test_signal_cli.py` 保持 `25 passed`，回归集合保持 `122 passed`。
+- 本次实现进展（Signal Phase 2.8）：新增 `window_count_total_computed`，并在严格失败详情补齐 `window_count_success/window_count_failed/window_count_total_computed`，支持请求数与执行数对账。
+- 本次验证：扩展窗口计数断言后通过；`tests/test_signal_cli.py` 保持 `25 passed`，回归集合保持 `122 passed`。
 
 ## 下一步建议
 

@@ -236,6 +236,7 @@ def test_context_daily_strict_window_partial_returns_success_with_failures(
     payload = json.loads(result.stdout)
     assert payload["summary"]["window_count_failed"] == 1
     assert payload["summary"]["window_count_success"] == 2
+    assert payload["summary"]["window_count_total_computed"] == 3
     assert payload["summary"]["window_keys_success"] == ["w24", "w30"]
     assert payload["summary"]["window_keys_failed"] == ["w7"]
     assert payload["summary"]["window_status_map"] == {
@@ -286,6 +287,9 @@ def test_context_daily_strict_window_all_fails_when_any_window_failed(
     assert payload["code"] == "E_PIPELINE_ABORTED_STRICT"
     assert payload["context"] == "context.daily"
     assert payload["details"]["strict_window"] == "all"
+    assert payload["details"]["window_count_success"] == 2
+    assert payload["details"]["window_count_failed"] == 1
+    assert payload["details"]["window_count_total_computed"] == 3
     assert payload["details"]["window_keys_failed"] == ["w7"]
     assert payload["details"]["window_status_map"] == {
         "w24": "ok",
@@ -312,6 +316,7 @@ def test_context_daily_supports_custom_windows(tmp_path, monkeypatch) -> None:
     assert payload["windows"]["w24"]["window_size"] == 24
     assert payload["summary"]["window_count_success"] == 2
     assert payload["summary"]["window_count_failed"] == 0
+    assert payload["summary"]["window_count_total_computed"] == 2
     assert payload["summary"]["window_count_requested"] == 2
     assert payload["summary"]["windows_requested"] == [12, 24]
     assert payload["summary"]["window_keys_success"] == ["w12", "w24"]
