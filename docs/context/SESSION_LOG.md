@@ -121,5 +121,7 @@
 - 测试：扩展窗口场景断言 `is_window_audit_consistent` 并通过；`tests/test_signal_cli.py` 保持 `25 passed`，回归集合保持 `122 passed`。
 - 实现：Signal Phase 2.12 新增 `window_audit` 子对象（summary + strict fail details），将窗口审计字段结构化输出，同时保留原平铺字段。
 - 测试：扩展窗口场景断言 `window_audit` 并通过；`tests/test_signal_cli.py` 保持 `25 passed`，回归集合保持 `122 passed`。
+- 实现：Signal Phase 2.13 为 `window_audit` 增加 `window_audit_schema_version`（当前 `v1`），用于审计契约版本管理。
+- 测试：扩展窗口场景断言 `window_audit_schema_version` 并通过；`tests/test_signal_cli.py` 保持 `25 passed`，回归集合保持 `122 passed`。
 - 决策：M10 需求整体砍掉，不进入实现排期；`ROADMAP` 已同步标记为“已取消”。
 - 文档：新增信号模块一页验收清单 `docs/context/SIGNAL_ACCEPTANCE_CHECKLIST.md`，用于版本验收与回归核对。

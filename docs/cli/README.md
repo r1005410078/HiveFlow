@@ -231,6 +231,7 @@ uv run hiveflow context daily --output json --windows 12,24
 其中 `window_status_map` 覆盖全部请求窗口（包含失败窗口），可直接做窗口状态快照。
 并提供 `is_window_audit_consistent`，用于一键判断窗口审计字段是否一致。
 此外新增 `window_audit` 子对象（含上述审计字段），平铺字段继续保留以兼容现有消费方。
+`window_audit` 内含 `window_audit_schema_version`（当前 `v1`），便于下游按版本做解析升级。
 可选窗口严格策略：
 
 ```bash

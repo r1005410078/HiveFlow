@@ -303,6 +303,7 @@ def _build_window_audit_summary(
     window_failures: list[dict],
 ) -> dict[str, Any]:
     """汇总窗口执行审计字段，供 summary 与严格失败详情复用。"""
+    schema_version = "v1"
     window_keys_failed = list(dict.fromkeys(
         f["window_key"] for f in window_failures if "window_key" in f
     ))
@@ -333,6 +334,7 @@ def _build_window_audit_summary(
     )
 
     return {
+        "window_audit_schema_version": schema_version,
         "windows_requested": list(window_sizes),
         "window_count_requested": len(window_sizes),
         "window_count_success": window_count_success,

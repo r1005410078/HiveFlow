@@ -242,6 +242,7 @@ def test_context_daily_strict_window_partial_returns_success_with_failures(
     assert payload["summary"]["window_audit"]["window_count_requested"] == 3
     assert payload["summary"]["window_audit"]["window_count_total_computed"] == 3
     assert payload["summary"]["window_audit"]["is_window_audit_consistent"] is True
+    assert payload["summary"]["window_audit"]["window_audit_schema_version"] == "v1"
     assert payload["summary"]["window_keys_success"] == ["w24", "w30"]
     assert payload["summary"]["window_keys_failed"] == ["w7"]
     assert payload["summary"]["window_status_map"] == {
@@ -300,6 +301,7 @@ def test_context_daily_strict_window_all_fails_when_any_window_failed(
     assert payload["details"]["window_audit"]["window_count_requested"] == 3
     assert payload["details"]["window_audit"]["window_count_total_computed"] == 3
     assert payload["details"]["window_audit"]["is_window_audit_consistent"] is True
+    assert payload["details"]["window_audit"]["window_audit_schema_version"] == "v1"
     assert payload["details"]["window_keys_failed"] == ["w7"]
     assert payload["details"]["window_status_map"] == {
         "w24": "ok",
@@ -334,6 +336,7 @@ def test_context_daily_supports_custom_windows(tmp_path, monkeypatch) -> None:
     assert payload["summary"]["window_audit"]["window_count_requested"] == 2
     assert payload["summary"]["window_audit"]["window_count_total_computed"] == 2
     assert payload["summary"]["window_audit"]["is_window_audit_consistent"] is True
+    assert payload["summary"]["window_audit"]["window_audit_schema_version"] == "v1"
     assert payload["summary"]["windows_requested"] == [12, 24]
     assert payload["summary"]["window_keys_success"] == ["w12", "w24"]
     assert payload["summary"]["window_keys_failed"] == []
