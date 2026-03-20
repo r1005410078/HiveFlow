@@ -70,3 +70,6 @@
 - 实现：新增 `style_backtest.py`，`style backtest-rank` 已复用 `backtest quant-run` 对 4 个风格批量回测并输出 `rank_table`、`sort_key`、`tie_breaker`（不含任何推荐字段）。
 - 行为：数据不足或缺失时仍按严格模式失败并写系统日志；数据充足时命令返回结构化成功结果（`--output json` 可直接供 Agent 消费）。
 - 测试：扩展 `tests/test_signal_cli.py` 到 7 例（成功 + 失败路径），并通过；回归通过 `tests/test_cli.py`、`tests/test_cli_check.py`、`tests/test_dynamic_backtest.py`、`tests/test_quant_cli.py` 共 `86 passed`。
+- 实现：统一 CLI table 表头中文化，并将 `signal` 的 pretty 展示改为中文信号键/中文状态；JSON 契约保持英文键值（供 Agent 稳定消费）。
+- 实现：新增信号与风格回测历史存档能力：`SignalSnapshot`、`StyleBacktestResult` 两张表；`signal snapshot` / `style backtest-rank` 成功后自动落库；新增 `signal history/show`、`style history/show` 命令支持历史回放。
+- 测试：`tests/test_signal_cli.py` 扩展到 11 例并通过；回归通过 `tests/test_cli.py`、`tests/test_cli_check.py`、`tests/test_dynamic_backtest.py`、`tests/test_quant_cli.py`、`tests/test_positions_list_grid.py`、`tests/test_perf_cli.py`、`tests/test_blend_cli.py` 共 `106 passed`。

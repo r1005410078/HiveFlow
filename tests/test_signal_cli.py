@@ -207,3 +207,52 @@ def test_style_backtest_rank_pretty_table_headers_are_chinese(tmp_path, monkeypa
     assert "最大回撤" in result.stdout
     assert "夏普" in result.stdout
     assert "卡玛" in result.stdout
+
+
+def test_signal_snapshot_history_and_show_json(tmp_path, monkeypatch) -> None:
+    _seed_market_and_positions(tmp_path, monkeypatch)
+    runner = CliRunner()
+
+    snapshot_result = runner.invoke(app, ["signal", "snapshot", "--output", "json"])
+    assert snapshot_result.exit_code == 0, snapshot_result.stdout
+
+    history_result = runner.invoke(app, ["signal", "history", "--output", "json"])
+    assert history_result.exit_code == 0, history_result.stdout
+    rows = json.loads(history_result.stdout)
+    assert isinstance(rows, list)
+    assert len(rows) >= 1
+    assert "id" in rows[0]
+    assert "snapshot_id" in rows[0]
+    assert "signals_count" in rows[0]
+    assert rows[0]["signals_count"] == 24
+
+    show_result = runner.invoke(app, ["signal", "show", str(rows[0]["id"]), "--output", "json"])
+    assert show_result.exit_code == 0, show_result.stdout
+    show_payload = json.loads(show_result.stdout)
+    assert len(show_payload["signals"]) == 24
+    assert show_payload["snapshot_id"] == rows[0]["snapshot_id"]
+
+
+def test_style_backtest_rank_history_and_show_json(tmp_path, monkeypatch) -> None:
+    _seed_market_and_positions(tmp_path, monkeypatch)
+    runner = CliRunner()
+
+    rank_result = runner.invoke(app, ["style", "backtest-rank", "--output", "json"])
+    assert rank_result.exit_code == 0, rank_result.stdout
+
+    history_result = runner.invoke(app, ["style", "history", "--output", "json"])
+    assert history_result.exit_code == 0, history_result.stdout
+    rows = json.loads(history_result.stdout)
+    assert isinstance(rows, list)
+    assert len(rows) >= 1
+    assert "id" in rows[0]
+    assert "run_id" in rows[0]
+    assert "styles_count" in rows[0]
+    assert rows[0]["styles_count"] == 4
+
+    show_result = runner.invoke(app, ["style", "show", str(rows[0]["id"]), "--output", "json"])
+    assert show_result.exit_code == 0, show_result.stdout
+    show_payload = json.loads(show_result.stdout)
+    assert len(show_payload["styles"]) == 4
+    assert len(show_payload["rank_table"]) == 4
+    assert show_payload["run_id"] == rows[0]["run_id"]

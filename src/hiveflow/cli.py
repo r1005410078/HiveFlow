@@ -23,6 +23,16 @@ from hiveflow.application.signals import (
 )
 from hiveflow.application.system_logs import record_system_log
 from hiveflow.application.style_backtest import StyleBacktestError, run_style_backtest_rank
+from hiveflow.application.signal_snapshots import (
+    get_signal_snapshot,
+    list_signal_snapshots,
+    save_signal_snapshot,
+)
+from hiveflow.application.style_backtest_results import (
+    get_style_backtest_result,
+    list_style_backtest_results,
+    save_style_backtest_result,
+)
 from hiveflow.application.backtest import BacktestResultView
 from hiveflow.application.backtest import get_backtest_result
 from hiveflow.application.backtest import list_backtest_results
@@ -540,8 +550,9 @@ def signal_snapshot_command(
     output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
 ) -> None:
     """输出聚合信号快照。"""
+    app_settings = Settings()
     try:
-        payload = build_signal_snapshot(settings=Settings())
+        payload = build_signal_snapshot(settings=app_settings)
     except SignalPipelineError as exc:
         _emit_strict_failure(
             code=ErrorCode.SIGNAL_REQUIRED_MISSING,
@@ -558,12 +569,32 @@ def signal_snapshot_command(
         )
         return
 
+    try:
+        saved = save_signal_snapshot(payload, settings=app_settings)
+    except Exception as exc:
+        _emit_strict_failure(
+            code=ErrorCode.STORAGE_WRITE_FAILED,
+            context="signal.snapshot",
+            message="信号快照落库失败，严格模式中断。",
+            details={
+                "strict_mode": True,
+                "reason": str(exc),
+            },
+            hint={"action": "check_database_writable"},
+            output=output,
+        )
+        return
+
+    payload["id"] = saved.id
+    payload["snapshot_id"] = saved.snapshot_id
+
     if output == "json":
         typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
         return
 
     console.print(
-        f"[bold]信号快照[/bold] as_of={payload['as_of']} symbol={payload['symbol']}"
+        f"[bold]信号快照[/bold] id={payload['id']} snapshot_id={payload['snapshot_id']} "
+        f"as_of={payload['as_of']} symbol={payload['symbol']}"
     )
     cat_table = Table(title="分类统计", box=box.SIMPLE)
     cat_table.add_column("分类")
@@ -580,13 +611,81 @@ def signal_snapshot_command(
     console.print(cat_table)
 
 
+@signal_app.command("history")
+def signal_history_command(
+    limit: int = typer.Option(20, "--limit", callback=_validate_limit, help="显示最近 N 条快照"),
+    output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
+) -> None:
+    """查询信号快照历史。"""
+    rows = list_signal_snapshots(limit=limit, settings=Settings())
+    if output == "json":
+        typer.echo(json.dumps([r.to_dict() for r in rows], ensure_ascii=False, indent=2))
+        return
+    if not rows:
+        console.print("[yellow]暂无信号快照记录。[/yellow]")
+        return
+    table = Table(title="信号快照历史", box=box.SIMPLE)
+    table.add_column("编号", justify="right")
+    table.add_column("快照ID")
+    table.add_column("快照时间")
+    table.add_column("标的")
+    table.add_column("信号数", justify="right")
+    table.add_column("落库时间")
+    for row in rows:
+        table.add_row(
+            str(row.id),
+            row.snapshot_id,
+            row.as_of,
+            row.symbol,
+            str(row.signals_count),
+            row.created_at,
+        )
+    console.print(table)
+
+
+@signal_app.command("show")
+def signal_show_command(
+    record_id: int = typer.Argument(..., help="快照记录 ID"),
+    output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
+) -> None:
+    """按记录 ID 查看单条信号快照。"""
+    try:
+        payload = get_signal_snapshot(record_id=record_id, settings=Settings())
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1)
+
+    if output == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    console.print(
+        f"[bold]信号快照详情[/bold] id={payload['id']} snapshot_id={payload['snapshot_id']} "
+        f"as_of={payload['as_of']} symbol={payload['symbol']}"
+    )
+    table = Table(title="信号列表", box=box.SIMPLE)
+    table.add_column("信号键")
+    table.add_column("状态")
+    table.add_column("数值", justify="right")
+    table.add_column("触发")
+    for item in payload["signals"]:
+        table.add_row(
+            _signal_key_label(item["signal_key"]),
+            _signal_state_label(item["category"], item["state"]),
+            str(item["value"]),
+            "✓" if item["triggered"] else "-",
+        )
+    console.print(table)
+
+
 @style_app.command("backtest-rank")
 def style_backtest_rank_command(
     output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
 ) -> None:
     """输出风格回测排名。"""
+    app_settings = Settings()
     try:
-        payload = run_style_backtest_rank(settings=Settings())
+        payload = run_style_backtest_rank(settings=app_settings)
     except StyleBacktestError as exc:
         _emit_strict_failure(
             code=ErrorCode.STYLE_EVAL_FAILED,
@@ -598,11 +697,98 @@ def style_backtest_rank_command(
         )
         return
 
+    try:
+        saved = save_style_backtest_result(payload, settings=app_settings)
+    except Exception as exc:
+        _emit_strict_failure(
+            code=ErrorCode.STORAGE_WRITE_FAILED,
+            context="style.backtest-rank",
+            message="风格回测结果落库失败，严格模式中断。",
+            details={
+                "strict_mode": True,
+                "reason": str(exc),
+            },
+            hint={"action": "check_database_writable"},
+            output=output,
+        )
+        return
+
+    payload["id"] = saved.id
+    payload["run_id"] = saved.run_id
+
     if output == "json":
         typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
         return
 
     table = Table(title="风格回测排名", box=box.SIMPLE)
+    table.add_column("排名", justify="right")
+    table.add_column("风格")
+    table.add_column("总收益", justify="right")
+    table.add_column("最大回撤", justify="right")
+    table.add_column("夏普", justify="right")
+    table.add_column("卡玛", justify="right")
+    for row in payload["rank_table"]:
+        table.add_row(
+            str(row["rank"]),
+            row["style_name"],
+            f"{row['total_return']:.2%}",
+            f"{row['max_drawdown']:.2%}",
+            f"{row['sharpe']:.2f}",
+            f"{row['calmar']:.2f}",
+        )
+    console.print(table)
+
+
+@style_app.command("history")
+def style_history_command(
+    limit: int = typer.Option(20, "--limit", callback=_validate_limit, help="显示最近 N 条回测记录"),
+    output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
+) -> None:
+    """查询风格回测历史。"""
+    rows = list_style_backtest_results(limit=limit, settings=Settings())
+    if output == "json":
+        typer.echo(json.dumps([r.to_dict() for r in rows], ensure_ascii=False, indent=2))
+        return
+    if not rows:
+        console.print("[yellow]暂无风格回测记录。[/yellow]")
+        return
+
+    table = Table(title="风格回测历史", box=box.SIMPLE)
+    table.add_column("编号", justify="right")
+    table.add_column("运行ID")
+    table.add_column("回测时间")
+    table.add_column("排序键")
+    table.add_column("风格数", justify="right")
+    table.add_column("落库时间")
+    for row in rows:
+        table.add_row(
+            str(row.id),
+            row.run_id,
+            row.as_of,
+            row.sort_key,
+            str(row.styles_count),
+            row.created_at,
+        )
+    console.print(table)
+
+
+@style_app.command("show")
+def style_show_command(
+    record_id: int = typer.Argument(..., help="风格回测记录 ID"),
+    output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
+) -> None:
+    """按记录 ID 查看单条风格回测结果。"""
+    try:
+        payload = get_style_backtest_result(record_id=record_id, settings=Settings())
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1)
+
+    if output == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    table = Table(title=f"风格回测详情 #{payload['id']}", box=box.SIMPLE)
     table.add_column("排名", justify="right")
     table.add_column("风格")
     table.add_column("总收益", justify="right")

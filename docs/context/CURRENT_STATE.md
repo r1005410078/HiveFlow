@@ -59,6 +59,8 @@
 - 本次实现进展（Phase 1 / Step 1）：已落地 `signal` 与 `style` 命令骨架、全局错误协议、系统日志表与日志写入；严格模式失败返回结构化错误并落库。新增测试 `tests/test_signal_cli.py`，并通过 `uv run pytest tests/test_signal_cli.py -q`、`uv run pytest tests/test_cli.py -q`、`uv run pytest tests/test_cli_check.py -q`
 - 本次实现进展（Phase 1 / Step 2）：`signal snapshot` 与 `signal trend/risk/confirm/regime/quality` 已支持真实信号计算并输出统一 JSON（24 信号 + `category_metrics` + `conflict_matrix`）；`style backtest-rank` 已联动 `backtest quant-run` 批量执行 4 风格回测并输出 `rank_table`（仅指标排名，不含推荐字段）
 - 本次验证：`uv run pytest tests/test_signal_cli.py -q`（`7 passed`）、`uv run pytest tests/test_cli.py tests/test_cli_check.py tests/test_dynamic_backtest.py tests/test_quant_cli.py -q`（`86 passed`）
+- 本次实现进展（Phase 1 / Step 3）：新增 `SignalSnapshot` 与 `StyleBacktestResult` 持久化，`signal snapshot` / `style backtest-rank` 执行成功后自动落库；新增 `signal history/show` 与 `style history/show` 历史回放命令（支持 `--output json`）
+- 本次验证：`uv run pytest tests/test_signal_cli.py -q`（`11 passed`）、`uv run pytest tests/test_cli.py tests/test_cli_check.py tests/test_dynamic_backtest.py tests/test_quant_cli.py tests/test_positions_list_grid.py tests/test_perf_cli.py tests/test_blend_cli.py -q`（`106 passed`）
 
 ## 下一步建议
 
