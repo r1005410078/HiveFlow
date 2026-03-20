@@ -295,6 +295,7 @@ def test_context_daily_strict_window_all_fails_when_any_window_failed(
     assert payload["details"]["window_keys_failed"] == ["w7"]
     assert payload["details"]["window_status_map"] == {
         "w24": "ok",
+        "w7": "failed",
         "w30": "ok",
     }
     assert len(payload["details"]["window_failures"]) == 1

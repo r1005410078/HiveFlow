@@ -228,6 +228,7 @@ uv run hiveflow context daily --output json --windows 12,24
 非法值（如 `0`、`abc`、`24,,7`）会直接返回参数错误（exit code 2）。
 并输出 `window_diff`（`signal_diff/style_diff/risk_diff/consensus_score`），便于 Agent 识别短中长窗口分歧。
 `summary` 会同时回传 `windows_requested/window_count_requested/window_count_total_computed` 与 `window_keys_success/window_keys_failed/window_status_map`，用于审计本次窗口请求与执行结果。
+其中 `window_status_map` 覆盖全部请求窗口（包含失败窗口），可直接做窗口状态快照。
 可选窗口严格策略：
 
 ```bash

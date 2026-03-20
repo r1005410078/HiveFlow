@@ -314,6 +314,13 @@ def _build_window_audit_summary(
         for key, item in windows_payload.items()
         if isinstance(item, dict)
     }
+    failed_keys_set = set(window_keys_failed)
+    for size in window_sizes:
+        key = f"w{size}"
+        if key in window_status_map:
+            continue
+        if key in failed_keys_set:
+            window_status_map[key] = "failed"
 
     ok_windows = {
         key: item for key, item in windows_payload.items()

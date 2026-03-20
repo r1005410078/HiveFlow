@@ -98,6 +98,8 @@
 - 本次验证：扩展窗口计数断言后通过；`tests/test_signal_cli.py` 保持 `25 passed`，回归集合保持 `122 passed`。
 - 本次实现进展（Signal Phase 2.9）：抽取窗口审计聚合 helper（`_build_window_audit_summary`），统一生成 `summary` 与严格失败详情中的窗口统计字段，降低 `context daily` 主流程复杂度。
 - 本次验证：补充“请求数=执行总数”一致性断言并通过；`tests/test_signal_cli.py` 保持 `25 passed`，回归集合保持 `122 passed`。
+- 本次实现进展（Signal Phase 2.10）：`window_status_map` 补齐失败窗口映射，保证严格失败时也覆盖全部请求窗口（`wxx -> ok/failed`）。
+- 本次验证：更新严格失败场景断言后通过；`tests/test_signal_cli.py` 保持 `25 passed`，回归集合保持 `122 passed`。
 
 ## 下一步建议
 

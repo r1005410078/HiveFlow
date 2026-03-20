@@ -115,5 +115,7 @@
 - 测试：扩展窗口计数断言并通过；`tests/test_signal_cli.py` 保持 `25 passed`，回归集合保持 `122 passed`。
 - 实现：Signal Phase 2.9 抽取窗口审计聚合 helper（`_build_window_audit_summary`），复用到 `context daily summary` 与 `strict-window=all` 失败详情，减少重复统计逻辑。
 - 测试：扩展窗口计数一致性断言（`window_count_total_computed == window_count_requested`）并通过；`tests/test_signal_cli.py` 保持 `25 passed`，回归集合保持 `122 passed`。
+- 实现：Signal Phase 2.10 补齐 `window_status_map` 的失败窗口状态，严格失败场景下该映射覆盖全部请求窗口。
+- 测试：更新 `strict-window=all` 用例断言（包含失败窗口键）并通过；`tests/test_signal_cli.py` 保持 `25 passed`，回归集合保持 `122 passed`。
 - 决策：M10 需求整体砍掉，不进入实现排期；`ROADMAP` 已同步标记为“已取消”。
 - 文档：新增信号模块一页验收清单 `docs/context/SIGNAL_ACCEPTANCE_CHECKLIST.md`，用于版本验收与回归核对。
