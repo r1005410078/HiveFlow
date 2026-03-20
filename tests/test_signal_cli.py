@@ -299,6 +299,8 @@ def test_context_daily_supports_custom_windows(tmp_path, monkeypatch) -> None:
     assert payload["windows"]["w24"]["window_size"] == 24
     assert payload["summary"]["window_count_success"] == 2
     assert payload["summary"]["window_count_failed"] == 0
+    assert payload["summary"]["window_count_requested"] == 2
+    assert payload["summary"]["windows_requested"] == [12, 24]
 
 
 def test_signal_snapshot_json_returns_strict_failure_and_writes_system_log(

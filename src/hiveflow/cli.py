@@ -1076,6 +1076,8 @@ def context_daily_command(
             details={
                 "strict_mode": True,
                 "strict_window": strict_window,
+                "windows_requested": list(window_sizes),
+                "window_count_requested": len(window_sizes),
                 "window_failures": window_failures,
             },
             hint={"action": "fix_window_pipeline"},
@@ -1155,6 +1157,8 @@ def context_daily_command(
     }
     payload["summary"] = {
         "latency_ms": round((perf_counter() - started) * 1000, 3),
+        "windows_requested": list(window_sizes),
+        "window_count_requested": len(window_sizes),
         "window_count_success": success_count,
         "window_count_failed": failed_count,
         "window_failures": window_failures,

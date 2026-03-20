@@ -86,6 +86,8 @@
 - 本次验证：`window_diff` 结构断言已覆盖并通过；`tests/test_signal_cli.py` 保持 `20 passed`，回归集合 `122 passed`。
 - 本次实现进展（Signal Phase 2.3）：`context daily` 新增 `--windows` 参数，支持自定义窗口分组（如 `12,24`），并复用既有 `strict-window` 与 `window_diff` 逻辑。
 - 本次验证：新增自定义窗口用例通过；`uv run pytest tests/test_signal_cli.py -q`（`21 passed`），回归集合保持 `122 passed`。
+- 本次实现进展（Signal Phase 2.4）：`context daily.summary` 新增 `windows_requested/window_count_requested`，失败详情也回传请求窗口范围，增强窗口执行审计可追溯性。
+- 本次验证：定向与整组信号用例通过；回归集合保持 `122 passed`。
 
 ## 下一步建议
 

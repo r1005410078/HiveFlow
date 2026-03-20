@@ -102,5 +102,7 @@
 - 实现：Signal Phase 2.3 增加 `context daily --windows`，支持按逗号传入自定义交易窗口（如 `12,24`），默认值仍为 `24,7,30`。
 - 行为：`--windows` 仅接受正整数；重复窗口自动去重并按输入顺序保留；与 `--strict-window all|partial`、`window_diff` 逻辑兼容。
 - 测试：新增 `test_context_daily_supports_custom_windows` 并通过；`tests/test_signal_cli.py` 更新为 `21 passed`，回归集合保持 `122 passed`。
+- 实现：Signal Phase 2.4 增加窗口请求审计字段，`context daily` 在 `summary` 回传 `windows_requested/window_count_requested`；`strict-window=all` 失败详情同步回传请求窗口范围。
+- 测试：扩展 `test_context_daily_supports_custom_windows` 断言审计字段并通过；`tests/test_signal_cli.py` 保持 `21 passed`，回归集合保持 `122 passed`。
 - 决策：M10 需求整体砍掉，不进入实现排期；`ROADMAP` 已同步标记为“已取消”。
 - 文档：新增信号模块一页验收清单 `docs/context/SIGNAL_ACCEPTANCE_CHECKLIST.md`，用于版本验收与回归核对。

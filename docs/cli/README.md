@@ -226,6 +226,7 @@ uv run hiveflow context daily --output json --windows 12,24
 
 `--windows` 使用逗号分隔正整数，重复窗口会自动去重（按输入顺序保留）。
 并输出 `window_diff`（`signal_diff/style_diff/risk_diff/consensus_score`），便于 Agent 识别短中长窗口分歧。
+`summary` 会同时回传 `windows_requested` 与 `window_count_requested`，用于审计本次窗口请求范围。
 可选窗口严格策略：
 
 ```bash
