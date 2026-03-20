@@ -130,6 +130,7 @@ def run_style_backtest_rank(
     settings: Settings | None = None,
     rebalance_days: int = 7,
     symbols: list[str] | None = None,
+    window_bars: int | None = None,
     fee_bps: float = 0.0,
     slippage_bps: float = 0.0,
 ) -> dict:
@@ -153,14 +154,21 @@ def run_style_backtest_rank(
             hint={"action": "run_backtest_pipeline"},
         )
 
-    start_ts = bars[0].timestamp.astimezone(timezone.utc).isoformat()
-    end_ts = bars[-1].timestamp.astimezone(timezone.utc).isoformat()
+    scoped_bars = bars
+    if window_bars is not None and window_bars > 0:
+        ordered_ts = sorted({b.timestamp for b in bars})
+        if len(ordered_ts) > window_bars:
+            selected_ts = set(ordered_ts[-window_bars:])
+            scoped_bars = [b for b in bars if b.timestamp in selected_ts]
+    start_ts = scoped_bars[0].timestamp.astimezone(timezone.utc).isoformat()
+    end_ts = scoped_bars[-1].timestamp.astimezone(timezone.utc).isoformat()
     as_of = utc_now().isoformat()
     run_id = uuid4().hex
-    symbols_for_hash = sorted({b.symbol.upper() for b in bars})
+    symbols_for_hash = sorted({b.symbol.upper() for b in scoped_bars})
     params_meta = {
         "rebalance_days": rebalance_days,
         "symbols": sorted(symbols) if symbols else None,
+        "window_bars": window_bars,
         "fee_bps": fee_bps,
         "slippage_bps": slippage_bps,
         "style_to_strategy": {k: v.__name__ for k, v in STYLE_TO_STRATEGY.items()},
@@ -175,6 +183,7 @@ def run_style_backtest_rank(
                     strategy=strategy_class(),
                     rebalance_days=rebalance_days,
                     symbols=symbols,
+                    window_bars=window_bars,
                     fee_bps=fee_bps,
                     slippage_bps=slippage_bps,
                     settings=app_settings,

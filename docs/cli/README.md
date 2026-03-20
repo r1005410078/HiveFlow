@@ -217,6 +217,7 @@ uv run hiveflow context daily --output json --strict-source fresh --max-age-hour
 
 该命令会一次性聚合输出 `check + drift + signal_latest + style_latest`，适合作为 Agent 的标准输入。
 并额外输出 `source_meta`（来源记录 ID、`as_of`、`age_hours`），便于 Agent 判断上下文时效与可追溯性。
+同时输出 `windows.w24/w7/w30`（交易窗口分组），每个窗口都含 `check/drift/signal/style/source_meta`。
 
 **严格模式与系统日志（排障）**
 

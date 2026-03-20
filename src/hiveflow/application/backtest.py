@@ -149,6 +149,7 @@ def run_quant_backtest(
     strategy: "BaseStrategy",
     rebalance_days: int = 7,
     symbols: list[str] | None = None,
+    window_bars: int | None = None,
     fee_bps: float = 0.0,
     slippage_bps: float = 0.0,
     settings=None,
@@ -175,6 +176,14 @@ def run_quant_backtest(
     prices = load_close_prices_from_db(symbols=symbols, settings=settings)
     if not prices:
         raise ValueError("指定 symbol 在 MarketBar 中无数据，请先运行 hiveflow market-data import。")
+    if window_bars is not None and window_bars > 0:
+        prices = {
+            symbol: bars[-window_bars:]
+            for symbol, bars in prices.items()
+            if len(bars[-window_bars:]) >= 2
+        }
+        if not prices:
+            raise ValueError("窗口内行情不足，无法运行量化回测。")
 
     metrics, final_weights = run_dynamic_backtest(
         prices=prices,

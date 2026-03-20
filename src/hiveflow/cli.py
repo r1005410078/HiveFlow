@@ -971,6 +971,60 @@ def context_daily_command(
         "style_latest": get_style_backtest_result(record_id=style_rows[0].id, settings=app_settings),
     }
 
+    windows: dict[str, dict] = {}
+    for size in (24, 7, 30):
+        window_key = f"w{size}"
+        try:
+            win_signal = build_signal_snapshot(settings=app_settings, window_bars=size)
+        except SignalPipelineError as exc:
+            _emit_strict_failure(
+                code=ErrorCode.SIGNAL_REQUIRED_MISSING,
+                context="context.daily",
+                message=f"窗口 {window_key} 信号生成失败，严格模式中断。",
+                details={
+                    "strict_mode": True,
+                    "window_key": window_key,
+                    "component": "signal",
+                    "reason": exc.message,
+                    "error_details": exc.details,
+                },
+                hint=exc.hint or {"action": "sync_and_compute_signals"},
+                output=output,
+            )
+            return
+        try:
+            win_style = run_style_backtest_rank(settings=app_settings, window_bars=size)
+        except StyleBacktestError as exc:
+            _emit_strict_failure(
+                code=ErrorCode.STYLE_EVAL_FAILED,
+                context="context.daily",
+                message=f"窗口 {window_key} 风格评估失败，严格模式中断。",
+                details={
+                    "strict_mode": True,
+                    "window_key": window_key,
+                    "component": "style",
+                    "reason": exc.message,
+                    "error_details": exc.details,
+                },
+                hint=exc.hint or {"action": "run_style_backtest_rank"},
+                output=output,
+            )
+            return
+        windows[window_key] = {
+            "window_size": size,
+            "check": payload["check"],
+            "drift": payload["drift"],
+            "signal": win_signal,
+            "style": win_style,
+            "source_meta": {
+                "window_key": window_key,
+                "signal_as_of": win_signal.get("as_of"),
+                "style_as_of": win_style.get("as_of"),
+                "style_run_id": win_style.get("run_id"),
+            },
+        }
+    payload["windows"] = windows
+
     if output == "json":
         _print_json(payload=payload, command="context.daily", envelope=envelope)
         return

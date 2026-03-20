@@ -76,6 +76,26 @@ def test_context_daily_json_success_with_latest_snapshots(tmp_path, monkeypatch)
     assert payload["source_meta"]["style_latest"]["record_id"] >= 1
     assert payload["source_meta"]["signal_latest"]["age_hours"] >= 0
     assert payload["source_meta"]["style_latest"]["age_hours"] >= 0
+    assert "windows" in payload
+    assert set(payload["windows"].keys()) == {"w24", "w7", "w30"}
+    assert payload["windows"]["w24"]["window_size"] == 24
+    assert payload["windows"]["w7"]["window_size"] == 7
+    assert payload["windows"]["w30"]["window_size"] == 30
+    for key in ("w24", "w7", "w30"):
+        row = payload["windows"][key]
+        assert "check" in row
+        assert "drift" in row
+        assert "signal" in row
+        assert "style" in row
+        assert "source_meta" in row
+        assert len(row["signal"]["signals"]) == 24
+        assert len(row["style"]["rank_table"]) == 4
+    run_ids = {
+        payload["windows"]["w24"]["style"]["run_id"],
+        payload["windows"]["w7"]["style"]["run_id"],
+        payload["windows"]["w30"]["style"]["run_id"],
+    }
+    assert len(run_ids) == 3
 
 
 def test_context_daily_supports_json_schema() -> None:

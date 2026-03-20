@@ -78,6 +78,8 @@
 - 本次实现进展（边界收口）：`check`、`risk-analysis assets`、`risk-analysis portfolio`、`context daily` 的 JSON 输出新增 `decision_boundary`（`system=data_only`，`agent=analysis_and_decision`），明确系统只输出数据、Agent负责分析决策。
 - 本次实现进展（文案统一）：CLI 与文档关键文案统一为“风险数据输出”，避免“系统做风险分析/推荐”的歧义。
 - 本次验证：`uv run pytest tests/test_cli_check.py tests/test_risk_analysis_cli.py tests/test_signal_cli.py -q`（`38 passed`），`uv run pytest tests/test_cli.py tests/test_dynamic_backtest.py tests/test_quant_cli.py tests/test_positions_list_grid.py tests/test_perf_cli.py tests/test_blend_cli.py -q`（`102 passed`）。
+- 本次实现进展（Signal Phase 2 起步）：`context daily` 新增按交易窗口分组输出 `windows.w24/w7/w30`，每个窗口包含 `check/drift/signal/style/source_meta`；`style` 在各窗口下实时重跑并返回独立 `run_id`。
+- 本次验证：`uv run pytest tests/test_signal_cli.py -q`（`18 passed`），`uv run pytest tests/test_cli_check.py tests/test_risk_analysis_cli.py tests/test_cli.py tests/test_dynamic_backtest.py tests/test_quant_cli.py tests/test_positions_list_grid.py tests/test_perf_cli.py tests/test_blend_cli.py -q`（`122 passed`）。
 
 ## 下一步建议
 

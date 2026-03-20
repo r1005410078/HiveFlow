@@ -276,10 +276,21 @@ def _ensure_required_samples(
         )
 
 
-def build_signal_snapshot(settings: Settings | None = None) -> dict:
+def build_signal_snapshot(
+    settings: Settings | None = None,
+    *,
+    window_bars: int | None = None,
+) -> dict:
     """计算并返回 Phase 1 聚合信号快照。"""
     app_settings = settings or Settings()
     close_df, high_df, low_df, volume_df, positions = _load_market_context(app_settings)
+    if window_bars is not None and window_bars > 0:
+        # 关键层信号包含 MA/MACD 等至少 40 样本要求，窗口过小时自动扩展到 40。
+        scoped = max(window_bars, 40)
+        close_df = close_df.tail(scoped)
+        high_df = high_df.tail(scoped)
+        low_df = low_df.tail(scoped)
+        volume_df = volume_df.tail(scoped)
 
     leader = _leader_symbol(close_df, positions)
     close = close_df[leader].dropna()
@@ -885,6 +896,7 @@ def build_signal_snapshot(settings: Settings | None = None) -> dict:
     return {
         "as_of": as_of,
         "symbol": leader,
+        "window_bars": window_bars,
         "feature_set_version": FEATURE_SET_VERSION,
         "style_preset_version": STYLE_PRESET_VERSION,
         "symbols_hash": stable_hash(symbols_for_hash),
