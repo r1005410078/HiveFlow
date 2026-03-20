@@ -282,6 +282,25 @@ def test_context_daily_strict_window_all_fails_when_any_window_failed(
     assert payload["details"]["window_failures"][0]["window_key"] == "w7"
 
 
+def test_context_daily_supports_custom_windows(tmp_path, monkeypatch) -> None:
+    _seed_market_and_positions(tmp_path, monkeypatch)
+    runner = CliRunner()
+    assert runner.invoke(app, ["signal", "snapshot", "--output", "json"]).exit_code == 0
+    assert runner.invoke(app, ["style", "backtest-rank", "--output", "json"]).exit_code == 0
+
+    result = runner.invoke(
+        app,
+        ["context", "daily", "--output", "json", "--windows", "12,24"],
+    )
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert set(payload["windows"].keys()) == {"w12", "w24"}
+    assert payload["windows"]["w12"]["window_size"] == 12
+    assert payload["windows"]["w24"]["window_size"] == 24
+    assert payload["summary"]["window_count_success"] == 2
+    assert payload["summary"]["window_count_failed"] == 0
+
+
 def test_signal_snapshot_json_returns_strict_failure_and_writes_system_log(
     tmp_path, monkeypatch
 ) -> None:

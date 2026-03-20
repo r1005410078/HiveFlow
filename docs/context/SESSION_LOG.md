@@ -99,5 +99,8 @@
 - 测试：新增 `strict-window` 两条用例（partial 成功 + all 失败）并通过；`tests/test_signal_cli.py` 更新为 `20 passed`。
 - 实现：Signal Phase 2.2 增加 `window_diff`（`signal_diff/style_diff/risk_diff/consensus_score`），用于多窗口分歧检测与一致性量化。
 - 测试：新增 `window_diff` 成功路径断言并通过；`tests/test_signal_cli.py` 保持 `20 passed`，回归集合保持 `122 passed`。
+- 实现：Signal Phase 2.3 增加 `context daily --windows`，支持按逗号传入自定义交易窗口（如 `12,24`），默认值仍为 `24,7,30`。
+- 行为：`--windows` 仅接受正整数；重复窗口自动去重并按输入顺序保留；与 `--strict-window all|partial`、`window_diff` 逻辑兼容。
+- 测试：新增 `test_context_daily_supports_custom_windows` 并通过；`tests/test_signal_cli.py` 更新为 `21 passed`，回归集合保持 `122 passed`。
 - 决策：M10 需求整体砍掉，不进入实现排期；`ROADMAP` 已同步标记为“已取消”。
 - 文档：新增信号模块一页验收清单 `docs/context/SIGNAL_ACCEPTANCE_CHECKLIST.md`，用于版本验收与回归核对。

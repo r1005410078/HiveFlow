@@ -272,6 +272,30 @@ def _validate_strict_window(value: str) -> str:
     return normalized
 
 
+def _parse_windows(value: str) -> tuple[int, ...]:
+    """解析交易窗口参数（逗号分隔正整数）。"""
+    if not value or not value.strip():
+        raise typer.BadParameter("windows 不能为空，示例：24,7,30。")
+
+    sizes: list[int] = []
+    seen: set[int] = set()
+    for part in value.split(","):
+        token = part.strip()
+        if not token:
+            raise typer.BadParameter("windows 包含空值，示例：24,7,30。")
+        try:
+            size = int(token)
+        except ValueError as exc:
+            raise typer.BadParameter(f"windows 包含非整数值：{token}") from exc
+        if size <= 0:
+            raise typer.BadParameter("windows 仅支持大于 0 的整数。")
+        if size in seen:
+            continue
+        seen.add(size)
+        sizes.append(size)
+    return tuple(sizes)
+
+
 def _calc_age_hours(as_of_text: str) -> float | None:
     """计算 ISO 时间字符串距今小时数，解析失败返回 None。"""
     try:
@@ -861,6 +885,11 @@ def context_daily_command(
     strict_source: str = typer.Option("latest", "--strict-source", callback=_validate_strict_source),
     max_age_hours: int = typer.Option(24, "--max-age-hours", callback=_validate_positive_hours),
     strict_window: str = typer.Option("all", "--strict-window", callback=_validate_strict_window),
+    windows: str = typer.Option(
+        "24,7,30",
+        "--windows",
+        help="交易窗口列表（逗号分隔正整数，如 24,7,30）",
+    ),
 ) -> None:
     """聚合每日 Agent 决策上下文（仅输出数据，不做推荐）。"""
     if json_schema:
@@ -982,9 +1011,11 @@ def context_daily_command(
         "style_latest": get_style_backtest_result(record_id=style_rows[0].id, settings=app_settings),
     }
 
-    windows: dict[str, dict] = {}
+    window_sizes = _parse_windows(windows)
+
+    windows_payload: dict[str, dict] = {}
     window_failures: list[dict] = []
-    for size in (24, 7, 30):
+    for size in window_sizes:
         window_key = f"w{size}"
         try:
             win_signal = build_signal_snapshot(settings=app_settings, window_bars=size)
@@ -998,7 +1029,7 @@ def context_daily_command(
             window_failures.append(failure)
             if strict_window == "all":
                 continue
-            windows[window_key] = {
+            windows_payload[window_key] = {
                 "window_size": size,
                 "status": "failed",
                 "error": failure,
@@ -1016,13 +1047,13 @@ def context_daily_command(
             window_failures.append(failure)
             if strict_window == "all":
                 continue
-            windows[window_key] = {
+            windows_payload[window_key] = {
                 "window_size": size,
                 "status": "failed",
                 "error": failure,
             }
             continue
-        windows[window_key] = {
+        windows_payload[window_key] = {
             "window_size": size,
             "status": "ok",
             "check": payload["check"],
@@ -1053,12 +1084,12 @@ def context_daily_command(
         return
 
     success_count = sum(
-        1 for item in windows.values()
+        1 for item in windows_payload.values()
         if isinstance(item, dict) and item.get("status") == "ok"
     )
     failed_count = len(window_failures)
     ok_windows = {
-        key: item for key, item in windows.items()
+        key: item for key, item in windows_payload.items()
         if isinstance(item, dict) and item.get("status") == "ok"
     }
 
@@ -1103,7 +1134,7 @@ def context_daily_command(
     style_consensus = 1.0 if len(unique_top_styles) <= 1 else 0.0
     risk_consensus = 1.0 if len(unique_verdicts) <= 1 else 0.0
 
-    payload["windows"] = windows
+    payload["windows"] = windows_payload
     payload["window_diff"] = {
         "signal_diff": {
             "total_signals_compared": total_signals_compared,

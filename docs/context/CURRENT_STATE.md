@@ -84,6 +84,8 @@
 - 本次验证：新增窗口失败策略测试通过，`uv run pytest tests/test_signal_cli.py -q`（`20 passed`），回归集合保持 `122 passed`。
 - 本次实现进展（Signal Phase 2.2）：`context daily` 新增 `window_diff` 聚合层，输出 `signal_diff/style_diff/risk_diff` 与 `consensus_score`，用于表达多窗口一致性与冲突强度。
 - 本次验证：`window_diff` 结构断言已覆盖并通过；`tests/test_signal_cli.py` 保持 `20 passed`，回归集合 `122 passed`。
+- 本次实现进展（Signal Phase 2.3）：`context daily` 新增 `--windows` 参数，支持自定义窗口分组（如 `12,24`），并复用既有 `strict-window` 与 `window_diff` 逻辑。
+- 本次验证：新增自定义窗口用例通过；`uv run pytest tests/test_signal_cli.py -q`（`21 passed`），回归集合保持 `122 passed`。
 
 ## 下一步建议
 
