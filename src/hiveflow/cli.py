@@ -296,6 +296,43 @@ def _parse_windows(value: str) -> tuple[int, ...]:
     return tuple(sizes)
 
 
+def _build_window_audit_summary(
+    *,
+    window_sizes: tuple[int, ...],
+    windows_payload: dict[str, dict],
+    window_failures: list[dict],
+) -> dict[str, Any]:
+    """汇总窗口执行审计字段，供 summary 与严格失败详情复用。"""
+    window_keys_failed = list(dict.fromkeys(
+        f["window_key"] for f in window_failures if "window_key" in f
+    ))
+    window_count_failed = len(window_failures)
+    window_count_success = max(0, len(window_sizes) - window_count_failed)
+    window_count_total_computed = window_count_success + window_count_failed
+    window_status_map = {
+        key: ("ok" if item.get("status") == "ok" else "failed")
+        for key, item in windows_payload.items()
+        if isinstance(item, dict)
+    }
+
+    ok_windows = {
+        key: item for key, item in windows_payload.items()
+        if isinstance(item, dict) and item.get("status") == "ok"
+    }
+
+    return {
+        "windows_requested": list(window_sizes),
+        "window_count_requested": len(window_sizes),
+        "window_count_success": window_count_success,
+        "window_count_failed": window_count_failed,
+        "window_count_total_computed": window_count_total_computed,
+        "window_keys_success": list(ok_windows.keys()),
+        "window_keys_failed": window_keys_failed,
+        "window_status_map": window_status_map,
+        "window_failures": window_failures,
+    }
+
+
 def _calc_age_hours(as_of_text: str) -> float | None:
     """计算 ISO 时间字符串距今小时数，解析失败返回 None。"""
     try:
@@ -1067,17 +1104,11 @@ def context_daily_command(
             },
         }
 
-    window_keys_failed = list(dict.fromkeys(
-        f["window_key"] for f in window_failures if "window_key" in f
-    ))
-    window_count_failed = len(window_failures)
-    window_count_success = max(0, len(window_sizes) - window_count_failed)
-    window_count_total_computed = window_count_success + window_count_failed
-    window_status_map = {
-        key: ("ok" if item.get("status") == "ok" else "failed")
-        for key, item in windows_payload.items()
-        if isinstance(item, dict)
-    }
+    window_audit = _build_window_audit_summary(
+        window_sizes=window_sizes,
+        windows_payload=windows_payload,
+        window_failures=window_failures,
+    )
 
     if strict_window == "all" and window_failures:
         _emit_strict_failure(
@@ -1087,14 +1118,7 @@ def context_daily_command(
             details={
                 "strict_mode": True,
                 "strict_window": strict_window,
-                "windows_requested": list(window_sizes),
-                "window_count_requested": len(window_sizes),
-                "window_count_success": window_count_success,
-                "window_count_failed": window_count_failed,
-                "window_count_total_computed": window_count_total_computed,
-                "window_keys_failed": window_keys_failed,
-                "window_status_map": window_status_map,
-                "window_failures": window_failures,
+                **window_audit,
             },
             hint={"action": "fix_window_pipeline"},
             output=output,
@@ -1102,10 +1126,10 @@ def context_daily_command(
         return
 
     ok_windows = {
-        key: item for key, item in windows_payload.items()
-        if isinstance(item, dict) and item.get("status") == "ok"
+        key: windows_payload[key]
+        for key in window_audit["window_keys_success"]
+        if key in windows_payload
     }
-    window_keys_success = list(ok_windows.keys())
 
     signal_states_by_key: dict[str, dict[str, str]] = {}
     for window_key, item in ok_windows.items():
@@ -1169,15 +1193,7 @@ def context_daily_command(
     }
     payload["summary"] = {
         "latency_ms": round((perf_counter() - started) * 1000, 3),
-        "windows_requested": list(window_sizes),
-        "window_count_requested": len(window_sizes),
-        "window_count_success": window_count_success,
-        "window_count_failed": window_count_failed,
-        "window_count_total_computed": window_count_total_computed,
-        "window_keys_success": window_keys_success,
-        "window_keys_failed": window_keys_failed,
-        "window_status_map": window_status_map,
-        "window_failures": window_failures,
+        **window_audit,
     }
 
     if output == "json":
