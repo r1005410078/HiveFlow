@@ -130,14 +130,26 @@ uv run hiveflow rebalance preview
 
 **前提：** 已完成准备工作第 3 步（OKX 已连接）。
 
-**日常两步流程：**
+**首次使用（只需一次）：先补历史数据**
 
 ```bash
-uv run hiveflow sync     # 同步最新持仓和价格（约 5 秒）
-uv run hiveflow check    # 输出风险结论
+uv run hiveflow sync --days 30
 ```
 
-输出示例：
+`check`/`signal` 依赖最近历史价格计算指标，首次建议至少同步 30 天。
+
+**日常流程（建议 4 步）**
+
+```bash
+uv run hiveflow sync               # 1) 同步最新持仓和价格（约 5 秒）
+uv run hiveflow check              # 2) 输出健康结论（回撤风险）
+uv run hiveflow positions drift    # 3) 查看当前持仓与目标持仓偏离
+uv run hiveflow signal snapshot    # 4) 输出统一信号快照（可供 Agent 消费）
+```
+
+`positions drift` 会**忽略市值 <= 0.01 USDT** 的极小仓位，避免噪声币影响判断。
+
+`check` 输出示例：
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -163,18 +175,43 @@ uv run hiveflow check    # 输出风险结论
 | -10% ~ -20% | ⚠️ 注意 |
 | 低于 -20% | 🔴 危险 |
 
-**首次使用：同步历史数据**
+`signal snapshot` 输出示例（节选）：
 
-第一次运行时，需要同步历史 K 线才能计算回撤指标：
-
-```bash
-uv run hiveflow sync --days 30    # 同步最近 30 天
-uv run hiveflow check
+```json
+{
+  "snapshot_id": "sig-202603201234560001",
+  "feature_set_version": "signal-v1.0",
+  "style_preset_version": "style-v1.0",
+  "symbols_hash": "c2a9...",
+  "params_hash": "9f11...",
+  "code_version": "07eab86",
+  "signals": [ ... 24 items ... ],
+  "category_metrics": { ... },
+  "conflict_matrix": [ ... ]
+}
 ```
 
-**设置自动定时检查**
+**需要看历史对比时**
 
-不想每天手动跑？可以设置 cron 自动执行：
+```bash
+uv run hiveflow signal history --output json
+uv run hiveflow signal show <id> --output json
+uv run hiveflow style backtest-rank --output json
+uv run hiveflow style history --output json
+uv run hiveflow style show <id> --output json
+```
+
+`show` 返回字段与实时命令保持一致（包含 `feature_set_version`、`symbols_hash`、`objective`、`constraints`、`best_candidate` 等），方便 Agent 做可复现分析。
+
+**严格模式与系统日志（排障）**
+
+当 `signal` / `style` 因数据缺失失败时，命令会返回结构化错误并写入系统日志表（含 `trace_id`）：
+
+```bash
+sqlite3 data/hiveflow.db "select id,level,message,trace_id,created_at from systemlog order by id desc limit 10;"
+```
+
+**设置自动定时检查（可选）**
 
 ```bash
 uv run hiveflow perf setup-cron --dry-run    # 预览将写入的定时任务
@@ -213,7 +250,7 @@ uv run hiveflow quant list
 **第 3 步：快速看一个策略的配比建议**
 
 ```bash
-uv run hiveflow quant run --strategy Momentum
+uv run hiveflow quant run --strategy MomentumStrategy
 ```
 
 这个命令按当前数据点计算一次权重，输出建议配比，但**不含历史回测**。用来快速了解策略逻辑。

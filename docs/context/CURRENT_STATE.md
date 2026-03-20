@@ -65,6 +65,7 @@
 - 本次验证：`uv run pytest tests/test_signal_cli.py -q`（`11 passed`）、`uv run pytest tests/test_cli.py tests/test_cli_check.py tests/test_dynamic_backtest.py tests/test_quant_cli.py tests/test_positions_list_grid.py tests/test_perf_cli.py tests/test_blend_cli.py -q`（`106 passed`）
 - 本次实现进展（Phase 1 / Step 4.1）：`signal show` / `style show` 历史回放补齐元数据与报告字段，保证“实时输出”和“历史回放”契约一致；并新增 SQLite 轻量迁移自动补列（兼容旧库）。
 - 本次验证：`uv run pytest tests/test_signal_cli.py::test_signal_snapshot_history_and_show_json tests/test_signal_cli.py::test_style_backtest_rank_history_and_show_json -q`（`2 passed`），`uv run pytest tests/test_signal_cli.py -q`（`11 passed`），回归 `106 passed`。
+- 文档收口：`docs/cli/README.md` 场景二已更新为当前真实流程（`sync/check/drift/signal snapshot`、`<=0.01 USDT` 极小持仓忽略、`signal/style` history/show、严格模式系统日志查询）。
 
 ## 下一步建议
 

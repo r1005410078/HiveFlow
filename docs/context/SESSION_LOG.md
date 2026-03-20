@@ -78,3 +78,4 @@
 - 实现：补齐历史回放契约一致性，`signal show` / `style show` 现在可返回与实时命令一致的可复现元数据与风格报告字段；对应 `SignalSnapshot` / `StyleBacktestResult` 持久化表新增字段并完成读写透传。
 - 兼容：`db.py` 新增 SQLite 轻量迁移，旧库自动补齐新增列（无需手工迁移）。
 - 测试：新增断言覆盖历史回放元数据与报告字段；定向用例 `2 passed`，`tests/test_signal_cli.py` `11 passed`，回归集合 `106 passed`。
+- 文档：补完 `docs/cli/README.md` 场景二，明确每日健康检查推荐流程（`sync/check/drift/signal snapshot`）、`<=0.01 USDT` 极小持仓忽略规则、`signal/style` 历史回放命令及严格模式系统日志排障方式。
