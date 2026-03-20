@@ -59,6 +59,7 @@ def test_context_daily_json_success_with_latest_snapshots(tmp_path, monkeypatch)
     assert "as_of" in payload
     assert "check" in payload
     assert "drift" in payload
+    assert "source_meta" in payload
     assert "signal_latest" in payload
     assert "style_latest" in payload
     assert payload["check"]["verdict"] in {"safe", "watch", "danger"}
@@ -67,6 +68,12 @@ def test_context_daily_json_success_with_latest_snapshots(tmp_path, monkeypatch)
     assert len(payload["style_latest"]["rank_table"]) == 4
     assert payload["signal_latest"]["feature_set_version"] == "signal-v1.0"
     assert payload["style_latest"]["objective"] == "calmar"
+    assert payload["source_meta"]["strict_source"] == "latest"
+    assert payload["source_meta"]["max_age_hours"] == 24
+    assert payload["source_meta"]["signal_latest"]["record_id"] >= 1
+    assert payload["source_meta"]["style_latest"]["record_id"] >= 1
+    assert payload["source_meta"]["signal_latest"]["age_hours"] >= 0
+    assert payload["source_meta"]["style_latest"]["age_hours"] >= 0
 
 
 def test_context_daily_supports_json_schema() -> None:
@@ -89,6 +96,7 @@ def test_context_daily_json_supports_envelope(tmp_path, monkeypatch) -> None:
     assert payload["schema_version"] == "1.0.0"
     assert payload["command"] == "context.daily"
     assert "data" in payload
+    assert "source_meta" in payload["data"]
     assert "signal_latest" in payload["data"]
     assert "style_latest" in payload["data"]
 
@@ -154,6 +162,8 @@ def test_context_daily_fresh_succeeds_with_relaxed_max_age(tmp_path, monkeypatch
     )
     assert result.exit_code == 0, result.stdout
     payload = json.loads(result.stdout)
+    assert payload["source_meta"]["strict_source"] == "fresh"
+    assert payload["source_meta"]["max_age_hours"] == 5000
     assert "signal_latest" in payload
     assert "style_latest" in payload
 

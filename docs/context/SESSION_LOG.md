@@ -86,3 +86,5 @@
 - 测试：新增 schema/envelope 用例通过；`tests/test_signal_cli.py` 更新为 `16 passed`，回归集合保持 `106 passed`。
 - 实现：`context daily` 增加新鲜度严格模式（`--strict-source latest|fresh` + `--max-age-hours`）；当最新 `signal/style` 快照超过阈值时返回 `E_PIPELINE_ABORTED_STRICT` 并写系统日志。
 - 测试：新增 stale/fresh 两条用例；`tests/test_signal_cli.py` 更新为 `18 passed`，回归集合保持 `106 passed`。
+- 实现：`context daily` 增加 `source_meta`，输出每个来源组件的 `record_id/as_of/age_hours` 与当前 `strict_source/max_age_hours`，增强 Agent 可追溯判断。
+- 测试：为 `source_meta` 增加成功路径断言（普通 JSON、envelope、fresh 模式）并通过；回归集合保持 `106 passed`。

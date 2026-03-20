@@ -263,6 +263,18 @@ def _validate_positive_hours(value: int) -> int:
     return value
 
 
+def _calc_age_hours(as_of_text: str) -> float | None:
+    """计算 ISO 时间字符串距今小时数，解析失败返回 None。"""
+    try:
+        as_of_dt = datetime.fromisoformat(as_of_text)
+    except ValueError:
+        return None
+    if as_of_dt.tzinfo is None:
+        as_of_dt = as_of_dt.replace(tzinfo=timezone.utc)
+    now = datetime.now(timezone.utc)
+    return (now - as_of_dt.astimezone(timezone.utc)).total_seconds() / 3600
+
+
 def _action_label(action: str) -> str:
     """动作枚举中文显示。"""
     return {"buy": "买入", "sell": "卖出", "hold": "持有"}.get(action, action)
@@ -869,26 +881,38 @@ def context_daily_command(
         )
         return
 
+    signal_age = _calc_age_hours(signal_rows[0].as_of)
+    style_age = _calc_age_hours(style_rows[0].as_of)
+    source_meta = {
+        "strict_source": strict_source,
+        "max_age_hours": max_age_hours,
+        "signal_latest": {
+            "record_id": signal_rows[0].id,
+            "snapshot_id": signal_rows[0].snapshot_id,
+            "as_of": signal_rows[0].as_of,
+            "age_hours": round(signal_age, 6) if signal_age is not None else None,
+        },
+        "style_latest": {
+            "record_id": style_rows[0].id,
+            "run_id": style_rows[0].run_id,
+            "as_of": style_rows[0].as_of,
+            "age_hours": round(style_age, 6) if style_age is not None else None,
+        },
+    }
+
     if strict_source == "fresh":
-        now = datetime.now(timezone.utc)
         stale_components: list[dict] = []
-        for component, as_of_text in (
-            ("signal_latest", signal_rows[0].as_of),
-            ("style_latest", style_rows[0].as_of),
+        for component, meta in (
+            ("signal_latest", source_meta["signal_latest"]),
+            ("style_latest", source_meta["style_latest"]),
         ):
-            try:
-                as_of_dt = datetime.fromisoformat(as_of_text)
-                if as_of_dt.tzinfo is None:
-                    as_of_dt = as_of_dt.replace(tzinfo=timezone.utc)
-                age_hours = (now - as_of_dt.astimezone(timezone.utc)).total_seconds() / 3600
-            except ValueError:
-                age_hours = float("inf")
-            if age_hours > max_age_hours:
+            age_hours = meta["age_hours"]
+            if age_hours is None or age_hours > max_age_hours:
                 stale_components.append(
                     {
                         "component": component,
-                        "as_of": as_of_text,
-                        "age_hours": round(age_hours, 2) if age_hours != float("inf") else None,
+                        "as_of": meta["as_of"],
+                        "age_hours": age_hours,
                     }
                 )
         if stale_components:
@@ -933,6 +957,7 @@ def context_daily_command(
             "count": len(drift_items),
             "items": [item.to_dict() for item in drift_items],
         },
+        "source_meta": source_meta,
         "signal_latest": get_signal_snapshot(record_id=signal_rows[0].id, settings=app_settings),
         "style_latest": get_style_backtest_result(record_id=style_rows[0].id, settings=app_settings),
     }
