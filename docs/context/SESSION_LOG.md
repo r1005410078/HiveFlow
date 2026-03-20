@@ -88,3 +88,5 @@
 - 测试：新增 stale/fresh 两条用例；`tests/test_signal_cli.py` 更新为 `18 passed`，回归集合保持 `106 passed`。
 - 实现：`context daily` 增加 `source_meta`，输出每个来源组件的 `record_id/as_of/age_hours` 与当前 `strict_source/max_age_hours`，增强 Agent 可追溯判断。
 - 测试：为 `source_meta` 增加成功路径断言（普通 JSON、envelope、fresh 模式）并通过；回归集合保持 `106 passed`。
+- 决策：M10 需求整体砍掉，不进入实现排期；`ROADMAP` 已同步标记为“已取消”。
+- 文档：新增信号模块一页验收清单 `docs/context/SIGNAL_ACCEPTANCE_CHECKLIST.md`，用于版本验收与回归核对。

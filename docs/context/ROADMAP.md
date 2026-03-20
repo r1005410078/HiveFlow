@@ -7,7 +7,7 @@
 ## 当前位置
 
 - 已完成：Chunk 1 ~ Chunk 30 + M4 + M5 + M6 + M7 + M8 + M9
-- 当前阶段：M10 规划中
+- 当前阶段：信号系统 Phase 1 收口完成
 
 ## 三个里程碑
 
@@ -90,12 +90,10 @@
 - `perf compare <backtest_id>` 实盘 vs 回测权益曲线 Sparkline 并排 + 指标（总收益率、年化收益率、MDD）
 - `perf setup-cron` 读取 `config/tracking.json` 生成/安装 cron job，支持 `--dry-run`
 
-## M10：下一阶段（规划中）
+## M10：状态变更（已取消）
 
-候选方向：
-1. 网格机器人管理（`grid create/list/stop`，OKX Grid Trading API）
-2. 多交易所支持
-3. 实时推送/告警
+- 决策：M10 需求整体砍掉，当前不进入实现排期。
+- 说明：后续如需重启新里程碑，将基于新的需求评审单独立项，不沿用本段候选方向。
 
 ## 决策规则（防止“抓芝麻”）
 
