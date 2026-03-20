@@ -346,6 +346,13 @@ def _build_window_audit_summary(
     }
 
 
+def _attach_window_audit(payload: dict[str, Any], window_audit: dict[str, Any]) -> dict[str, Any]:
+    """向已有响应对象附加 window_audit 子对象（向后兼容保留平铺字段）。"""
+    merged = dict(payload)
+    merged["window_audit"] = dict(window_audit)
+    return merged
+
+
 def _calc_age_hours(as_of_text: str) -> float | None:
     """计算 ISO 时间字符串距今小时数，解析失败返回 None。"""
     try:
@@ -1124,15 +1131,19 @@ def context_daily_command(
     )
 
     if strict_window == "all" and window_failures:
-        _emit_strict_failure(
-            code=ErrorCode.PIPELINE_ABORTED_STRICT,
-            context="context.daily",
-            message="窗口计算失败，严格模式中断。",
-            details={
+        strict_details = _attach_window_audit(
+            {
                 "strict_mode": True,
                 "strict_window": strict_window,
                 **window_audit,
             },
+            window_audit,
+        )
+        _emit_strict_failure(
+            code=ErrorCode.PIPELINE_ABORTED_STRICT,
+            context="context.daily",
+            message="窗口计算失败，严格模式中断。",
+            details=strict_details,
             hint={"action": "fix_window_pipeline"},
             output=output,
         )
@@ -1204,10 +1215,10 @@ def context_daily_command(
         },
         "consensus_score": round((signal_consensus + style_consensus + risk_consensus) / 3, 6),
     }
-    payload["summary"] = {
+    payload["summary"] = _attach_window_audit({
         "latency_ms": round((perf_counter() - started) * 1000, 3),
         **window_audit,
-    }
+    }, window_audit)
 
     if output == "json":
         _print_json(payload=payload, command="context.daily", envelope=envelope)

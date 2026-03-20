@@ -102,6 +102,8 @@
 - 本次验证：更新严格失败场景断言后通过；`tests/test_signal_cli.py` 保持 `25 passed`，回归集合保持 `122 passed`。
 - 本次实现进展（Signal Phase 2.11）：新增 `is_window_audit_consistent`（summary + 严格失败详情），系统直接给出窗口审计一致性布尔结论。
 - 本次验证：新增一致性字段断言后通过；`tests/test_signal_cli.py` 保持 `25 passed`，回归集合保持 `122 passed`。
+- 本次实现进展（Signal Phase 2.12）：新增 `window_audit` 子对象（summary + 严格失败详情），并保留原平铺字段，兼容历史消费方。
+- 本次验证：新增 `window_audit` 字段断言后通过；`tests/test_signal_cli.py` 保持 `25 passed`，回归集合保持 `122 passed`。
 
 ## 下一步建议
 
