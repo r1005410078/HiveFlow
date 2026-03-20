@@ -109,5 +109,7 @@
 - 测试：新增 `test_context_daily_rejects_invalid_windows_option` 参数化用例（4 例）并通过；`tests/test_signal_cli.py` 更新为 `25 passed`，回归集合保持 `122 passed`。
 - 实现：Signal Phase 2.6 增加窗口键审计字段，`context daily summary` 回传 `window_keys_success/window_keys_failed`，`strict-window=all` 失败详情新增 `window_keys_failed`。
 - 测试：扩展 `strict-window partial/all` 与自定义窗口成功用例断言窗口键列表并通过；`tests/test_signal_cli.py` 保持 `25 passed`，回归集合保持 `122 passed`。
+- 实现：Signal Phase 2.7 增加 `window_status_map`，在 `context daily summary` 提供窗口状态直出映射（`wxx -> ok/failed`）；`strict-window=all` 失败详情同步输出该映射。
+- 测试：扩展窗口成功/失败场景断言 `window_status_map` 并通过；`tests/test_signal_cli.py` 保持 `25 passed`，回归集合保持 `122 passed`。
 - 决策：M10 需求整体砍掉，不进入实现排期；`ROADMAP` 已同步标记为“已取消”。
 - 文档：新增信号模块一页验收清单 `docs/context/SIGNAL_ACCEPTANCE_CHECKLIST.md`，用于版本验收与回归核对。

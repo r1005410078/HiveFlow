@@ -1070,6 +1070,11 @@ def context_daily_command(
     window_keys_failed = list(dict.fromkeys(
         f["window_key"] for f in window_failures if "window_key" in f
     ))
+    window_status_map = {
+        key: ("ok" if item.get("status") == "ok" else "failed")
+        for key, item in windows_payload.items()
+        if isinstance(item, dict)
+    }
 
     if strict_window == "all" and window_failures:
         _emit_strict_failure(
@@ -1082,6 +1087,7 @@ def context_daily_command(
                 "windows_requested": list(window_sizes),
                 "window_count_requested": len(window_sizes),
                 "window_keys_failed": window_keys_failed,
+                "window_status_map": window_status_map,
                 "window_failures": window_failures,
             },
             hint={"action": "fix_window_pipeline"},
@@ -1168,6 +1174,7 @@ def context_daily_command(
         "window_count_failed": failed_count,
         "window_keys_success": window_keys_success,
         "window_keys_failed": window_keys_failed,
+        "window_status_map": window_status_map,
         "window_failures": window_failures,
     }
 
