@@ -8,10 +8,17 @@ from contextlib import redirect_stdout
 from dataclasses import dataclass
 from datetime import timezone
 from io import StringIO
+from uuid import uuid4
 
 from sqlmodel import select
 
 from hiveflow.application.backtest import run_quant_backtest
+from hiveflow.application.repro_meta import (
+    FEATURE_SET_VERSION,
+    STYLE_PRESET_VERSION,
+    resolve_code_version,
+    stable_hash,
+)
 from hiveflow.config import Settings
 from hiveflow.db import create_all_tables, get_session
 from hiveflow.domain.common import utc_now
@@ -131,7 +138,7 @@ def run_style_backtest_rank(
     create_all_tables(app_settings)
 
     with get_session(app_settings) as session:
-        bars = session.exec(select(MarketBar.timestamp).order_by(MarketBar.timestamp)).all()
+        bars = session.exec(select(MarketBar).order_by(MarketBar.timestamp)).all()
     if not bars:
         raise StyleBacktestError(
             context="style.backtest-rank",
@@ -146,9 +153,18 @@ def run_style_backtest_rank(
             hint={"action": "run_backtest_pipeline"},
         )
 
-    start_ts = bars[0].astimezone(timezone.utc).isoformat()
-    end_ts = bars[-1].astimezone(timezone.utc).isoformat()
+    start_ts = bars[0].timestamp.astimezone(timezone.utc).isoformat()
+    end_ts = bars[-1].timestamp.astimezone(timezone.utc).isoformat()
     as_of = utc_now().isoformat()
+    run_id = uuid4().hex
+    symbols_for_hash = sorted({b.symbol.upper() for b in bars})
+    params_meta = {
+        "rebalance_days": rebalance_days,
+        "symbols": sorted(symbols) if symbols else None,
+        "fee_bps": fee_bps,
+        "slippage_bps": slippage_bps,
+        "style_to_strategy": {k: v.__name__ for k, v in STYLE_TO_STRATEGY.items()},
+    }
 
     completed: list[str] = []
     styles: list[dict] = []
@@ -194,11 +210,24 @@ def run_style_backtest_rank(
                 hint={"action": "run_backtest_pipeline"},
             ) from exc
 
+    rank_table = _rank(styles)
     return {
+        "run_id": run_id,
         "as_of": as_of,
+        "feature_set_version": FEATURE_SET_VERSION,
+        "style_preset_version": STYLE_PRESET_VERSION,
+        "symbols_hash": stable_hash(symbols_for_hash),
+        "params_hash": stable_hash(params_meta),
+        "code_version": resolve_code_version(),
+        "objective": "calmar",
+        "constraints": {"mdd_floor": -0.2},
+        "search_method": "grid_search",
+        "candidates_count": len(styles),
+        "valid_candidates_count": len(styles),
         "sort_key": "calmar",
         "tie_breaker": "calmar desc -> |max_drawdown| asc -> sharpe desc -> total_return desc",
         "styles": styles,
-        "rank_table": _rank(styles),
+        "rank_table": rank_table,
+        "best_candidate": rank_table[0] if rank_table else None,
         "backtest_window": {"start": start_ts, "end": end_ts},
     }

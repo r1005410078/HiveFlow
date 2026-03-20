@@ -73,3 +73,5 @@
 - 实现：统一 CLI table 表头中文化，并将 `signal` 的 pretty 展示改为中文信号键/中文状态；JSON 契约保持英文键值（供 Agent 稳定消费）。
 - 实现：新增信号与风格回测历史存档能力：`SignalSnapshot`、`StyleBacktestResult` 两张表；`signal snapshot` / `style backtest-rank` 成功后自动落库；新增 `signal history/show`、`style history/show` 命令支持历史回放。
 - 测试：`tests/test_signal_cli.py` 扩展到 11 例并通过；回归通过 `tests/test_cli.py`、`tests/test_cli_check.py`、`tests/test_dynamic_backtest.py`、`tests/test_quant_cli.py`、`tests/test_positions_list_grid.py`、`tests/test_perf_cli.py`、`tests/test_blend_cli.py` 共 `106 passed`。
+- 实现：新增 `repro_meta` 元数据工具，输出 `feature_set_version/style_preset_version/symbols_hash/params_hash/code_version`；并为 `style backtest-rank` 补齐报告契约字段 `objective/constraints/search_method/candidates_count/valid_candidates_count/best_candidate`。
+- 行为：保持“pretty 中文、JSON 英文契约”不变，同时为 Agent 增强可复现上下文与报告可追溯字段。

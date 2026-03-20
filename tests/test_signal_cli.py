@@ -124,6 +124,11 @@ def test_signal_snapshot_json_success_with_seed_data(tmp_path, monkeypatch) -> N
     assert "data_window" in payload
     assert "category_metrics" in payload
     assert "conflict_matrix" in payload
+    assert payload["feature_set_version"] == "signal-v1.0"
+    assert payload["style_preset_version"] == "style-v1.0"
+    assert payload["symbols_hash"]
+    assert payload["params_hash"]
+    assert payload["code_version"]
 
     first = payload["signals"][0]
     assert set(
@@ -178,6 +183,17 @@ def test_style_backtest_rank_json_success_with_seed_data(tmp_path, monkeypatch) 
     assert "styles" in payload
     assert len(payload["styles"]) == 4
     assert "recommended_style" not in payload
+    assert payload["feature_set_version"] == "signal-v1.0"
+    assert payload["style_preset_version"] == "style-v1.0"
+    assert payload["symbols_hash"]
+    assert payload["params_hash"]
+    assert payload["code_version"]
+    assert payload["objective"] == "calmar"
+    assert payload["search_method"] == "grid_search"
+    assert payload["constraints"]["mdd_floor"] == -0.2
+    assert payload["candidates_count"] == 4
+    assert payload["valid_candidates_count"] == 4
+    assert payload["best_candidate"]["rank"] == 1
 
 
 def test_signal_trend_pretty_table_headers_are_chinese(tmp_path, monkeypatch) -> None:

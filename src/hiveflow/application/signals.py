@@ -11,6 +11,12 @@ from sqlmodel import select
 
 from hiveflow.config import Settings
 from hiveflow.db import create_all_tables, get_session
+from hiveflow.application.repro_meta import (
+    FEATURE_SET_VERSION,
+    STYLE_PRESET_VERSION,
+    resolve_code_version,
+    stable_hash,
+)
 from hiveflow.domain.common import utc_now
 from hiveflow.domain.market_data import MarketBar
 from hiveflow.domain.positions import Position
@@ -862,9 +868,28 @@ def build_signal_snapshot(settings: Settings | None = None) -> dict:
             }
         )
 
+    params_meta = {
+        "trend": {"fast": 7, "slow": 30, "breakout_window": 20, "momentum_window": 20, "momentum_threshold": 0.05},
+        "risk": {
+            "mdd_7d": {"medium": -0.1, "high": -0.2},
+            "mdd_30d": {"medium": -0.15, "high": -0.3},
+            "atr_ratio": {"medium": 0.02, "high": 0.05},
+            "corr": {"medium": 0.6, "high": 0.8},
+        },
+        "confirm": {"volume_ratio": 1.5, "consensus_ratio": 0.75, "persistence_bars": 4},
+        "regime": {"adx": 25, "vol_q_low": 0.3, "vol_q_high": 0.7},
+        "quality": {"freshness_h": [24, 72], "completeness": [0.01, 0.05], "weights": [0.4, 0.3, 0.3]},
+    }
+    symbols_for_hash = sorted(close_df.columns.tolist())
+
     return {
         "as_of": as_of,
         "symbol": leader,
+        "feature_set_version": FEATURE_SET_VERSION,
+        "style_preset_version": STYLE_PRESET_VERSION,
+        "symbols_hash": stable_hash(symbols_for_hash),
+        "params_hash": stable_hash(params_meta),
+        "code_version": resolve_code_version(),
         "signals": ordered_signals,
         "category_metrics": category_metrics,
         "conflict_matrix": conflict_matrix,

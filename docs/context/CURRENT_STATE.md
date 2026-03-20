@@ -61,6 +61,8 @@
 - 本次验证：`uv run pytest tests/test_signal_cli.py -q`（`7 passed`）、`uv run pytest tests/test_cli.py tests/test_cli_check.py tests/test_dynamic_backtest.py tests/test_quant_cli.py -q`（`86 passed`）
 - 本次实现进展（Phase 1 / Step 3）：新增 `SignalSnapshot` 与 `StyleBacktestResult` 持久化，`signal snapshot` / `style backtest-rank` 执行成功后自动落库；新增 `signal history/show` 与 `style history/show` 历史回放命令（支持 `--output json`）
 - 本次验证：`uv run pytest tests/test_signal_cli.py -q`（`11 passed`）、`uv run pytest tests/test_cli.py tests/test_cli_check.py tests/test_dynamic_backtest.py tests/test_quant_cli.py tests/test_positions_list_grid.py tests/test_perf_cli.py tests/test_blend_cli.py -q`（`106 passed`）
+- 本次实现进展（Phase 1 / Step 4）：补齐可复现元数据字段；`signal snapshot` 输出新增 `feature_set_version/style_preset_version/symbols_hash/params_hash/code_version`，`style backtest-rank` 输出新增 `run_id/objective/constraints/search_method/candidates_count/valid_candidates_count/best_candidate` 等报告字段
+- 本次验证：`uv run pytest tests/test_signal_cli.py -q`（`11 passed`）、`uv run pytest tests/test_cli.py tests/test_cli_check.py tests/test_dynamic_backtest.py tests/test_quant_cli.py tests/test_positions_list_grid.py tests/test_perf_cli.py tests/test_blend_cli.py -q`（`106 passed`）
 
 ## 下一步建议
 
