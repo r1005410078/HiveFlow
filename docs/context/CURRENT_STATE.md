@@ -106,6 +106,8 @@
 - 本次验证：新增 `window_audit` 字段断言后通过；`tests/test_signal_cli.py` 保持 `25 passed`，回归集合保持 `122 passed`。
 - 本次实现进展（Signal Phase 2.13）：`window_audit` 新增 `window_audit_schema_version`（`v1`），支持契约版本化演进。
 - 本次验证：新增 schema version 断言后通过；`tests/test_signal_cli.py` 保持 `25 passed`，回归集合保持 `122 passed`。
+- 本次实现进展（Signal Phase 2.14）：新增 `WINDOW_AUDIT_CONTRACT.md` 契约文档，固化 `window_audit` 字段定义、示例与兼容策略；README 与验收清单已对齐引用。
+- 本次验证：本次为文档收口，无代码变更测试；沿用最近一次验证基线 `tests/test_signal_cli.py` `25 passed`、回归集合 `122 passed`。
 
 ## 下一步建议
 

@@ -31,6 +31,7 @@
 | S12 | 来源时效控制 | 支持 `--strict-source latest|fresh --max-age-hours` | ✅ |
 | S13 | 来源元信息 | 输出 `source_meta`（record_id/as_of/age_hours） | ✅ |
 | S14 | 文档一致性 | 新手文档场景二与当前行为一致 | ✅ |
+| S15 | 窗口审计契约 | `window_audit` 字段与版本定义形成独立契约文档 | ✅ |
 
 ## 关键命令回归（手工抽检）
 
@@ -51,8 +52,8 @@ uv run hiveflow context daily --output json --strict-source fresh --max-age-hour
 
 ## 测试基线（当前）
 
-- `uv run pytest tests/test_signal_cli.py -q` → `18 passed`
-- 回归集合：`uv run pytest tests/test_cli.py tests/test_cli_check.py tests/test_dynamic_backtest.py tests/test_quant_cli.py tests/test_positions_list_grid.py tests/test_perf_cli.py tests/test_blend_cli.py -q` → `106 passed`
+- `uv run pytest tests/test_signal_cli.py -q` → `25 passed`
+- 回归集合：`uv run pytest tests/test_cli_check.py tests/test_risk_analysis_cli.py tests/test_cli.py tests/test_dynamic_backtest.py tests/test_quant_cli.py tests/test_positions_list_grid.py tests/test_perf_cli.py tests/test_blend_cli.py -q` → `122 passed`
 
 ## 结论
 
