@@ -9,6 +9,8 @@ from hiveflow.db import get_session
 from hiveflow.db import create_all_tables
 from hiveflow.domain.market_data import MarketBar
 from hiveflow.domain.positions import Position
+from hiveflow.domain.signal_snapshots import SignalSnapshot
+from hiveflow.domain.style_backtest_results import StyleBacktestResult
 from hiveflow.domain.system_logs import SystemLog
 
 
@@ -89,6 +91,71 @@ def test_context_daily_json_supports_envelope(tmp_path, monkeypatch) -> None:
     assert "data" in payload
     assert "signal_latest" in payload["data"]
     assert "style_latest" in payload["data"]
+
+
+def test_context_daily_fresh_fails_when_latest_snapshot_is_stale(tmp_path, monkeypatch) -> None:
+    _seed_market_and_positions(tmp_path, monkeypatch)
+    runner = CliRunner()
+    assert runner.invoke(app, ["signal", "snapshot", "--output", "json"]).exit_code == 0
+    assert runner.invoke(app, ["style", "backtest-rank", "--output", "json"]).exit_code == 0
+
+    stale_at = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    with get_session() as session:
+        sig = session.exec(select(SignalSnapshot)).first()
+        sty = session.exec(select(StyleBacktestResult)).first()
+        assert sig is not None
+        assert sty is not None
+        sig.as_of = stale_at
+        sty.as_of = stale_at
+        session.add(sig)
+        session.add(sty)
+        session.commit()
+
+    result = runner.invoke(
+        app,
+        [
+            "context",
+            "daily",
+            "--output",
+            "json",
+            "--strict-source",
+            "fresh",
+            "--max-age-hours",
+            "24",
+        ],
+    )
+    assert result.exit_code == 1, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["code"] == "E_PIPELINE_ABORTED_STRICT"
+    assert payload["context"] == "context.daily"
+    assert payload["details"]["strict_mode"] is True
+    assert "stale_components" in payload["details"]
+    assert payload["details"]["stale_components"]
+
+
+def test_context_daily_fresh_succeeds_with_relaxed_max_age(tmp_path, monkeypatch) -> None:
+    _seed_market_and_positions(tmp_path, monkeypatch)
+    runner = CliRunner()
+    assert runner.invoke(app, ["signal", "snapshot", "--output", "json"]).exit_code == 0
+    assert runner.invoke(app, ["style", "backtest-rank", "--output", "json"]).exit_code == 0
+
+    result = runner.invoke(
+        app,
+        [
+            "context",
+            "daily",
+            "--output",
+            "json",
+            "--strict-source",
+            "fresh",
+            "--max-age-hours",
+            "5000",
+        ],
+    )
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert "signal_latest" in payload
+    assert "style_latest" in payload
 
 
 def test_signal_snapshot_json_returns_strict_failure_and_writes_system_log(

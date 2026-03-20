@@ -84,3 +84,5 @@
 - 测试：新增 3 条 `context daily` 用例（命令可用、缺失历史失败、完整上下文成功）；`tests/test_signal_cli.py` `14 passed`，回归集合 `106 passed`。
 - 实现：`context daily` 新增 `--envelope` 与 `--json-schema`，统一接入全局 JSON 契约（schema + envelope）。
 - 测试：新增 schema/envelope 用例通过；`tests/test_signal_cli.py` 更新为 `16 passed`，回归集合保持 `106 passed`。
+- 实现：`context daily` 增加新鲜度严格模式（`--strict-source latest|fresh` + `--max-age-hours`）；当最新 `signal/style` 快照超过阈值时返回 `E_PIPELINE_ABORTED_STRICT` 并写系统日志。
+- 测试：新增 stale/fresh 两条用例；`tests/test_signal_cli.py` 更新为 `18 passed`，回归集合保持 `106 passed`。

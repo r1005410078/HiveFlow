@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -244,6 +245,21 @@ def _validate_limit(value: int) -> int:
     """校验列表和导出的条数上限。"""
     if value <= 0:
         raise typer.BadParameter("limit 必须大于 0。")
+    return value
+
+
+def _validate_strict_source(value: str) -> str:
+    """校验上下文来源严格模式。"""
+    normalized = value.strip().lower()
+    if normalized not in {"latest", "fresh"}:
+        raise typer.BadParameter("strict-source 仅支持 latest 或 fresh。")
+    return normalized
+
+
+def _validate_positive_hours(value: int) -> int:
+    """校验小时阈值参数。"""
+    if value <= 0:
+        raise typer.BadParameter("max-age-hours 必须大于 0。")
     return value
 
 
@@ -813,6 +829,8 @@ def context_daily_command(
     output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
     envelope: bool = typer.Option(False, "--envelope", help="JSON 输出使用统一 envelope"),
     json_schema: bool = typer.Option(False, "--json-schema", help="输出 JSON schema 后退出"),
+    strict_source: str = typer.Option("latest", "--strict-source", callback=_validate_strict_source),
+    max_age_hours: int = typer.Option(24, "--max-age-hours", callback=_validate_positive_hours),
 ) -> None:
     """聚合每日 Agent 决策上下文（仅输出数据，不做推荐）。"""
     if json_schema:
@@ -850,6 +868,44 @@ def context_daily_command(
             output=output,
         )
         return
+
+    if strict_source == "fresh":
+        now = datetime.now(timezone.utc)
+        stale_components: list[dict] = []
+        for component, as_of_text in (
+            ("signal_latest", signal_rows[0].as_of),
+            ("style_latest", style_rows[0].as_of),
+        ):
+            try:
+                as_of_dt = datetime.fromisoformat(as_of_text)
+                if as_of_dt.tzinfo is None:
+                    as_of_dt = as_of_dt.replace(tzinfo=timezone.utc)
+                age_hours = (now - as_of_dt.astimezone(timezone.utc)).total_seconds() / 3600
+            except ValueError:
+                age_hours = float("inf")
+            if age_hours > max_age_hours:
+                stale_components.append(
+                    {
+                        "component": component,
+                        "as_of": as_of_text,
+                        "age_hours": round(age_hours, 2) if age_hours != float("inf") else None,
+                    }
+                )
+        if stale_components:
+            _emit_strict_failure(
+                code=ErrorCode.PIPELINE_ABORTED_STRICT,
+                context="context.daily",
+                message="上下文快照已过期，严格模式中断。",
+                details={
+                    "strict_mode": True,
+                    "strict_source": strict_source,
+                    "max_age_hours": max_age_hours,
+                    "stale_components": stale_components,
+                },
+                hint={"action": "refresh_signal_and_style"},
+                output=output,
+            )
+            return
 
     positions, bars_by_symbol = _load_check_data(app_settings)
     check_result = run_health_check(positions=positions, bars_by_symbol=bars_by_symbol)

@@ -211,6 +211,8 @@ uv run hiveflow context daily --output json
 uv run hiveflow context daily --output json --envelope
 # 查看 JSON schema：
 uv run hiveflow context daily --json-schema
+# 严格要求“快照新鲜”（默认 24 小时阈值）：
+uv run hiveflow context daily --output json --strict-source fresh --max-age-hours 24
 ```
 
 该命令会一次性聚合输出 `check + drift + signal_latest + style_latest`，适合作为 Agent 的标准输入。
