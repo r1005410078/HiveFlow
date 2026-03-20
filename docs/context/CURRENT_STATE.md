@@ -2,7 +2,7 @@
 
 ## 当前时间点
 
-- 日期：2026-03-18
+- 日期：2026-03-20
 - 当前分支：`main`
 
 ## 已完成阶段（按计划文档）
@@ -54,6 +54,8 @@
 - 本地存在未跟踪数据文件：`data/`、`strategies.csv`、`prices.csv`（不应提交）
 - 本次增量：`positions drift` 与 `check` 已忽略 `market_value <= 0.01 USDT` 的极小持仓，避免噪声仓位干扰结果
 - 本次验证：`uv run pytest tests/test_health_check.py tests/test_cli.py -q`（`72 passed`）、`uv run pytest tests/test_cli_check.py -q`（`4 passed`）
+- 方案冻结：完成 `Signal System` 重型扩展 Phase 1 设计定稿（严格模式、全局错误码、两层信号分层、关键层参数寻优网格、风格回测排名契约），详见 `docs/superpowers/specs/2026-03-20-signal-system-heavy-expansion-design.md`
+- 当前阶段：文档与方案已收口，待进入实现计划与开发阶段
 
 ## 下一步建议
 

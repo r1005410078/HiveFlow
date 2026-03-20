@@ -55,3 +55,11 @@
 
 - 修复：`positions drift` 与 `check` 统一忽略 `market_value <= 0.01 USDT` 的极小持仓，避免噪声仓位干扰分析。
 - 验证：新增回归测试并通过，`tests/test_health_check.py`、`tests/test_cli.py`、`tests/test_cli_check.py` 均已绿色。
+
+## 2026-03-20
+
+- 决策：`Signal System` Phase 1 采用严格模式，缺失即失败，不返回部分结果；系统坚持“只输出数据、不做推荐”边界。
+- 决策：冻结全局统一错误码（10 个）与错误对象结构（`code/message/context/as_of/details/trace_id/hint`）。
+- 决策：冻结两层信号分层（关键层 12、增强层 12）与关键层参数寻优框架（`Calmar` 最大化，`MDD >= -20%`，Grid Search，每信号候选上限 500）。
+- 决策：冻结 `market_regime_label v1` 判定公式，并将风格回测与现有 `backtest quant-run` 的关系、排序规则、报告字段契约写入设计文档。
+- 结果：形成可执行设计稿 `docs/superpowers/specs/2026-03-20-signal-system-heavy-expansion-design.md`，待进入实现计划阶段。
