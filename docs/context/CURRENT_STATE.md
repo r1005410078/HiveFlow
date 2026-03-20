@@ -100,6 +100,8 @@
 - 本次验证：补充“请求数=执行总数”一致性断言并通过；`tests/test_signal_cli.py` 保持 `25 passed`，回归集合保持 `122 passed`。
 - 本次实现进展（Signal Phase 2.10）：`window_status_map` 补齐失败窗口映射，保证严格失败时也覆盖全部请求窗口（`wxx -> ok/failed`）。
 - 本次验证：更新严格失败场景断言后通过；`tests/test_signal_cli.py` 保持 `25 passed`，回归集合保持 `122 passed`。
+- 本次实现进展（Signal Phase 2.11）：新增 `is_window_audit_consistent`（summary + 严格失败详情），系统直接给出窗口审计一致性布尔结论。
+- 本次验证：新增一致性字段断言后通过；`tests/test_signal_cli.py` 保持 `25 passed`，回归集合保持 `122 passed`。
 
 ## 下一步建议
 

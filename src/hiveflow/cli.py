@@ -326,6 +326,11 @@ def _build_window_audit_summary(
         key: item for key, item in windows_payload.items()
         if isinstance(item, dict) and item.get("status") == "ok"
     }
+    requested_window_keys = {f"w{size}" for size in window_sizes}
+    is_window_audit_consistent = (
+        window_count_total_computed == len(window_sizes)
+        and set(window_status_map.keys()) == requested_window_keys
+    )
 
     return {
         "windows_requested": list(window_sizes),
@@ -333,6 +338,7 @@ def _build_window_audit_summary(
         "window_count_success": window_count_success,
         "window_count_failed": window_count_failed,
         "window_count_total_computed": window_count_total_computed,
+        "is_window_audit_consistent": is_window_audit_consistent,
         "window_keys_success": list(ok_windows.keys()),
         "window_keys_failed": window_keys_failed,
         "window_status_map": window_status_map,
