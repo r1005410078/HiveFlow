@@ -1067,6 +1067,10 @@ def context_daily_command(
             },
         }
 
+    window_keys_failed = list(dict.fromkeys(
+        f["window_key"] for f in window_failures if "window_key" in f
+    ))
+
     if strict_window == "all" and window_failures:
         _emit_strict_failure(
             code=ErrorCode.PIPELINE_ABORTED_STRICT,
@@ -1077,6 +1081,7 @@ def context_daily_command(
                 "strict_window": strict_window,
                 "windows_requested": list(window_sizes),
                 "window_count_requested": len(window_sizes),
+                "window_keys_failed": window_keys_failed,
                 "window_failures": window_failures,
             },
             hint={"action": "fix_window_pipeline"},
@@ -1093,6 +1098,7 @@ def context_daily_command(
         key: item for key, item in windows_payload.items()
         if isinstance(item, dict) and item.get("status") == "ok"
     }
+    window_keys_success = list(ok_windows.keys())
 
     signal_states_by_key: dict[str, dict[str, str]] = {}
     for window_key, item in ok_windows.items():
@@ -1160,6 +1166,8 @@ def context_daily_command(
         "window_count_requested": len(window_sizes),
         "window_count_success": success_count,
         "window_count_failed": failed_count,
+        "window_keys_success": window_keys_success,
+        "window_keys_failed": window_keys_failed,
         "window_failures": window_failures,
     }
 

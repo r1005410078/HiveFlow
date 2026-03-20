@@ -236,6 +236,8 @@ def test_context_daily_strict_window_partial_returns_success_with_failures(
     payload = json.loads(result.stdout)
     assert payload["summary"]["window_count_failed"] == 1
     assert payload["summary"]["window_count_success"] == 2
+    assert payload["summary"]["window_keys_success"] == ["w24", "w30"]
+    assert payload["summary"]["window_keys_failed"] == ["w7"]
     assert len(payload["summary"]["window_failures"]) == 1
     assert payload["summary"]["window_failures"][0]["window_key"] == "w7"
     assert payload["windows"]["w7"]["status"] == "failed"
@@ -279,6 +281,7 @@ def test_context_daily_strict_window_all_fails_when_any_window_failed(
     assert payload["code"] == "E_PIPELINE_ABORTED_STRICT"
     assert payload["context"] == "context.daily"
     assert payload["details"]["strict_window"] == "all"
+    assert payload["details"]["window_keys_failed"] == ["w7"]
     assert len(payload["details"]["window_failures"]) == 1
     assert payload["details"]["window_failures"][0]["window_key"] == "w7"
 
@@ -302,6 +305,8 @@ def test_context_daily_supports_custom_windows(tmp_path, monkeypatch) -> None:
     assert payload["summary"]["window_count_failed"] == 0
     assert payload["summary"]["window_count_requested"] == 2
     assert payload["summary"]["windows_requested"] == [12, 24]
+    assert payload["summary"]["window_keys_success"] == ["w12", "w24"]
+    assert payload["summary"]["window_keys_failed"] == []
 
 
 @pytest.mark.parametrize(

@@ -90,6 +90,8 @@
 - 本次验证：定向与整组信号用例通过；回归集合保持 `122 passed`。
 - 本次实现进展（Signal Phase 2.5）：`--windows` 参数校验前置到 `context daily` 入口，非法窗口配置（如 `0`、非数字、空片段）会优先返回参数错误（exit code 2）。
 - 本次验证：新增参数非法值参数化测试（4 例）并通过；`tests/test_signal_cli.py` 更新为 `25 passed`，回归集合保持 `122 passed`。
+- 本次实现进展（Signal Phase 2.6）：`context daily.summary` 新增 `window_keys_success/window_keys_failed`，严格失败详情新增 `window_keys_failed`，降低 Agent 侧窗口结果解析成本。
+- 本次验证：新增窗口键列表断言并通过；`tests/test_signal_cli.py` 保持 `25 passed`，回归集合保持 `122 passed`。
 
 ## 下一步建议
 
