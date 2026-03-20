@@ -16,6 +16,11 @@ class SignalSnapshot(SQLModel, table=True):
     snapshot_id: str
     as_of: datetime
     symbol: str
+    feature_set_version: str | None = None
+    style_preset_version: str | None = None
+    symbols_hash: str | None = None
+    params_hash: str | None = None
+    code_version: str | None = None
     signals_json: str
     category_metrics_json: str
     conflict_matrix_json: str

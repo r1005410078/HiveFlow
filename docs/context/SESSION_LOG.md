@@ -75,3 +75,6 @@
 - 测试：`tests/test_signal_cli.py` 扩展到 11 例并通过；回归通过 `tests/test_cli.py`、`tests/test_cli_check.py`、`tests/test_dynamic_backtest.py`、`tests/test_quant_cli.py`、`tests/test_positions_list_grid.py`、`tests/test_perf_cli.py`、`tests/test_blend_cli.py` 共 `106 passed`。
 - 实现：新增 `repro_meta` 元数据工具，输出 `feature_set_version/style_preset_version/symbols_hash/params_hash/code_version`；并为 `style backtest-rank` 补齐报告契约字段 `objective/constraints/search_method/candidates_count/valid_candidates_count/best_candidate`。
 - 行为：保持“pretty 中文、JSON 英文契约”不变，同时为 Agent 增强可复现上下文与报告可追溯字段。
+- 实现：补齐历史回放契约一致性，`signal show` / `style show` 现在可返回与实时命令一致的可复现元数据与风格报告字段；对应 `SignalSnapshot` / `StyleBacktestResult` 持久化表新增字段并完成读写透传。
+- 兼容：`db.py` 新增 SQLite 轻量迁移，旧库自动补齐新增列（无需手工迁移）。
+- 测试：新增断言覆盖历史回放元数据与报告字段；定向用例 `2 passed`，`tests/test_signal_cli.py` `11 passed`，回归集合 `106 passed`。

@@ -247,6 +247,11 @@ def test_signal_snapshot_history_and_show_json(tmp_path, monkeypatch) -> None:
     show_payload = json.loads(show_result.stdout)
     assert len(show_payload["signals"]) == 24
     assert show_payload["snapshot_id"] == rows[0]["snapshot_id"]
+    assert show_payload["feature_set_version"] == "signal-v1.0"
+    assert show_payload["style_preset_version"] == "style-v1.0"
+    assert show_payload["symbols_hash"]
+    assert show_payload["params_hash"]
+    assert show_payload["code_version"]
 
 
 def test_style_backtest_rank_history_and_show_json(tmp_path, monkeypatch) -> None:
@@ -272,3 +277,14 @@ def test_style_backtest_rank_history_and_show_json(tmp_path, monkeypatch) -> Non
     assert len(show_payload["styles"]) == 4
     assert len(show_payload["rank_table"]) == 4
     assert show_payload["run_id"] == rows[0]["run_id"]
+    assert show_payload["feature_set_version"] == "signal-v1.0"
+    assert show_payload["style_preset_version"] == "style-v1.0"
+    assert show_payload["symbols_hash"]
+    assert show_payload["params_hash"]
+    assert show_payload["code_version"]
+    assert show_payload["objective"] == "calmar"
+    assert show_payload["search_method"] == "grid_search"
+    assert show_payload["constraints"]["mdd_floor"] == -0.2
+    assert show_payload["candidates_count"] == 4
+    assert show_payload["valid_candidates_count"] == 4
+    assert show_payload["best_candidate"]["rank"] == 1

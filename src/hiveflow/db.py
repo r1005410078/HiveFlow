@@ -79,6 +79,80 @@ def _run_lightweight_migrations(engine) -> None:
                     "ALTER TABLE gridposition ADD COLUMN inst_type VARCHAR DEFAULT 'SPOT'"
                 )
 
+        # signalsnapshot 表：可复现元数据列
+        if "signalsnapshot" in tables:
+            sig_cols = conn.exec_driver_sql("PRAGMA table_info('signalsnapshot')").fetchall()
+            sig_col_names = {row[1] for row in sig_cols}
+            if "feature_set_version" not in sig_col_names:
+                conn.exec_driver_sql(
+                    "ALTER TABLE signalsnapshot ADD COLUMN feature_set_version VARCHAR"
+                )
+            if "style_preset_version" not in sig_col_names:
+                conn.exec_driver_sql(
+                    "ALTER TABLE signalsnapshot ADD COLUMN style_preset_version VARCHAR"
+                )
+            if "symbols_hash" not in sig_col_names:
+                conn.exec_driver_sql(
+                    "ALTER TABLE signalsnapshot ADD COLUMN symbols_hash VARCHAR"
+                )
+            if "params_hash" not in sig_col_names:
+                conn.exec_driver_sql(
+                    "ALTER TABLE signalsnapshot ADD COLUMN params_hash VARCHAR"
+                )
+            if "code_version" not in sig_col_names:
+                conn.exec_driver_sql(
+                    "ALTER TABLE signalsnapshot ADD COLUMN code_version VARCHAR"
+                )
+
+        # stylebacktestresult 表：可复现元数据与报告字段
+        if "stylebacktestresult" in tables:
+            sbr_cols = conn.exec_driver_sql("PRAGMA table_info('stylebacktestresult')").fetchall()
+            sbr_col_names = {row[1] for row in sbr_cols}
+            if "feature_set_version" not in sbr_col_names:
+                conn.exec_driver_sql(
+                    "ALTER TABLE stylebacktestresult ADD COLUMN feature_set_version VARCHAR"
+                )
+            if "style_preset_version" not in sbr_col_names:
+                conn.exec_driver_sql(
+                    "ALTER TABLE stylebacktestresult ADD COLUMN style_preset_version VARCHAR"
+                )
+            if "symbols_hash" not in sbr_col_names:
+                conn.exec_driver_sql(
+                    "ALTER TABLE stylebacktestresult ADD COLUMN symbols_hash VARCHAR"
+                )
+            if "params_hash" not in sbr_col_names:
+                conn.exec_driver_sql(
+                    "ALTER TABLE stylebacktestresult ADD COLUMN params_hash VARCHAR"
+                )
+            if "code_version" not in sbr_col_names:
+                conn.exec_driver_sql(
+                    "ALTER TABLE stylebacktestresult ADD COLUMN code_version VARCHAR"
+                )
+            if "objective" not in sbr_col_names:
+                conn.exec_driver_sql(
+                    "ALTER TABLE stylebacktestresult ADD COLUMN objective VARCHAR"
+                )
+            if "constraints_json" not in sbr_col_names:
+                conn.exec_driver_sql(
+                    "ALTER TABLE stylebacktestresult ADD COLUMN constraints_json TEXT"
+                )
+            if "search_method" not in sbr_col_names:
+                conn.exec_driver_sql(
+                    "ALTER TABLE stylebacktestresult ADD COLUMN search_method VARCHAR"
+                )
+            if "candidates_count" not in sbr_col_names:
+                conn.exec_driver_sql(
+                    "ALTER TABLE stylebacktestresult ADD COLUMN candidates_count INTEGER"
+                )
+            if "valid_candidates_count" not in sbr_col_names:
+                conn.exec_driver_sql(
+                    "ALTER TABLE stylebacktestresult ADD COLUMN valid_candidates_count INTEGER"
+                )
+            if "best_candidate_json" not in sbr_col_names:
+                conn.exec_driver_sql(
+                    "ALTER TABLE stylebacktestresult ADD COLUMN best_candidate_json TEXT"
+                )
+
 
 @contextmanager
 def get_session(settings: Settings | None = None) -> Iterator[Session]:

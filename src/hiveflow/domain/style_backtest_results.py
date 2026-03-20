@@ -15,6 +15,17 @@ class StyleBacktestResult(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     run_id: str
     as_of: datetime
+    feature_set_version: str | None = None
+    style_preset_version: str | None = None
+    symbols_hash: str | None = None
+    params_hash: str | None = None
+    code_version: str | None = None
+    objective: str | None = None
+    constraints_json: str | None = None
+    search_method: str | None = None
+    candidates_count: int | None = None
+    valid_candidates_count: int | None = None
+    best_candidate_json: str | None = None
     sort_key: str
     tie_breaker: str
     styles_json: str
