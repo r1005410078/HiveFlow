@@ -69,6 +69,8 @@
 - 本次实现进展（Phase 1 / Step 5）：新增 `context daily` 聚合命令（`hiveflow context daily`），一次性输出 `check + drift + signal_latest + style_latest` 的结构化上下文，保持“系统只输出数据，不做推荐”。
 - 行为：严格模式下若缺少 `signal` 或 `style` 历史记录即失败并返回结构化错误对象（含 `trace_id`），同时写入系统日志。
 - 本次验证：新增用例覆盖命令可用性、缺失历史失败、完整上下文成功；`uv run pytest tests/test_signal_cli.py -q`（`14 passed`），回归集合 `106 passed`。
+- 本次实现进展（Phase 1 / Step 5.1）：`context daily` 补齐统一 JSON 契约能力，支持 `--envelope` 与 `--json-schema`，与现有主命令输出协议保持一致。
+- 本次验证：新增 `context daily` schema/envelope 测试并通过；`uv run pytest tests/test_signal_cli.py -q`（`16 passed`），回归集合 `106 passed`。
 
 ## 下一步建议
 

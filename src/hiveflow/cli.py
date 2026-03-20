@@ -811,8 +811,14 @@ def style_show_command(
 @context_app.command("daily")
 def context_daily_command(
     output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
+    envelope: bool = typer.Option(False, "--envelope", help="JSON 输出使用统一 envelope"),
+    json_schema: bool = typer.Option(False, "--json-schema", help="输出 JSON schema 后退出"),
 ) -> None:
     """聚合每日 Agent 决策上下文（仅输出数据，不做推荐）。"""
+    if json_schema:
+        _print_json_schema("context.daily")
+        return
+
     app_settings = Settings()
 
     signal_rows = list_signal_snapshots(limit=1, settings=app_settings)
@@ -876,7 +882,7 @@ def context_daily_command(
     }
 
     if output == "json":
-        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        _print_json(payload=payload, command="context.daily", envelope=envelope)
         return
 
     console.print(f"[bold]每日上下文[/bold] as_of={payload['as_of']}")

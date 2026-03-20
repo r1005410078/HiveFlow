@@ -82,3 +82,5 @@
 - 实现：新增 `hiveflow context daily` 命令，聚合输出 `check`、`drift`、`signal_latest`、`style_latest`，作为 Agent 的标准日常上下文输入（仅数据，不推荐）。
 - 行为：严格模式下如果缺少 `signal`/`style` 历史记录会结构化失败并写系统日志，避免输出部分降级结果。
 - 测试：新增 3 条 `context daily` 用例（命令可用、缺失历史失败、完整上下文成功）；`tests/test_signal_cli.py` `14 passed`，回归集合 `106 passed`。
+- 实现：`context daily` 新增 `--envelope` 与 `--json-schema`，统一接入全局 JSON 契约（schema + envelope）。
+- 测试：新增 schema/envelope 用例通过；`tests/test_signal_cli.py` 更新为 `16 passed`，回归集合保持 `106 passed`。

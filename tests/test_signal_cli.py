@@ -67,6 +67,30 @@ def test_context_daily_json_success_with_latest_snapshots(tmp_path, monkeypatch)
     assert payload["style_latest"]["objective"] == "calmar"
 
 
+def test_context_daily_supports_json_schema() -> None:
+    result = CliRunner().invoke(app, ["context", "daily", "--json-schema"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["title"] == "HiveFlow context.daily output envelope"
+    assert "data" in payload["properties"]
+
+
+def test_context_daily_json_supports_envelope(tmp_path, monkeypatch) -> None:
+    _seed_market_and_positions(tmp_path, monkeypatch)
+    runner = CliRunner()
+    assert runner.invoke(app, ["signal", "snapshot", "--output", "json"]).exit_code == 0
+    assert runner.invoke(app, ["style", "backtest-rank", "--output", "json"]).exit_code == 0
+
+    result = runner.invoke(app, ["context", "daily", "--output", "json", "--envelope"])
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["schema_version"] == "1.0.0"
+    assert payload["command"] == "context.daily"
+    assert "data" in payload
+    assert "signal_latest" in payload["data"]
+    assert "style_latest" in payload["data"]
+
+
 def test_signal_snapshot_json_returns_strict_failure_and_writes_system_log(
     tmp_path, monkeypatch
 ) -> None:

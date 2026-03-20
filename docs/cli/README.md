@@ -207,6 +207,10 @@ uv run hiveflow style show <id> --output json
 
 ```bash
 uv run hiveflow context daily --output json
+# 或输出统一 envelope：
+uv run hiveflow context daily --output json --envelope
+# 查看 JSON schema：
+uv run hiveflow context daily --json-schema
 ```
 
 该命令会一次性聚合输出 `check + drift + signal_latest + style_latest`，适合作为 Agent 的标准输入。
