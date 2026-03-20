@@ -98,6 +98,12 @@ def test_context_daily_json_success_with_latest_snapshots(tmp_path, monkeypatch)
         payload["windows"]["w30"]["style"]["run_id"],
     }
     assert len(run_ids) == 3
+    assert "window_diff" in payload
+    assert "signal_diff" in payload["window_diff"]
+    assert "style_diff" in payload["window_diff"]
+    assert "risk_diff" in payload["window_diff"]
+    assert "consensus_score" in payload["window_diff"]
+    assert 0.0 <= payload["window_diff"]["consensus_score"] <= 1.0
 
 
 def test_context_daily_supports_json_schema() -> None:

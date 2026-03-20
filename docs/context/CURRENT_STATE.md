@@ -82,6 +82,8 @@
 - 本次验证：`uv run pytest tests/test_signal_cli.py -q`（`18 passed`），`uv run pytest tests/test_cli_check.py tests/test_risk_analysis_cli.py tests/test_cli.py tests/test_dynamic_backtest.py tests/test_quant_cli.py tests/test_positions_list_grid.py tests/test_perf_cli.py tests/test_blend_cli.py -q`（`122 passed`）。
 - 本次实现进展（Signal Phase 2.1）：`context daily` 新增 `--strict-window all|partial`。`all` 模式下任一窗口失败即严格失败；`partial` 模式下返回成功并在 `summary.window_failures` 标注失败窗口。新增 `summary`（`latency_ms/window_count_success/window_count_failed/window_failures`）。
 - 本次验证：新增窗口失败策略测试通过，`uv run pytest tests/test_signal_cli.py -q`（`20 passed`），回归集合保持 `122 passed`。
+- 本次实现进展（Signal Phase 2.2）：`context daily` 新增 `window_diff` 聚合层，输出 `signal_diff/style_diff/risk_diff` 与 `consensus_score`，用于表达多窗口一致性与冲突强度。
+- 本次验证：`window_diff` 结构断言已覆盖并通过；`tests/test_signal_cli.py` 保持 `20 passed`，回归集合 `122 passed`。
 
 ## 下一步建议
 

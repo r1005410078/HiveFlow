@@ -1057,7 +1057,71 @@ def context_daily_command(
         if isinstance(item, dict) and item.get("status") == "ok"
     )
     failed_count = len(window_failures)
+    ok_windows = {
+        key: item for key, item in windows.items()
+        if isinstance(item, dict) and item.get("status") == "ok"
+    }
+
+    signal_states_by_key: dict[str, dict[str, str]] = {}
+    for window_key, item in ok_windows.items():
+        for signal in item["signal"]["signals"]:
+            signal_key = signal["signal_key"]
+            signal_states_by_key.setdefault(signal_key, {})[window_key] = signal["state"]
+
+    signal_conflicts: list[dict] = []
+    for signal_key, states_by_window in signal_states_by_key.items():
+        if len(set(states_by_window.values())) > 1:
+            signal_conflicts.append(
+                {
+                    "signal_key": signal_key,
+                    "states_by_window": states_by_window,
+                }
+            )
+
+    top_style_by_window = {
+        window_key: (
+            item["style"]["rank_table"][0]["style_name"]
+            if item["style"].get("rank_table")
+            else None
+        )
+        for window_key, item in ok_windows.items()
+    }
+    unique_top_styles = {v for v in top_style_by_window.values() if v is not None}
+
+    verdict_by_window = {
+        window_key: item["check"]["verdict"]
+        for window_key, item in ok_windows.items()
+    }
+    unique_verdicts = set(verdict_by_window.values())
+
+    total_signals_compared = len(signal_states_by_key)
+    signal_consensus = (
+        1.0
+        if total_signals_compared == 0
+        else max(0.0, 1.0 - (len(signal_conflicts) / total_signals_compared))
+    )
+    style_consensus = 1.0 if len(unique_top_styles) <= 1 else 0.0
+    risk_consensus = 1.0 if len(unique_verdicts) <= 1 else 0.0
+
     payload["windows"] = windows
+    payload["window_diff"] = {
+        "signal_diff": {
+            "total_signals_compared": total_signals_compared,
+            "conflict_count": len(signal_conflicts),
+            "conflicts": signal_conflicts,
+        },
+        "style_diff": {
+            "top_style_by_window": top_style_by_window,
+            "unique_top_style_count": len(unique_top_styles),
+            "is_conflict": len(unique_top_styles) > 1,
+        },
+        "risk_diff": {
+            "verdict_by_window": verdict_by_window,
+            "unique_verdict_count": len(unique_verdicts),
+            "is_conflict": len(unique_verdicts) > 1,
+        },
+        "consensus_score": round((signal_consensus + style_consensus + risk_consensus) / 3, 6),
+    }
     payload["summary"] = {
         "latency_ms": round((perf_counter() - started) * 1000, 3),
         "window_count_success": success_count,
