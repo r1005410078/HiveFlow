@@ -62,6 +62,8 @@ def test_context_daily_json_success_with_latest_snapshots(tmp_path, monkeypatch)
     assert "source_meta" in payload
     assert "signal_latest" in payload
     assert "style_latest" in payload
+    assert payload["decision_boundary"]["system"] == "data_only"
+    assert payload["decision_boundary"]["agent"] == "analysis_and_decision"
     assert payload["check"]["verdict"] in {"safe", "watch", "danger"}
     assert isinstance(payload["drift"]["items"], list)
     assert len(payload["signal_latest"]["signals"]) == 24

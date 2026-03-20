@@ -156,7 +156,7 @@ trade_app = typer.Typer(help="交易执行命令。")
 skills_app = typer.Typer(name="skills", help="管理 AI Agent Skills。")
 quant_app = typer.Typer(help="量化策略命令。")
 blend_app = typer.Typer(help="多策略混合命令。")
-risk_analysis_app = typer.Typer(help="资产与组合风险分析。")
+risk_analysis_app = typer.Typer(help="资产与组合风险数据输出。")
 perf_app = typer.Typer(help="实盘绩效追踪命令。")
 signal_app = typer.Typer(help="信号系统命令。")
 style_app = typer.Typer(help="风格回测排名命令。")
@@ -273,6 +273,14 @@ def _calc_age_hours(as_of_text: str) -> float | None:
         as_of_dt = as_of_dt.replace(tzinfo=timezone.utc)
     now = datetime.now(timezone.utc)
     return (now - as_of_dt.astimezone(timezone.utc)).total_seconds() / 3600
+
+
+def _decision_boundary_meta() -> dict[str, str]:
+    """统一标记系统与 Agent 的职责边界。"""
+    return {
+        "system": "data_only",
+        "agent": "analysis_and_decision",
+    }
 
 
 def _action_label(action: str) -> str:
@@ -938,6 +946,7 @@ def context_daily_command(
 
     payload = {
         "as_of": signal_rows[0].as_of,
+        "decision_boundary": _decision_boundary_meta(),
         "check": {
             "verdict": check_result.verdict,
             "summary": check_result.verdict_summary,
@@ -2692,13 +2701,14 @@ def _load_check_data(settings: Settings) -> tuple[list, dict]:
 def check(
     output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
 ) -> None:
-    """检查持仓风险状态，输出健康结论（退出码始终为 0）。"""
+    """输出持仓风险健康数据（退出码始终为 0）。"""
     settings = Settings()
     positions, bars_by_symbol = _load_check_data(settings)
     result = run_health_check(positions=positions, bars_by_symbol=bars_by_symbol)
 
     if output == "json":
         payload = {
+            "decision_boundary": _decision_boundary_meta(),
             "verdict": result.verdict,
             "summary": result.verdict_summary,
             "has_no_history": result.has_no_history,
@@ -2720,7 +2730,7 @@ def check(
     console.print()
 
     if result.has_no_history:
-        console.print("[yellow]提示：未检测到历史行情数据，请先执行 hiveflow sync --days 30 以启用风险分析。[/yellow]")
+        console.print("[yellow]提示：未检测到历史行情数据，请先执行 hiveflow sync --days 30 以启用风险数据输出。[/yellow]")
         return
 
     if result.signals:
@@ -3217,7 +3227,7 @@ def risk_assets_command(
     symbols: str | None = typer.Option(None, "--symbols", help="资产列表，逗号分隔（不填则用 MarketBar 全部）"),
     output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
 ) -> None:
-    """分析各资产年化波动率、历史最大回撤与相关性矩阵。"""
+    """输出各资产年化波动率、历史最大回撤与相关性矩阵数据。"""
     import math
     output_format = _validate_output_format(output)
     symbols_list = (
@@ -3233,6 +3243,7 @@ def risk_assets_command(
 
     if output_format == "json":
         payload = {
+            "decision_boundary": _decision_boundary_meta(),
             "assets": [
                 {
                     "symbol": v.symbol,
@@ -3257,7 +3268,7 @@ def risk_assets_command(
         typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
         return
 
-    typer.echo("资产风险分析\n")
+    typer.echo("资产风险数据\n")
     tbl = Table(show_lines=False, box=box.SIMPLE)
     tbl.add_column("资产")
     tbl.add_column("年化波动率", justify="right")
@@ -3290,7 +3301,7 @@ def risk_portfolio_command(
     backtest_id: int = typer.Argument(..., help="回测记录 ID"),
     output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
 ) -> None:
-    """从回测 equity curve 计算组合年化波动率、胜率与 Calmar ratio。"""
+    """从回测 equity curve 输出组合年化波动率、胜率与 Calmar ratio 数据。"""
     import math
     output_format = _validate_output_format(output)
     try:
@@ -3300,18 +3311,19 @@ def risk_portfolio_command(
         raise typer.Exit(code=1)
 
     if risk is None:
-        typer.echo("  [历史记录无曲线数据，重新运行回测可获得组合风险分析]")
+        typer.echo("  [历史记录无曲线数据，重新运行回测可获得组合风险数据]")
         return
 
     if output_format == "json":
-        typer.echo(json.dumps(
-            {k: (None if isinstance(v, float) and (math.isinf(v) or math.isnan(v)) else v) for k, v in risk.items()},
-            ensure_ascii=False,
-            indent=2,
-        ))
+        serialized = {
+            k: (None if isinstance(v, float) and (math.isinf(v) or math.isnan(v)) else v)
+            for k, v in risk.items()
+        }
+        serialized["decision_boundary"] = _decision_boundary_meta()
+        typer.echo(json.dumps(serialized, ensure_ascii=False, indent=2))
         return
 
-    typer.echo(f"组合风险分析（回测 #{backtest_id}）\n")
+    typer.echo(f"组合风险数据（回测 #{backtest_id}）\n")
     typer.echo(f"  年化波动率   {risk['annual_vol']:.1%}")
     typer.echo(f"  胜率         {risk['win_rate']:.1%}")
     calmar_str = f"{risk['calmar_ratio']:.2f}" if not math.isinf(risk["calmar_ratio"]) else "∞"

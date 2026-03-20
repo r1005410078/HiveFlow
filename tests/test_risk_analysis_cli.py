@@ -141,6 +141,8 @@ def test_risk_assets_json(tmp_path: Path, monkeypatch) -> None:
     data = json.loads(result.output)
     assert "assets" in data
     assert "correlation" in data
+    assert data["decision_boundary"]["system"] == "data_only"
+    assert data["decision_boundary"]["agent"] == "analysis_and_decision"
     assert isinstance(data["assets"], list)
     assert "symbols" in data["correlation"]
     assert "matrix" in data["correlation"]
@@ -207,6 +209,8 @@ def test_risk_portfolio_json(tmp_path: Path, monkeypatch) -> None:
     assert "annual_vol" in data
     assert "win_rate" in data
     assert "calmar_ratio" in data
+    assert data["decision_boundary"]["system"] == "data_only"
+    assert data["decision_boundary"]["agent"] == "analysis_and_decision"
 
 
 def test_risk_portfolio_json_inf_calmar(tmp_path: Path, monkeypatch) -> None:

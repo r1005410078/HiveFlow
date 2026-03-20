@@ -21,7 +21,7 @@
   - `quant list / run / history` 内置 8 种量化策略，结果落库，支持 `--apply`
   - `backtest quant-run` 量化策略动态再平衡回测（每隔 N 天重新计算权重，backtest_type=dynamic）
   - **M7：`backtest show <id>` + `backtest compare <id1> <id2> ...`** 回测权益曲线可视化（Unicode Sparkline），equity_curve 字段落库，支持旧记录降级提示与 `--output json`
-  - **M8：风险分析引擎** `risk-analysis assets`（资产年化波动率、日波动率、历史 MDD、相关性矩阵）+ `risk-analysis portfolio <id>`（组合年化波动率、胜率、Calmar ratio）；`backtest show` 追加风险指标节
+  - **M8：风险数据引擎** `risk-analysis assets`（资产年化波动率、日波动率、历史 MDD、相关性矩阵）+ `risk-analysis portfolio <id>`（组合年化波动率、胜率、Calmar ratio）；`backtest show` 追加风险指标节
   - **M9：多策略混合 + 实盘绩效追踪** `quant blend create/run/list/show`（BlendConfig 实体 + 自动/手动权重优化，--apply 写入 TargetAllocation）+ `perf snapshot/list/compare/setup-cron`（PortfolioSnapshot 落库、权益曲线 Sparkline 对比、cron 配置）
 
 ## 当前可用命令（核心）
@@ -75,6 +75,9 @@
 - 本次验证：新增 stale/fresh 用例并通过；`uv run pytest tests/test_signal_cli.py -q`（`18 passed`），回归集合 `106 passed`。
 - 本次实现进展（Phase 1 / Step 5.3）：`context daily` 新增 `source_meta` 输出，明确给出 `signal_latest/style_latest` 的 `record_id`、`as_of`、`age_hours` 以及当前 `strict_source/max_age_hours`。
 - 本次验证：`source_meta` 相关断言已覆盖（普通 JSON + envelope + fresh 模式），`tests/test_signal_cli.py` 保持 `18 passed`，回归集合 `106 passed`。
+- 本次实现进展（边界收口）：`check`、`risk-analysis assets`、`risk-analysis portfolio`、`context daily` 的 JSON 输出新增 `decision_boundary`（`system=data_only`，`agent=analysis_and_decision`），明确系统只输出数据、Agent负责分析决策。
+- 本次实现进展（文案统一）：CLI 与文档关键文案统一为“风险数据输出”，避免“系统做风险分析/推荐”的歧义。
+- 本次验证：`uv run pytest tests/test_cli_check.py tests/test_risk_analysis_cli.py tests/test_signal_cli.py -q`（`38 passed`），`uv run pytest tests/test_cli.py tests/test_dynamic_backtest.py tests/test_quant_cli.py tests/test_positions_list_grid.py tests/test_perf_cli.py tests/test_blend_cli.py -q`（`102 passed`）。
 
 ## 下一步建议
 

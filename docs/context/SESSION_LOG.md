@@ -88,5 +88,9 @@
 - 测试：新增 stale/fresh 两条用例；`tests/test_signal_cli.py` 更新为 `18 passed`，回归集合保持 `106 passed`。
 - 实现：`context daily` 增加 `source_meta`，输出每个来源组件的 `record_id/as_of/age_hours` 与当前 `strict_source/max_age_hours`，增强 Agent 可追溯判断。
 - 测试：为 `source_meta` 增加成功路径断言（普通 JSON、envelope、fresh 模式）并通过；回归集合保持 `106 passed`。
+- 实现：按“系统出数据、Agent做分析”边界收口，`check`、`risk-analysis assets/portfolio`、`context daily` JSON 输出新增 `decision_boundary` 元信息（`system=data_only`、`agent=analysis_and_decision`）。
+- 实现：CLI 与文档关键措辞统一为“风险数据输出”，避免“系统做风险分析/推荐”的歧义表达。
+- 文档：新增边界词汇表 `docs/context/BOUNDARY_GLOSSARY.md`；新增改造执行计划 `docs/superpowers/plans/2026-03-20-risk-data-boundary-refactor.md`。
+- 测试：新增 decision_boundary 断言并通过；`tests/test_cli_check.py + tests/test_risk_analysis_cli.py + tests/test_signal_cli.py` 共 `38 passed`，回归集合 `102 passed`。
 - 决策：M10 需求整体砍掉，不进入实现排期；`ROADMAP` 已同步标记为“已取消”。
 - 文档：新增信号模块一页验收清单 `docs/context/SIGNAL_ACCEPTANCE_CHECKLIST.md`，用于版本验收与回归核对。

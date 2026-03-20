@@ -52,3 +52,15 @@ def test_check_no_history_hint(monkeypatch, tmp_path) -> None:
             result = CliRunner().invoke(app, ["check"])
     assert result.exit_code == 0
     assert "sync --days" in result.output
+
+
+def test_check_json_includes_decision_boundary(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{tmp_path}/c.db")
+    with patch("hiveflow.cli.run_health_check", return_value=_safe()):
+        with patch("hiveflow.cli._load_check_data", return_value=([], {})):
+            result = CliRunner().invoke(app, ["check", "--output", "json"])
+    assert result.exit_code == 0
+    import json
+    payload = json.loads(result.output)
+    assert payload["decision_boundary"]["system"] == "data_only"
+    assert payload["decision_boundary"]["agent"] == "analysis_and_decision"

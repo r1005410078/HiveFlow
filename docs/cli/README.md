@@ -314,7 +314,7 @@ uv run hiveflow backtest quant-run --strategy RiskParity --rebalance-days 30
 uv run hiveflow backtest compare 1 2 3    # 替换为你的回测 ID 列表
 ```
 
-**第 7 步：查看资产风险分析**
+**第 7 步：查看资产风险数据**
 
 ```bash
 uv run hiveflow risk-analysis assets
