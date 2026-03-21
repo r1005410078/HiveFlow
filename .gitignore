@@ -34,3 +34,6 @@ config/target-templates.history.json
 
 # OS / editor
 .DS_Store
+
+# AI/editor local config
+.claude/
