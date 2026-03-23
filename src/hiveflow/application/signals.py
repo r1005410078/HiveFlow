@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -1028,7 +1029,6 @@ _CATEGORY_STATE_PRIORITY: dict[str, list[str]] = {
 
 def _dominant_state(category: str, states: list[str]) -> str:
     """返回分类信号的代表性状态（众数，平局时按严重程度优先）。"""
-    from collections import Counter
     counts = Counter(states)
     top_count = counts.most_common(1)[0][1]
     top_states = {s for s, c in counts.items() if c == top_count}
