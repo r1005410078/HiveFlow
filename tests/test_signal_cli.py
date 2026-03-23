@@ -651,3 +651,11 @@ def test_build_signal_snapshot_raises_on_unknown_symbol(tmp_path, monkeypatch) -
     with pytest.raises(SignalPipelineError) as exc_info:
         build_signal_snapshot("XYZ_NOT_EXIST")
     assert exc_info.value.details.get("reason") == "symbol_not_found"
+
+
+def test_pick_leader_symbol_returns_max_market_value_position(tmp_path, monkeypatch) -> None:
+    """pick_leader_symbol 应返回 market_value 最大的持仓 symbol。"""
+    _seed_market_and_positions(tmp_path, monkeypatch)
+    from hiveflow.application.signals import pick_leader_symbol
+    leader = pick_leader_symbol()
+    assert leader == "BTC"  # _seed_market_and_positions 里 BTC market_value=800 最大

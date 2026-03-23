@@ -251,11 +251,18 @@ def _leader_symbol(close: pd.DataFrame, positions: list[Position]) -> str:
     return sorted(candidates)[0]
 
 
-def _autodetect_symbol(settings: Settings | None = None) -> str:
-    """加载市场上下文，自动选取主标的 symbol（由 _leader_symbol 决定）。"""
-    app_settings = settings or Settings()
-    close_df, _h, _l, _v, positions = _load_market_context(app_settings)
+def pick_leader_symbol(settings: Settings | None = None) -> str:
+    """从持仓和 MarketBar 中选出市值最大的资产 symbol。
+
+    无持仓时退化为 MarketBar 中按字母排序的第一个非 USDT symbol。
+    """
+    close_df, _, _, _, positions = _load_market_context(settings or Settings())
     return _leader_symbol(close_df, positions)
+
+
+def _autodetect_symbol(settings: Settings | None = None) -> str:
+    """CLI 内部桥接函数，待 Task 9 完成后可移除。"""
+    return pick_leader_symbol(settings)
 
 
 def _ensure_required_samples(
