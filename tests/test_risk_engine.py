@@ -141,3 +141,32 @@ def test_compute_portfolio_risk_too_short() -> None:
     import pytest
     with pytest.raises(ValueError):
         compute_portfolio_risk([1.0])
+
+
+def test_compute_volatility_with_cn_annualization() -> None:
+    """传 annualization_factor=252 时，annual_vol == daily_vol × sqrt(252)。"""
+    prices = {"000001.SZ": _make_bars("000001.SZ", [10.0, 10.5, 10.3, 10.8, 10.6])}
+    results = compute_volatility(prices, annualization_factor=252)
+    assert len(results) == 1
+    v = results[0]
+    assert abs(v.annual_vol - v.daily_vol * math.sqrt(252)) < 1e-9
+
+
+def test_compute_volatility_default_is_365() -> None:
+    """不传 annualization_factor 时默认 365（向后兼容）。"""
+    prices = {"BTC": _make_bars("BTC", [100.0, 110.0, 105.0, 115.0, 110.0])}
+    default_results = compute_volatility(prices)
+    explicit_results = compute_volatility(prices, annualization_factor=365)
+    assert abs(default_results[0].annual_vol - explicit_results[0].annual_vol) < 1e-12
+
+
+def test_compute_portfolio_risk_with_cn_annualization() -> None:
+    """传 annualization_factor=252 时，annual_vol 使用 252 年化。"""
+    curve = [100.0, 102.0, 101.5, 103.0, 102.5, 104.0]
+    result_365 = compute_portfolio_risk(curve, annualization_factor=365)
+    result_252 = compute_portfolio_risk(curve, annualization_factor=252)
+    # 252 年化的 annual_vol 应比 365 小
+    assert result_252["annual_vol"] < result_365["annual_vol"]
+    # 比例接近 sqrt(252/365)
+    ratio = result_252["annual_vol"] / result_365["annual_vol"]
+    assert abs(ratio - math.sqrt(252 / 365)) < 1e-9

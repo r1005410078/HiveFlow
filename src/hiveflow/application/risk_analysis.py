@@ -56,7 +56,11 @@ def analyze_asset_risk(
     if not prices:
         raise ValueError("指定 symbol 在 MarketBar 中无数据。")
 
-    vols = compute_volatility(prices)
+    # 取第一个 symbol 的市场作为整批年化因子（同批 symbols 应为同市场）
+    from hiveflow.domain.market import ANNUALIZATION_FACTOR, detect_market
+    ann_factor = ANNUALIZATION_FACTOR.get(detect_market(symbols[0]), 365)
+
+    vols = compute_volatility(prices, annualization_factor=ann_factor)
     dds = compute_drawdown(prices)
     corr = compute_correlation(prices)
 

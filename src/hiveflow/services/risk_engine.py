@@ -31,8 +31,11 @@ class AssetDrawdown:
     periods: int          # 价格条数
 
 
-def compute_volatility(prices: dict[str, list[PriceBar]]) -> list[AssetVolatility]:
-    """计算各资产日收益率的样本标准差（ddof=1），年化（× sqrt(365)）。
+def compute_volatility(
+    prices: dict[str, list[PriceBar]],
+    annualization_factor: int = 365,
+) -> list[AssetVolatility]:
+    """计算各资产日收益率的样本标准差（ddof=1），年化（× sqrt(annualization_factor)）。
 
     - 数据点 < 2 的资产跳过（不报错）
     - 结果按 annual_vol 降序排列
@@ -53,7 +56,7 @@ def compute_volatility(prices: dict[str, list[PriceBar]]) -> list[AssetVolatilit
         mean_r = sum(returns) / n
         variance = sum((r - mean_r) ** 2 for r in returns) / max(n - 1, 1)
         daily_vol = math.sqrt(variance)
-        annual_vol = daily_vol * math.sqrt(365)
+        annual_vol = daily_vol * math.sqrt(annualization_factor)
         results.append(AssetVolatility(
             symbol=symbol,
             annual_vol=annual_vol,
@@ -150,7 +153,7 @@ def compute_drawdown(prices: dict[str, list[PriceBar]]) -> list[AssetDrawdown]:
     return sorted(results, key=lambda x: x.max_drawdown)
 
 
-def compute_portfolio_risk(curve: list[float]) -> dict:
+def compute_portfolio_risk(curve: list[float], annualization_factor: int = 365) -> dict:
     """从 equity curve 派生组合级风险指标。
 
     返回: annual_vol, win_rate（正收益期比例）, calmar_ratio（总收益/|MDD|）
@@ -165,7 +168,7 @@ def compute_portfolio_risk(curve: list[float]) -> dict:
     mean_r = sum(returns) / n
     variance = sum((r - mean_r) ** 2 for r in returns) / max(n - 1, 1)
     daily_vol = math.sqrt(variance)
-    annual_vol = daily_vol * math.sqrt(365)
+    annual_vol = daily_vol * math.sqrt(annualization_factor)
     win_rate = sum(1 for r in returns if r > 0) / n
     peak = curve[0]
     max_dd = 0.0
