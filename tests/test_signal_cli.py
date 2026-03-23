@@ -669,3 +669,18 @@ def test_build_signal_category_accepts_explicit_symbol(tmp_path, monkeypatch) ->
     assert payload["category"] == "trend"
     assert len(payload["signals"]) == 6
     assert all(s["symbol"] == "ETH" for s in payload["signals"])
+
+
+def test_build_portfolio_signals_returns_7_portfolio_signals(tmp_path, monkeypatch) -> None:
+    _seed_market_and_positions(tmp_path, monkeypatch)
+    from hiveflow.application.signals import build_portfolio_signals
+    payload = build_portfolio_signals()
+    assert payload["category"] == "portfolio"
+    assert "as_of" in payload
+    assert len(payload["signals"]) == 7
+    assert all(s["symbol"] == "PORTFOLIO" for s in payload["signals"])
+    expected_keys = {
+        "concentration_risk", "correlation_spike", "local_breadth_proxy",
+        "data_freshness", "data_completeness", "signal_stability", "confidence_score",
+    }
+    assert {s["signal_key"] for s in payload["signals"]} == expected_keys

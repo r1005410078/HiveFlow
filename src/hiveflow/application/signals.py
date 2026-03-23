@@ -961,3 +961,24 @@ def build_signal_category(category: str, symbol: str, settings: Settings | None 
         "signals": [s for s in snapshot["signals"] if s["category"] == category],
         "data_window": snapshot["data_window"],
     }
+
+
+def build_portfolio_signals(
+    settings: Settings | None = None,
+    *,
+    window_bars: int | None = None,
+) -> dict:
+    """输出组合级别信号（7 个 symbol='PORTFOLIO' 的信号）。
+
+    内部使用 pick_leader_symbol 选取主资产运行完整快照，
+    再过滤出 PORTFOLIO 级别信号返回。
+    """
+    leader = pick_leader_symbol(settings)
+    snapshot = build_signal_snapshot(leader, settings=settings, window_bars=window_bars)
+    portfolio_sigs = [s for s in snapshot["signals"] if s["symbol"] == "PORTFOLIO"]
+    return {
+        "category": "portfolio",
+        "as_of": snapshot["as_of"],
+        "signals": portfolio_sigs,
+        "data_window": snapshot["data_window"],
+    }
