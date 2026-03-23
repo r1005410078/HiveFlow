@@ -18,3 +18,5 @@ class StrategyRun(SQLModel, table=True):
     weights: str                # JSON 字符串，输出权重 {"BTC": 0.4, ...}
     applied: bool = Field(default=False)   # 是否已写入 TargetAllocation
     run_at: datetime = Field(default_factory=utc_now)
+    # 市场标识：crypto / cn_a_share。
+    market: str = "crypto"

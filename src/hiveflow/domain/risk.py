@@ -22,3 +22,5 @@ class RiskSignal(SQLModel, table=True):
     note: str | None = None
     # 计算时间（UTC）。
     calculated_at: datetime = Field(default_factory=utc_now)
+    # 市场标识：crypto / cn_a_share。
+    market: str = "crypto"

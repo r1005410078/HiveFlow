@@ -22,3 +22,5 @@ class Position(SQLModel, table=True):
     weight: float = 0.0
     # 最近更新时间（UTC）。
     updated_at: datetime = Field(default_factory=utc_now)
+    # 市场标识：crypto / cn_a_share。
+    market: str = "crypto"

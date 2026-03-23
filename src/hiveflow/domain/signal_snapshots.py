@@ -27,3 +27,5 @@ class SignalSnapshot(SQLModel, table=True):
     data_window_start: datetime | None = None
     data_window_end: datetime | None = None
     created_at: datetime = Field(default_factory=utc_now)
+    # 市场标识：crypto / cn_a_share。
+    market: str = "crypto"

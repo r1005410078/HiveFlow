@@ -20,6 +20,8 @@ class TargetAllocation(SQLModel, table=True):
     target_weight: float
     # 生成时间（UTC）。
     generated_at: datetime = Field(default_factory=utc_now)
+    # 市场标识：crypto / cn_a_share。
+    market: str = "crypto"
 
 
 class AssetMix(SQLModel, table=True):

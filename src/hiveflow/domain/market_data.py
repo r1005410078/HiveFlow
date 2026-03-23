@@ -24,3 +24,5 @@ class MarketBar(SQLModel, table=True):
     close: float
     # 成交量。
     volume: float
+    # 市场标识：crypto / cn_a_share。
+    market: str = "crypto"

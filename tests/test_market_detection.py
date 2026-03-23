@@ -50,3 +50,63 @@ def test_annualization_factor_crypto() -> None:
 
 def test_annualization_factor_cn() -> None:
     assert ANNUALIZATION_FACTOR[CN_A_SHARE] == 252
+
+
+# tests/test_market_detection.py — 在文件末尾追加
+
+import os
+import tempfile
+from pathlib import Path
+
+
+def test_lightweight_migration_adds_market_to_position(tmp_path: Path) -> None:
+    """旧库（无 market 列）在迁移后可正常读写，存量数据 market 默认 'crypto'。"""
+    db_path = tmp_path / "hiveflow.db"
+    db_url = f"sqlite:///{db_path}"
+
+    # 用 SQLite 直接建一张模拟旧 position 表（无 market 列）
+    import sqlite3
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(
+        "CREATE TABLE position (id INTEGER PRIMARY KEY, symbol TEXT, "
+        "quantity REAL DEFAULT 0, market_value REAL DEFAULT 0, weight REAL DEFAULT 0, "
+        "updated_at TEXT)"
+    )
+    conn.execute("INSERT INTO position (symbol) VALUES ('BTC')")
+    conn.commit()
+    conn.close()
+
+    from hiveflow.config import Settings
+    settings = Settings(database_url=db_url)
+    from hiveflow.db import create_all_tables
+    create_all_tables(settings)
+
+    # 迁移后 market 列存在，旧行默认为 'crypto'
+    conn2 = sqlite3.connect(str(db_path))
+    row = conn2.execute(
+        "SELECT market FROM position WHERE symbol='BTC'"
+    ).fetchone()
+    conn2.close()
+    assert row is not None
+    assert row[0] == "crypto"
+
+
+def test_new_position_market_field_readable(tmp_path: Path) -> None:
+    """新写入的 Position 可以读出 market 字段。"""
+    from hiveflow.config import Settings
+    from hiveflow.db import create_all_tables, get_session
+    from hiveflow.domain.positions import Position
+    from sqlmodel import select
+
+    db_url = f"sqlite:///{tmp_path / 'hiveflow.db'}"
+    settings = Settings(database_url=db_url)
+    create_all_tables(settings)
+
+    with get_session(settings) as session:
+        session.add(Position(symbol="000001.SZ", quantity=100, market_value=1000, weight=0.1, market="cn_a_share"))
+        session.commit()
+
+    with get_session(settings) as session:
+        pos = session.exec(select(Position).where(Position.symbol == "000001.SZ")).first()
+    assert pos is not None
+    assert pos.market == "cn_a_share"

@@ -153,6 +153,25 @@ def _run_lightweight_migrations(engine) -> None:
                     "ALTER TABLE stylebacktestresult ADD COLUMN best_candidate_json TEXT"
                 )
 
+        # market 字段迁移：适用于 position / marketbar / targetallocation /
+        # risksignal / strategyrun / signalsnapshot 表
+        _market_tables = [
+            "position",
+            "marketbar",
+            "targetallocation",
+            "risksignal",
+            "strategyrun",
+            "signalsnapshot",
+        ]
+        for _tbl in _market_tables:
+            if _tbl in tables:
+                _cols = conn.exec_driver_sql(f"PRAGMA table_info('{_tbl}')").fetchall()
+                _col_names = {row[1] for row in _cols}
+                if "market" not in _col_names:
+                    conn.exec_driver_sql(
+                        f"ALTER TABLE {_tbl} ADD COLUMN market VARCHAR DEFAULT 'crypto'"
+                    )
+
 
 @contextmanager
 def get_session(settings: Settings | None = None) -> Iterator[Session]:
