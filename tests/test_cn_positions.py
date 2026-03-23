@@ -87,3 +87,105 @@ def test_sync_cn_market_data_result_fields(tmp_path: Path) -> None:
     assert "imported" in d
     assert "symbols" in d
     assert "source" in d
+
+
+# ------------------------------------------------------------------ #
+# Chunk 3 Task 7 — import_cn_positions_from_csv
+# ------------------------------------------------------------------ #
+
+def _write_csv(path: Path, content: str) -> Path:
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
+def test_import_cn_positions_valid_csv(tmp_path: Path) -> None:
+    """正常 CSV 导入后，Position.market == 'cn_a_share'。"""
+    from hiveflow.config import Settings
+    from hiveflow.db import create_all_tables, get_session
+    from hiveflow.domain.positions import Position
+    from hiveflow.application.positions import import_cn_positions_from_csv
+    from sqlmodel import select
+
+    db_url = f"sqlite:///{tmp_path / 'hiveflow.db'}"
+    settings = Settings(database_url=db_url)
+    create_all_tables(settings)
+
+    csv_file = _write_csv(
+        tmp_path / "cn.csv",
+        "symbol,quantity,avg_cost,market_value\n"
+        "000001.SZ,1000,12.50,13200\n"
+        "600000.SH,500,8.80,4600\n",
+    )
+
+    result = import_cn_positions_from_csv(str(csv_file), settings=settings)
+    assert result.imported == 2
+
+    with get_session(settings) as session:
+        positions = session.exec(select(Position)).all()
+    symbols = {p.symbol for p in positions}
+    assert "000001.SZ" in symbols
+    assert "600000.SH" in symbols
+    assert all(p.market == CN_A_SHARE for p in positions)
+
+
+def test_import_cn_positions_duplicate_overwrite(tmp_path: Path) -> None:
+    """重复导入同一 symbol 时覆盖写入，不重复堆积。"""
+    from hiveflow.config import Settings
+    from hiveflow.db import create_all_tables, get_session
+    from hiveflow.domain.positions import Position
+    from hiveflow.application.positions import import_cn_positions_from_csv
+    from sqlmodel import select
+
+    db_url = f"sqlite:///{tmp_path / 'hiveflow.db'}"
+    settings = Settings(database_url=db_url)
+    create_all_tables(settings)
+
+    csv1 = _write_csv(tmp_path / "cn1.csv", "symbol,quantity,avg_cost,market_value\n000001.SZ,1000,12.50,13200\n")
+    import_cn_positions_from_csv(str(csv1), settings=settings)
+
+    csv2 = _write_csv(tmp_path / "cn2.csv", "symbol,quantity,avg_cost,market_value\n000001.SZ,2000,11.00,22000\n")
+    import_cn_positions_from_csv(str(csv2), settings=settings)
+
+    with get_session(settings) as session:
+        rows = session.exec(select(Position).where(Position.symbol == "000001.SZ")).all()
+    assert len(rows) == 1
+    assert rows[0].quantity == 2000.0
+
+
+def test_import_cn_positions_crypto_symbol_rejected(tmp_path: Path) -> None:
+    """CSV 中包含 BTC（加密 symbol）时应报错拒绝导入。"""
+    from hiveflow.config import Settings
+    from hiveflow.db import create_all_tables
+    from hiveflow.application.positions import import_cn_positions_from_csv
+
+    db_url = f"sqlite:///{tmp_path / 'hiveflow.db'}"
+    settings = Settings(database_url=db_url)
+    create_all_tables(settings)
+
+    csv_file = _write_csv(
+        tmp_path / "bad.csv",
+        "symbol,quantity,avg_cost,market_value\nBTC,0.5,50000,25000\n",
+    )
+
+    with pytest.raises(ValueError, match="非 A 股 symbol"):
+        import_cn_positions_from_csv(str(csv_file), settings=settings)
+
+
+def test_import_cn_positions_market_mismatch_rejected(tmp_path: Path) -> None:
+    """CSV market 列与 detect_market 推断结果不一致时应报错。"""
+    from hiveflow.config import Settings
+    from hiveflow.db import create_all_tables
+    from hiveflow.application.positions import import_cn_positions_from_csv
+
+    db_url = f"sqlite:///{tmp_path / 'hiveflow.db'}"
+    settings = Settings(database_url=db_url)
+    create_all_tables(settings)
+
+    csv_file = _write_csv(
+        tmp_path / "mismatch.csv",
+        "symbol,quantity,avg_cost,market_value,market\n"
+        "000001.SZ,1000,12.50,13200,crypto\n",  # market 列与 symbol 不符
+    )
+
+    with pytest.raises(ValueError, match="market 字段不一致"):
+        import_cn_positions_from_csv(str(csv_file), settings=settings)

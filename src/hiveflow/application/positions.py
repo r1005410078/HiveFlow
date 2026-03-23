@@ -267,3 +267,80 @@ def analyze_positions_drift(strategy_name: str | None = None) -> list[PositionDr
         )
 
     return sorted(result, key=lambda item: abs(item.delta), reverse=True)
+
+
+@dataclass(frozen=True)
+class CNImportResult:
+    imported: int
+    file: str
+
+    def to_dict(self) -> dict[str, int | str]:
+        return {"imported": self.imported, "file": self.file}
+
+
+def import_cn_positions_from_csv(
+    file_path: str,
+    settings=None,
+) -> CNImportResult:
+    """从 CSV 导入 A 股持仓。
+
+    校验规则：
+    1. symbol 必须匹配 detect_market(symbol) == CN_A_SHARE，否则抛 ValueError（非 A 股 symbol）
+    2. CSV 的 market 列（若存在）必须与 detect_market 结果一致，否则抛 ValueError（market 字段不一致）
+    3. 重复导入同一 symbol 则覆盖写入（先删除旧记录）
+
+    CSV 格式（market 列可选）：
+        symbol,quantity,avg_cost,market_value
+        000001.SZ,1000,12.50,13200
+    """
+    from hiveflow.domain.market import CN_A_SHARE, detect_market
+
+    path = Path(file_path)
+    if not path.exists():
+        raise FileNotFoundError(f"CSV 文件不存在：{file_path}")
+
+    create_all_tables(settings)
+
+    with path.open("r", encoding="utf-8-sig", newline="") as f:
+        reader = DictReader(f)
+        required = {"symbol", "quantity", "market_value"}
+        if not reader.fieldnames or not required.issubset(set(reader.fieldnames)):
+            raise ValueError("CSV 列必须包含：symbol, quantity, market_value")
+
+        rows = list(reader)
+
+    validated: list[dict] = []
+    for row in rows:
+        sym = (row.get("symbol") or "").strip()
+        inferred = detect_market(sym)
+        if inferred != CN_A_SHARE:
+            raise ValueError(
+                f"非 A 股 symbol：{sym!r}（detect_market 返回 {inferred!r}），"
+                "请确认 CSV 只包含 A 股标的（如 000001.SZ）"
+            )
+        if "market" in row and row["market"] and row["market"].strip() != CN_A_SHARE:
+            raise ValueError(
+                f"market 字段不一致：symbol={sym!r} 推断市场为 {CN_A_SHARE!r}，"
+                f"但 CSV market 列为 {row['market']!r}"
+            )
+        validated.append(row)
+
+    with get_session(settings) as session:
+        for row in validated:
+            sym = row["symbol"].strip().upper()
+            # 覆盖写入：先删除同一 symbol 的旧记录
+            existing = session.exec(
+                select(Position).where(Position.symbol == sym).where(Position.market == CN_A_SHARE)
+            ).all()
+            for old in existing:
+                session.delete(old)
+            session.add(Position(
+                symbol=sym,
+                quantity=float(row["quantity"]),
+                market_value=float(row["market_value"]),
+                weight=0.0,  # 导入时权重后续由 drift/rebalance 计算
+                market=CN_A_SHARE,
+            ))
+        session.commit()
+
+    return CNImportResult(imported=len(validated), file=str(path))
