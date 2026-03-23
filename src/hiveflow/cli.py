@@ -865,12 +865,48 @@ def signal_snapshot_command(
         return
 
     console.print(
-        f"[bold]信号快照[/bold] id={payload['id']} snapshot_id={payload['snapshot_id']} "
-        f"as_of={payload['as_of']} symbol={payload['symbol']}"
+        f"\n[bold]信号快照[/bold]  {payload['symbol']}  "
+        f"[dim]{payload['as_of']}[/dim]  "
+        f"[dim]id={payload['id']}[/dim]"
     )
-    cat_table = Table(title="分类统计", box=box.SIMPLE)
+
+    # 每条信号详情，按分类分组
+    sig_table = Table(box=box.SIMPLE, show_header=True, header_style="bold")
+    sig_table.add_column("分类", width=6)
+    sig_table.add_column("信号名", min_width=14)
+    sig_table.add_column("状态", min_width=6)
+    sig_table.add_column("数值", justify="right", min_width=10)
+    sig_table.add_column("触发", justify="center", width=4)
+    sig_table.add_column("说明", min_width=20)
+
+    _STATE_STYLE: dict[str, str] = {
+        "bullish": "green", "bearish": "red", "neutral": "dim",
+        "low": "green", "medium": "yellow", "high": "bold red",
+        "good": "green", "warning": "yellow", "bad": "bold red",
+    }
+    current_cat = None
+    for item in payload["signals"]:
+        cat = item["category"]
+        state = item["state"]
+        cat_label = _SIGNAL_CATEGORY_LABELS.get(cat, cat) if cat != current_cat else ""
+        current_cat = cat
+        state_label = _signal_state_label(cat, state)
+        state_style = _STATE_STYLE.get(state, "")
+        triggered_mark = "[bold green]✓[/bold green]" if item["triggered"] else "[dim]-[/dim]"
+        sig_table.add_row(
+            f"[dim]{cat_label}[/dim]",
+            _signal_key_label(item["signal_key"]),
+            f"[{state_style}]{state_label}[/{state_style}]" if state_style else state_label,
+            str(item["value"]),
+            triggered_mark,
+            f"[dim]{item.get('explanation', '')}[/dim]",
+        )
+    console.print(sig_table)
+
+    # 分类汇总
+    cat_table = Table(title="分类汇总", box=box.SIMPLE)
     cat_table.add_column("分类")
-    cat_table.add_column("数量", justify="right")
+    cat_table.add_column("信号数", justify="right")
     cat_table.add_column("触发数", justify="right")
     cat_table.add_column("平均置信度", justify="right")
     for category, stats in payload["category_metrics"].items():
