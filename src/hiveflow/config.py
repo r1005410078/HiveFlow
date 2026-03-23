@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     okx_trade_api_secret: str | None = None
     okx_trade_passphrase: str | None = None
 
+    # A 股行情数据源（env: HIVEFLOW_CN_MARKET_DATA_SOURCE）
+    cn_market_data_source: str = "akshare"  # "akshare" | "tushare"
+    # Tushare token（env: HIVEFLOW_TUSHARE_TOKEN，cn_market_data_source=tushare 时必填）
+    tushare_token: str = ""
+
     model_config = SettingsConfigDict(
         env_prefix="HIVEFLOW_",
         extra="ignore",

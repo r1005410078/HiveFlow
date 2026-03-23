@@ -22,6 +22,10 @@ dependencies = [
 dev = [
   "pytest>=8.2.0",
 ]
+cn = [
+  "akshare>=1.14.0",
+  "tushare>=1.4.0",
+]
 
 [project.scripts]
 hiveflow = "hiveflow.cli:run"
