@@ -1524,3 +1524,121 @@ def test_command_help_includes_scene_and_example() -> None:
     assert "使用场景" in result.stdout
     assert "示例" in result.stdout
     assert "用途" in result.stdout
+
+
+import json as _json_mod
+from pathlib import Path as _Path
+from typer.testing import CliRunner as TRunner
+from hiveflow.cli import app as hiveflow_app
+
+
+def test_positions_import_csv_valid(tmp_path: _Path, monkeypatch) -> None:
+    """positions import-csv 正常 A 股 CSV 导入成功，exit_code=0。"""
+    db_url = f"sqlite:///{tmp_path / 'hiveflow.db'}"
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", db_url)
+
+    from hiveflow.config import Settings
+    from hiveflow.db import create_all_tables
+    create_all_tables(Settings(database_url=db_url))
+
+    csv_file = tmp_path / "cn.csv"
+    csv_file.write_text(
+        "symbol,quantity,avg_cost,market_value\n000001.SZ,1000,12.50,13200\n",
+        encoding="utf-8",
+    )
+
+    result = TRunner().invoke(hiveflow_app, ["positions", "import-csv", "--file", str(csv_file)])
+    assert result.exit_code == 0, result.stdout
+    assert "1" in result.stdout
+
+
+def test_positions_import_csv_crypto_symbol_rejected(tmp_path: _Path, monkeypatch) -> None:
+    """positions import-csv 拒绝加密 symbol，exit_code=1。"""
+    db_url = f"sqlite:///{tmp_path / 'hiveflow.db'}"
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", db_url)
+
+    from hiveflow.config import Settings
+    from hiveflow.db import create_all_tables
+    create_all_tables(Settings(database_url=db_url))
+
+    csv_file = tmp_path / "bad.csv"
+    csv_file.write_text(
+        "symbol,quantity,avg_cost,market_value\nBTC,0.5,50000,25000\n", encoding="utf-8"
+    )
+
+    result = TRunner().invoke(hiveflow_app, ["positions", "import-csv", "--file", str(csv_file)])
+    assert result.exit_code == 1
+
+
+def test_market_data_sync_cn_json_output(tmp_path: _Path, monkeypatch) -> None:
+    """market-data sync --market cn 调用 cn_sync 并返回 JSON。"""
+    db_url = f"sqlite:///{tmp_path / 'hiveflow.db'}"
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", db_url)
+
+    from hiveflow.config import Settings
+    from hiveflow.db import create_all_tables
+    create_all_tables(Settings(database_url=db_url))
+
+    from unittest.mock import patch
+    from hiveflow.application.cn_sync import CNSyncResult
+
+    mock_result = CNSyncResult(imported=3, symbols=["000001.SZ"], source="akshare")
+
+    with patch("hiveflow.cli.sync_cn_market_data", return_value=mock_result):
+        result = TRunner().invoke(
+            hiveflow_app,
+            ["market-data", "sync", "--market", "cn",
+             "--symbols", "000001.SZ", "--output", "json"],
+        )
+    assert result.exit_code == 0, result.stdout
+    payload = _json_mod.loads(result.stdout)
+    assert payload["imported"] == 3
+    assert "000001.SZ" in payload["symbols"]
+
+
+def test_summary_all_markets_json_schema(tmp_path: _Path, monkeypatch) -> None:
+    """`summary --market all --output json` 包含 markets.crypto 和 markets.cn_a_share，无 total_value。"""
+    db_url = f"sqlite:///{tmp_path / 'hiveflow.db'}"
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", db_url)
+
+    from hiveflow.config import Settings
+    from hiveflow.db import create_all_tables, get_session
+    from hiveflow.domain.positions import Position
+    settings = Settings(database_url=db_url)
+    create_all_tables(settings)
+
+    with get_session(settings) as session:
+        session.add(Position(symbol="BTC", quantity=1, market_value=50000, weight=0.7, market="crypto"))
+        session.add(Position(symbol="000001.SZ", quantity=1000, market_value=13200, weight=1.0, market="cn_a_share"))
+        session.commit()
+
+    result = TRunner().invoke(hiveflow_app, ["summary", "--market", "all", "--output", "json"])
+    assert result.exit_code == 0, result.stdout
+    payload = _json_mod.loads(result.stdout)
+    assert "markets" in payload
+    assert "crypto" in payload["markets"]
+    assert "cn_a_share" in payload["markets"]
+    assert "total_value" not in payload  # 不做跨市场合算
+
+
+def test_summary_cn_market_json_schema(tmp_path: _Path, monkeypatch) -> None:
+    """`summary --market cn --output json` 只包含 cn_a_share，无 crypto。"""
+    db_url = f"sqlite:///{tmp_path / 'hiveflow.db'}"
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", db_url)
+
+    from hiveflow.config import Settings
+    from hiveflow.db import create_all_tables, get_session
+    from hiveflow.domain.positions import Position
+    settings = Settings(database_url=db_url)
+    create_all_tables(settings)
+
+    with get_session(settings) as session:
+        session.add(Position(symbol="000001.SZ", quantity=1000, market_value=13200, weight=1.0, market="cn_a_share"))
+        session.commit()
+
+    result = TRunner().invoke(hiveflow_app, ["summary", "--market", "cn", "--output", "json"])
+    assert result.exit_code == 0, result.stdout
+    payload = _json_mod.loads(result.stdout)
+    assert "markets" in payload
+    assert "cn_a_share" in payload["markets"]
+    assert "crypto" not in payload["markets"]

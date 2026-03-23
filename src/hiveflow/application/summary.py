@@ -102,3 +102,31 @@ def get_summary_stats() -> SummaryStats:
         rebalance_suggestions_count=len(rebalance_suggestions),
         decision_logs_count=len(decision_logs),
     )
+
+
+def get_market_summary(settings=None) -> dict:
+    """返回各市场持仓汇总（不做跨市场货币合算）。"""
+    from hiveflow.domain.market import CRYPTO, CN_A_SHARE
+
+    create_all_tables(settings)
+    with get_session(settings) as session:
+        positions = session.exec(select(Position)).all()
+
+    crypto_positions = [p for p in positions if getattr(p, "market", CRYPTO) == CRYPTO]
+    cn_positions = [p for p in positions if getattr(p, "market", CRYPTO) == CN_A_SHARE]
+
+    return {
+        "markets": {
+            CRYPTO: {
+                "position_count": len(crypto_positions),
+                "total_market_value_usdt": round(sum(p.market_value for p in crypto_positions), 2),
+                "currency": "USDT",
+            },
+            CN_A_SHARE: {
+                "position_count": len(cn_positions),
+                "total_market_value_cny": round(sum(p.market_value for p in cn_positions), 2),
+                "currency": "CNY",
+            },
+        },
+        "note": "跨市场货币未合算，各市场独立展示",
+    }

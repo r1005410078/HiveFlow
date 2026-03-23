@@ -65,6 +65,7 @@ from hiveflow.application.strategies import list_strategies
 from hiveflow.application.slots import list_slots
 from hiveflow.application.slots import set_slot_weight
 from hiveflow.application.summary import get_summary_stats
+from hiveflow.application.cn_sync import sync_cn_market_data
 from hiveflow.application.targets import export_target_template
 from hiveflow.application.targets import generate_targets_for_strategy
 from hiveflow.application.targets import get_target_template_config
@@ -2256,8 +2257,26 @@ def summary_command(
     theme: str = typer.Option("hacker", "--theme", help="显示主题：hacker/minimal"),
     envelope: bool = typer.Option(False, "--envelope", help="JSON 输出使用统一 envelope"),
     json_schema: bool = typer.Option(False, "--json-schema", help="输出 JSON schema 后退出"),
+    market: str = typer.Option("crypto", "--market", "-m", help="市场过滤：crypto/cn/all"),
 ) -> None:
     """输出当前数据库里的真实状态摘要。"""
+    if market not in {"crypto", "cn", "all"}:
+        typer.echo(f"不支持的 --market 值：{market!r}，支持 crypto / cn / all", err=True)
+        raise typer.Exit(1)
+
+    if market in {"all", "cn"}:
+        from hiveflow.application.summary import get_market_summary
+        ms = get_market_summary(settings=Settings())
+        if market == "cn":
+            ms = {"markets": {"cn_a_share": ms["markets"]["cn_a_share"]}, "note": ms["note"]}
+        if output == "json":
+            typer.echo(json.dumps(ms, ensure_ascii=False, indent=2))
+        else:
+            for mkt, info in ms["markets"].items():
+                console.print(f"[bold]{mkt}[/bold]: {info}")
+        return
+    # market == "crypto"：原有逻辑不变
+
     if json_schema:
         _print_json_schema("summary")
         return
@@ -2593,6 +2612,26 @@ def export_positions_template_command(
         return
 
     typer.echo(f"模板已生成：{result.file}")
+
+
+@positions_app.command("import-csv")
+def import_cn_positions_command(
+    file: Path = typer.Option(..., "--file", "-f", help="A 股持仓 CSV 文件路径"),
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+) -> None:
+    """从 CSV 导入 A 股持仓（symbol 格式如 000001.SZ）。"""
+    from hiveflow.application.positions import import_cn_positions_from_csv
+    try:
+        result = import_cn_positions_from_csv(str(file), settings=Settings())
+    except (ValueError, FileNotFoundError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1)
+
+    if output == "json":
+        typer.echo(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        console.print(f"[green]导入成功：{result.imported} 条 A 股持仓[/green]")
+        console.print(f"文件：{result.file}")
 
 
 @risk_app.command("list")
@@ -3205,6 +3244,35 @@ def summary_market_data_command(
     typer.echo(
         f"行情汇总：symbols={result.symbols_count} bars={result.bars_count} latest={result.latest_timestamp or '-'}"
     )
+
+
+@market_data_app.command("sync")
+def sync_market_data_command(
+    market: str = typer.Option(..., "--market", "-m", help="市场：cn"),
+    symbols: str = typer.Option(..., "--symbols", "-s", help="逗号分隔的 symbol 列表，如 000001.SZ,600000.SH"),
+    days: int = typer.Option(90, "--days", "-d", help="拉取最近 N 天数据"),
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+) -> None:
+    """从第三方数据源拉取行情并落库（当前支持 --market cn）。"""
+    if market != "cn":
+        typer.echo(f"暂不支持市场：{market!r}，当前只支持 cn", err=True)
+        raise typer.Exit(1)
+
+    symbol_list = [s.strip() for s in symbols.split(",") if s.strip()]
+    try:
+        result = sync_cn_market_data(symbol_list, days=days, settings=Settings())
+    except ImportError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1)
+    except Exception as exc:
+        typer.echo(f"同步失败：{exc}", err=True)
+        raise typer.Exit(1)
+
+    if output == "json":
+        typer.echo(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        console.print(f"[green]同步成功：{result.imported} 条行情记录[/green]")
+        console.print(f"来源：{result.source}，symbols：{', '.join(result.symbols)}")
 
 
 @backtest_app.command("run")
