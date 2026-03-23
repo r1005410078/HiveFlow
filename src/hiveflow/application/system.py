@@ -118,6 +118,23 @@ def run_doctor() -> DoctorResult:
         )
     )
 
+    # A 股数据依赖检查
+    import importlib
+    cn_source = getattr(settings, "cn_market_data_source", "akshare")
+    try:
+        importlib.import_module(cn_source)
+        checks.append(DoctorCheckView(
+            name=f"A 股数据依赖 ({cn_source})",
+            status="ok",
+            detail=f"{cn_source} 已安装，A 股行情同步可用。",
+        ))
+    except ImportError:
+        checks.append(DoctorCheckView(
+            name=f"A 股数据依赖 ({cn_source})",
+            status="warn",
+            detail=f"{cn_source} 未安装。如需 A 股功能，运行: uv pip install 'hiveflow[cn]'",
+        ))
+
     if any(item.status == "fail" for item in checks):
         overall = "fail"
     elif any(item.status == "warn" for item in checks):

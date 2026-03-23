@@ -73,3 +73,14 @@ def test_tiny_positions_are_ignored() -> None:
     )
     assert [signal.symbol for signal in result.signals] == ["ETH"]
     assert result.verdict == "safe"
+
+
+def test_doctor_includes_cn_dependency_check(tmp_path) -> None:
+    """doctor 结果应包含 A 股依赖检查项。"""
+    import os
+    os.environ["HIVEFLOW_DATABASE_URL"] = f"sqlite:///{tmp_path / 'hiveflow.db'}"
+
+    from hiveflow.application.system import run_doctor
+    result = run_doctor()
+    check_names = [c.name for c in result.checks]
+    assert any("A 股" in name or "cn_market" in name or "akshare" in name.lower() for name in check_names)
