@@ -1016,3 +1016,103 @@ def build_signal_category_multi(
         "symbols": active,
         "signals_by_symbol": signals_by_symbol,
     }
+
+
+_CATEGORY_STATE_PRIORITY: dict[str, list[str]] = {
+    "trend":   ["bearish", "bullish", "neutral"],
+    "confirm": ["bearish", "bullish", "neutral"],
+    "regime":  ["bearish", "bullish", "neutral"],
+    "risk":    ["high", "medium", "low"],
+}
+
+
+def _dominant_state(category: str, states: list[str]) -> str:
+    """返回分类信号的代表性状态（众数，平局时按严重程度优先）。"""
+    from collections import Counter
+    counts = Counter(states)
+    top_count = counts.most_common(1)[0][1]
+    top_states = {s for s, c in counts.items() if c == top_count}
+    for priority_state in _CATEGORY_STATE_PRIORITY.get(category, []):
+        if priority_state in top_states:
+            return priority_state
+    # Intentional deviation from spec's reference (which returns states[0]):
+    # returning the most-common state is more semantically correct than returning
+    # an arbitrary first element when no priority match exists.
+    return counts.most_common(1)[0][0]
+
+
+def build_signal_overview(settings: Settings | None = None) -> dict:
+    """所有活跃持仓的信号分类摘要 + 组合级信号。
+
+    assets 按 market_value 降序排列。无持仓时退化为全部非 USDT symbol。
+    返回结构：
+    {
+        "as_of": str,
+        "assets": [
+            {
+                "symbol": str,
+                "category_summary": {
+                    "trend":   {"state": str, "triggered": int, "total": int},
+                    "risk":    {"state": str, "triggered": int, "total": int},
+                    "confirm": {"state": str, "triggered": int, "total": int},
+                    "regime":  {"state": str, "triggered": int, "total": int},
+                },
+                "triggered_total": int,
+                "signals_total": int,   # per-asset 信号数，通常为 17
+            },
+            ...
+        ],
+        "portfolio": {  # build_portfolio_signals 的返回值
+            "category": "portfolio",
+            "as_of": str,
+            "signals": [...],
+            "data_window": {...},
+        },
+    }
+    """
+    s = settings or Settings()
+    close_df, _, _, _, positions = _load_market_context(s)
+
+    active_positions = sorted(
+        [p for p in positions if (p.market_value or 0.0) > 0.01],
+        key=lambda p: p.market_value or 0.0,
+        reverse=True,
+    )
+    if active_positions:
+        symbols = [p.symbol.upper() for p in active_positions]
+    else:
+        symbols = sorted(col for col in close_df.columns if col != "USDT")
+
+    asset_summaries: list[dict] = []
+    as_of = ""
+    for sym in symbols:
+        snapshot = build_signal_snapshot(sym, settings=s)
+        if not as_of:
+            as_of = snapshot["as_of"]
+
+        per_asset = [sg for sg in snapshot["signals"] if sg["symbol"] != "PORTFOLIO"]
+
+        cat_summary: dict[str, dict] = {}
+        for cat in ("trend", "risk", "confirm", "regime"):
+            cat_sigs = [sg for sg in per_asset if sg["category"] == cat]
+            if not cat_sigs:
+                cat_summary[cat] = {"state": "neutral", "triggered": 0, "total": 0}
+                continue
+            cat_summary[cat] = {
+                "state": _dominant_state(cat, [sg["state"] for sg in cat_sigs]),
+                "triggered": sum(1 for sg in cat_sigs if sg["triggered"]),
+                "total": len(cat_sigs),
+            }
+
+        asset_summaries.append({
+            "symbol": sym,
+            "category_summary": cat_summary,
+            "triggered_total": sum(1 for sg in per_asset if sg["triggered"]),
+            "signals_total": len(per_asset),
+        })
+
+    return {
+        "as_of": as_of,
+        "assets": asset_summaries,
+        "portfolio": build_portfolio_signals(settings=s),
+    }

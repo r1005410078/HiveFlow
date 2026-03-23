@@ -782,3 +782,17 @@ def test_signal_portfolio_pretty_prints_table(tmp_path, monkeypatch) -> None:
     assert result.exit_code == 0, result.stdout
     assert "信号键" in result.stdout
     assert "状态" in result.stdout
+
+
+def test_build_signal_overview_returns_all_positions(tmp_path, monkeypatch) -> None:
+    _seed_market_and_positions(tmp_path, monkeypatch)
+    from hiveflow.application.signals import build_signal_overview
+    payload = build_signal_overview()
+    assert {a["symbol"] for a in payload["assets"]} == {"BTC", "ETH", "SOL"}
+    for asset in payload["assets"]:
+        assert set(asset["category_summary"].keys()) == {"trend", "risk", "confirm", "regime"}
+        assert asset["signals_total"] == 17
+        assert "triggered_total" in asset
+    assert len(payload["portfolio"]["signals"]) == 7
+    assert all(s["symbol"] == "PORTFOLIO" for s in payload["portfolio"]["signals"])
+    assert "as_of" in payload
