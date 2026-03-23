@@ -131,7 +131,7 @@ SOL    看空     高风险    中性     中性     5 / 17
 组合  集中度:低  相关性:中  宽度:看多  置信度:0.81
 ```
 
-- 资产表格：`Table`，列为 资产 / 趋势 / 风险 / 确认 / 状态 / 触发总计
+- 资产表格：`Table`，列为 资产 / 趋势 / 风险 / 确认 / 状态（即 `regime` 分类的 dominant state） / 触发总计
 - 状态列带颜色（复用已有 `_STATE_STYLE` 逻辑）
 - 组合摘要：单行 `console.print`，展示 concentration_risk / correlation_spike / local_breadth_proxy / confidence_score 四个关键指标
 - JSON 输出：`json.dumps(payload)`，完整结构体
@@ -151,7 +151,7 @@ SOL    看空     高风险    中性     中性     5 / 17
 | `test_signal_overview_json_returns_all_positions` | exit_code=0；`assets` 含 BTC/ETH/SOL；每个 asset 有 4 个 category_summary；`signals_total==17` |
 | `test_signal_overview_json_includes_portfolio` | `portfolio.signals` 长度为 7，全部 symbol="PORTFOLIO" |
 | `test_signal_overview_pretty_prints_table` | exit_code=0；输出含"信号总览"/"触发"/"组合" |
-| `test_signal_overview_fails_without_market_data` | 空 DB 时 exit_code=1，JSON 含 `code` 和 `strict_mode=True` |
+| `test_signal_overview_fails_without_market_data` | 空 DB 时 exit_code=1，JSON 含 `code`；`payload["details"]["strict_mode"] is True`；`context` 字段值接受底层抛出的 `"signal.snapshot"` passthrough |
 
 ---
 
