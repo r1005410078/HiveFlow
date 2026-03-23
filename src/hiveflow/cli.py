@@ -519,7 +519,12 @@ def signal_trend_command(
         return
 
     if "signals_by_symbol" in payload:
-        table = Table("资产", "信号键", "状态", "数值", "触发", title="趋势信号（所有持仓）", box=box.SIMPLE)
+        table = Table(title="趋势信号（所有持仓）", box=box.SIMPLE)
+        table.add_column("资产")
+        table.add_column("信号键")
+        table.add_column("状态")
+        table.add_column("数值", justify="right")
+        table.add_column("触发")
         for sym in payload["symbols"]:
             for item in payload["signals_by_symbol"][sym]:
                 table.add_row(
@@ -572,7 +577,12 @@ def signal_risk_command(
         return
 
     if "signals_by_symbol" in payload:
-        table = Table("资产", "信号键", "状态", "数值", "触发", title="风险信号（所有持仓）", box=box.SIMPLE)
+        table = Table(title="风险信号（所有持仓）", box=box.SIMPLE)
+        table.add_column("资产")
+        table.add_column("信号键")
+        table.add_column("状态")
+        table.add_column("数值", justify="right")
+        table.add_column("触发")
         for sym in payload["symbols"]:
             for item in payload["signals_by_symbol"][sym]:
                 table.add_row(
@@ -625,7 +635,12 @@ def signal_confirm_command(
         return
 
     if "signals_by_symbol" in payload:
-        table = Table("资产", "信号键", "状态", "数值", "触发", title="确认信号（所有持仓）", box=box.SIMPLE)
+        table = Table(title="确认信号（所有持仓）", box=box.SIMPLE)
+        table.add_column("资产")
+        table.add_column("信号键")
+        table.add_column("状态")
+        table.add_column("数值", justify="right")
+        table.add_column("触发")
         for sym in payload["symbols"]:
             for item in payload["signals_by_symbol"][sym]:
                 table.add_row(
@@ -678,7 +693,12 @@ def signal_regime_command(
         return
 
     if "signals_by_symbol" in payload:
-        table = Table("资产", "信号键", "状态", "数值", "触发", title="市场状态信号（所有持仓）", box=box.SIMPLE)
+        table = Table(title="市场状态信号（所有持仓）", box=box.SIMPLE)
+        table.add_column("资产")
+        table.add_column("信号键")
+        table.add_column("状态")
+        table.add_column("数值", justify="right")
+        table.add_column("触发")
         for sym in payload["symbols"]:
             for item in payload["signals_by_symbol"][sym]:
                 table.add_row(
@@ -731,7 +751,12 @@ def signal_quality_command(
         return
 
     if "signals_by_symbol" in payload:
-        table = Table("资产", "信号键", "状态", "数值", "触发", title="质量信号（所有持仓）", box=box.SIMPLE)
+        table = Table(title="质量信号（所有持仓）", box=box.SIMPLE)
+        table.add_column("资产")
+        table.add_column("信号键")
+        table.add_column("状态")
+        table.add_column("数值", justify="right")
+        table.add_column("触发")
         for sym in payload["symbols"]:
             for item in payload["signals_by_symbol"][sym]:
                 table.add_row(

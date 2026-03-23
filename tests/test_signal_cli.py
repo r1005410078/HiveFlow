@@ -367,6 +367,20 @@ def test_context_daily_rejects_invalid_windows_option(tmp_path, monkeypatch, win
     assert result.exit_code == 2
 
 
+def test_context_daily_fails_when_no_market_data(tmp_path, monkeypatch) -> None:
+    """context daily 在 pick_leader_symbol 失败时应返回结构化错误。"""
+    db_path = tmp_path / "no-market.db"
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    from hiveflow.db import create_all_tables
+    create_all_tables()
+    # 没有 MarketBar 数据，pick_leader_symbol 内部会抛出 SignalPipelineError
+    result = CliRunner().invoke(app, ["context", "daily", "--output", "json"])
+    assert result.exit_code == 1, result.stdout
+    payload = json.loads(result.stdout)
+    assert "code" in payload
+    assert payload["details"]["strict_mode"] is True
+
+
 def test_signal_snapshot_json_returns_strict_failure_and_writes_system_log(
     tmp_path, monkeypatch
 ) -> None:

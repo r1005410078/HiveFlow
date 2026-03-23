@@ -260,10 +260,6 @@ def pick_leader_symbol(settings: Settings | None = None) -> str:
     return _leader_symbol(close_df, positions)
 
 
-def _autodetect_symbol(settings: Settings | None = None) -> str:
-    """CLI 内部桥接函数，待 Task 9 完成后可移除。"""
-    return pick_leader_symbol(settings)
-
 
 def _ensure_required_samples(
     *,
