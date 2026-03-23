@@ -251,6 +251,13 @@ def _leader_symbol(close: pd.DataFrame, positions: list[Position]) -> str:
     return sorted(candidates)[0]
 
 
+def _autodetect_symbol(settings: Settings | None = None) -> str:
+    """加载市场上下文，自动选取主标的 symbol（由 _leader_symbol 决定）。"""
+    app_settings = settings or Settings()
+    close_df, _h, _l, _v, positions = _load_market_context(app_settings)
+    return _leader_symbol(close_df, positions)
+
+
 def _ensure_required_samples(
     *,
     series: pd.Series,
@@ -277,6 +284,7 @@ def _ensure_required_samples(
 
 
 def build_signal_snapshot(
+    symbol: str,
     settings: Settings | None = None,
     *,
     window_bars: int | None = None,
@@ -292,18 +300,30 @@ def build_signal_snapshot(
         low_df = low_df.tail(scoped)
         volume_df = volume_df.tail(scoped)
 
-    leader = _leader_symbol(close_df, positions)
-    close = close_df[leader].dropna()
-    high = high_df[leader].dropna()
-    low = low_df[leader].dropna()
-    volume = volume_df[leader].dropna()
+    symbol = symbol.upper()
+    if symbol not in close_df.columns:
+        raise _fail(
+            context="signal.snapshot",
+            message=f"Symbol {symbol!r} 在 MarketBar 中无数据，严格模式中断。",
+            details={
+                "strict_mode": True,
+                "symbol": symbol,
+                "available_symbols": sorted(close_df.columns.tolist()),
+                "reason": "symbol_not_found",
+            },
+            hint={"action": "check_market_data", "run": "hiveflow market-data list"},
+        )
+    close = close_df[symbol].dropna()
+    high = high_df[symbol].dropna()
+    low = low_df[symbol].dropna()
+    volume = volume_df[symbol].dropna()
 
     _ensure_required_samples(
         series=close,
         required=40,
         signal_key="macd_cross",
         context="signal.snapshot",
-        symbol=leader,
+        symbol=symbol,
     )
 
     universe_symbols = [
@@ -354,7 +374,7 @@ def build_signal_snapshot(
     signals_by_key["golden_cross"] = _record(
         signal_key="golden_cross",
         category="trend",
-        symbol=leader,
+        symbol=symbol,
         as_of=as_of,
         state="bullish" if golden else "neutral",
         value=round(fast_cur - slow_cur, 6),
@@ -365,7 +385,7 @@ def build_signal_snapshot(
     signals_by_key["death_cross"] = _record(
         signal_key="death_cross",
         category="trend",
-        symbol=leader,
+        symbol=symbol,
         as_of=as_of,
         state="bearish" if death else "neutral",
         value=round(fast_cur - slow_cur, 6),
@@ -382,7 +402,7 @@ def build_signal_snapshot(
     signals_by_key["breakout_20d"] = _record(
         signal_key="breakout_20d",
         category="trend",
-        symbol=leader,
+        symbol=symbol,
         as_of=as_of,
         state="bullish" if breakout else "neutral",
         value=round(close_now, 6),
@@ -393,7 +413,7 @@ def build_signal_snapshot(
     signals_by_key["breakdown_20d"] = _record(
         signal_key="breakdown_20d",
         category="trend",
-        symbol=leader,
+        symbol=symbol,
         as_of=as_of,
         state="bearish" if breakdown else "neutral",
         value=round(close_now, 6),
@@ -412,7 +432,7 @@ def build_signal_snapshot(
     signals_by_key["momentum_20d"] = _record(
         signal_key="momentum_20d",
         category="trend",
-        symbol=leader,
+        symbol=symbol,
         as_of=as_of,
         state=momentum_state,
         value=round(momentum_20d, 6),
@@ -436,7 +456,7 @@ def build_signal_snapshot(
     signals_by_key["macd_cross"] = _record(
         signal_key="macd_cross",
         category="trend",
-        symbol=leader,
+        symbol=symbol,
         as_of=as_of,
         state=macd_state,
         value=round(curr_cross, 6),
@@ -453,7 +473,7 @@ def build_signal_snapshot(
     signals_by_key["max_drawdown_7d"] = _record(
         signal_key="max_drawdown_7d",
         category="risk",
-        symbol=leader,
+        symbol=symbol,
         as_of=as_of,
         state=state_7d,
         value=round(mdd_7d, 6),
@@ -464,7 +484,7 @@ def build_signal_snapshot(
     signals_by_key["max_drawdown_30d"] = _record(
         signal_key="max_drawdown_30d",
         category="risk",
-        symbol=leader,
+        symbol=symbol,
         as_of=as_of,
         state=state_30d,
         value=round(mdd_30d, 6),
@@ -479,7 +499,7 @@ def build_signal_snapshot(
     signals_by_key["atr_volatility_14d"] = _record(
         signal_key="atr_volatility_14d",
         category="risk",
-        symbol=leader,
+        symbol=symbol,
         as_of=as_of,
         state=atr_state,
         value=round(atr_ratio, 6),
@@ -496,7 +516,7 @@ def build_signal_snapshot(
     signals_by_key["vol_regime_shift"] = _record(
         signal_key="vol_regime_shift",
         category="risk",
-        symbol=leader,
+        symbol=symbol,
         as_of=as_of,
         state=vol_shift_state,
         value=round(ratio, 6),
@@ -561,7 +581,7 @@ def build_signal_snapshot(
     signals_by_key["volume_breakout_confirm"] = _record(
         signal_key="volume_breakout_confirm",
         category="confirm",
-        symbol=leader,
+        symbol=symbol,
         as_of=as_of,
         state="bullish" if vol_confirm else "neutral",
         value=round(vol_ratio, 6),
@@ -581,7 +601,7 @@ def build_signal_snapshot(
     signals_by_key["multi_timeframe_confirm"] = _record(
         signal_key="multi_timeframe_confirm",
         category="confirm",
-        symbol=leader,
+        symbol=symbol,
         as_of=as_of,
         state=mtf_state,
         value=round(short_mom - long_mom, 6),
@@ -609,7 +629,7 @@ def build_signal_snapshot(
     signals_by_key["signal_consensus"] = _record(
         signal_key="signal_consensus",
         category="confirm",
-        symbol=leader,
+        symbol=symbol,
         as_of=as_of,
         state=consensus_state,
         value=round(max(bullish_ratio, bearish_ratio), 6),
@@ -640,7 +660,7 @@ def build_signal_snapshot(
     signals_by_key["trend_persistence"] = _record(
         signal_key="trend_persistence",
         category="confirm",
-        symbol=leader,
+        symbol=symbol,
         as_of=as_of,
         state=persistence_state,
         value=persistence,
@@ -667,7 +687,7 @@ def build_signal_snapshot(
     signals_by_key["market_regime_label"] = _record(
         signal_key="market_regime_label",
         category="regime",
-        symbol=leader,
+        symbol=symbol,
         as_of=as_of,
         state=regime_state,
         value=f"adx={adx14:.2f},mom20={momentum_20d:.4f},vol_q={vol_quantile:.2f}",
@@ -680,7 +700,7 @@ def build_signal_snapshot(
     signals_by_key["trend_strength_adx"] = _record(
         signal_key="trend_strength_adx",
         category="regime",
-        symbol=leader,
+        symbol=symbol,
         as_of=as_of,
         state=adx_state,
         value=round(adx14, 6),
@@ -698,7 +718,7 @@ def build_signal_snapshot(
     signals_by_key["volatility_regime_label"] = _record(
         signal_key="volatility_regime_label",
         category="regime",
-        symbol=leader,
+        symbol=symbol,
         as_of=as_of,
         state=vol_regime_state,
         value=round(vol_quantile, 6),
@@ -861,7 +881,7 @@ def build_signal_snapshot(
                 "rhs_category": "risk",
                 "rhs_state": risk_state,
                 "severity": "high",
-                "symbols": [leader],
+                "symbols": [symbol],
                 "count": 1,
             }
         )
@@ -874,7 +894,7 @@ def build_signal_snapshot(
                 "rhs_category": "risk",
                 "rhs_state": risk_state,
                 "severity": "medium",
-                "symbols": [leader],
+                "symbols": [symbol],
                 "count": 1,
             }
         )
@@ -895,7 +915,7 @@ def build_signal_snapshot(
 
     return {
         "as_of": as_of,
-        "symbol": leader,
+        "symbol": symbol,
         "window_bars": window_bars,
         "feature_set_version": FEATURE_SET_VERSION,
         "style_preset_version": STYLE_PRESET_VERSION,
@@ -926,7 +946,8 @@ def build_signal_category(category: str, settings: Settings | None = None) -> di
             },
             hint={"action": "use_supported_category"},
         )
-    snapshot = build_signal_snapshot(settings=settings)
+    leader = _autodetect_symbol(settings)
+    snapshot = build_signal_snapshot(leader, settings=settings)
     return {
         "category": category,
         "as_of": snapshot["as_of"],

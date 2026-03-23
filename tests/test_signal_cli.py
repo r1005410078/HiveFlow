@@ -633,3 +633,21 @@ def test_style_backtest_rank_history_and_show_json(tmp_path, monkeypatch) -> Non
     assert show_payload["candidates_count"] == 4
     assert show_payload["valid_candidates_count"] == 4
     assert show_payload["best_candidate"]["rank"] == 1
+
+
+def test_build_signal_snapshot_accepts_explicit_symbol(tmp_path, monkeypatch) -> None:
+    """build_signal_snapshot 应接受显式 symbol 参数。"""
+    _seed_market_and_positions(tmp_path, monkeypatch)
+    from hiveflow.application.signals import build_signal_snapshot
+    payload = build_signal_snapshot("BTC")
+    assert payload["symbol"] == "BTC"
+    assert len(payload["signals"]) == 24
+
+
+def test_build_signal_snapshot_raises_on_unknown_symbol(tmp_path, monkeypatch) -> None:
+    """build_signal_snapshot 对不存在的 symbol 应抛出 SignalPipelineError。"""
+    _seed_market_and_positions(tmp_path, monkeypatch)
+    from hiveflow.application.signals import build_signal_snapshot, SignalPipelineError
+    with pytest.raises(SignalPipelineError) as exc_info:
+        build_signal_snapshot("XYZ_NOT_EXIST")
+    assert "symbol_not_found" in str(exc_info.value.details)

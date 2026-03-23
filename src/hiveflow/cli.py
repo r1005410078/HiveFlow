@@ -19,6 +19,7 @@ from hiveflow.application.error_protocol import ErrorCode, build_error_payload, 
 from hiveflow.application.signals import (
     SIGNALS_BY_CATEGORY,
     SignalPipelineError,
+    _autodetect_symbol,
     build_signal_category,
     build_signal_snapshot,
     signal_keys_of,
@@ -681,7 +682,8 @@ def signal_snapshot_command(
     """输出聚合信号快照。"""
     app_settings = Settings()
     try:
-        payload = build_signal_snapshot(settings=app_settings)
+        leader_sym = _autodetect_symbol(app_settings)
+        payload = build_signal_snapshot(leader_sym, settings=app_settings)
     except SignalPipelineError as exc:
         _emit_strict_failure(
             code=ErrorCode.SIGNAL_REQUIRED_MISSING,
@@ -1076,7 +1078,8 @@ def context_daily_command(
     for size in window_sizes:
         window_key = f"w{size}"
         try:
-            win_signal = build_signal_snapshot(settings=app_settings, window_bars=size)
+            win_leader_sym = _autodetect_symbol(app_settings)
+            win_signal = build_signal_snapshot(win_leader_sym, settings=app_settings, window_bars=size)
         except SignalPipelineError as exc:
             failure = {
                 "window_key": window_key,
