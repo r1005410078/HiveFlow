@@ -245,8 +245,9 @@ def _leader_symbol(close: pd.DataFrame, positions: list[Position]) -> str:
     if not candidates:
         return close.columns.tolist()[0]
 
-    if positions:
-        best = max(positions, key=lambda p: p.market_value or 0.0).symbol.upper()
+    investable = [p for p in positions if p.symbol.upper() != "USDT"]
+    if investable:
+        best = max(investable, key=lambda p: p.market_value or 0.0).symbol.upper()
         if best in candidates:
             return best
     return sorted(candidates)[0]
@@ -529,7 +530,8 @@ def build_signal_snapshot(
         explanation="近 20 期波动率相对基线的变化倍数。",
     )
 
-    total_mv = sum(max(p.market_value or 0.0, 0.0) for p in positions)
+    investable_positions = [p for p in positions if p.symbol.upper() != "USDT"]
+    total_mv = sum(max(p.market_value or 0.0, 0.0) for p in investable_positions)
     if total_mv <= 0:
         raise _fail(
             context="signal.snapshot",
@@ -541,7 +543,7 @@ def build_signal_snapshot(
             },
             hint={"action": "sync_positions_first"},
         )
-    max_weight = max((max(p.market_value or 0.0, 0.0) / total_mv) for p in positions)
+    max_weight = max((max(p.market_value or 0.0, 0.0) / total_mv) for p in investable_positions)
     concentration_state = (
         "high" if max_weight >= 0.5 else ("medium" if max_weight >= 0.3 else "low")
     )
