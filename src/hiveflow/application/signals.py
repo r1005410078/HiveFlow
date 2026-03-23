@@ -1002,7 +1002,7 @@ def build_signal_category_multi(
     active = [
         p.symbol.upper()
         for p in positions
-        if (p.market_value or 0.0) > 0.01
+        if (p.market_value or 0.0) > 0.01 and p.symbol.upper() != "USDT"
     ]
     if not active:
         active = sorted(col for col in close_df.columns if col != "USDT")
@@ -1074,7 +1074,7 @@ def build_signal_overview(settings: Settings | None = None) -> dict:
     close_df, _, _, _, positions = _load_market_context(s)
 
     active_positions = sorted(
-        [p for p in positions if (p.market_value or 0.0) > 0.01],
+        [p for p in positions if (p.market_value or 0.0) > 0.01 and p.symbol.upper() != "USDT"],
         key=lambda p: p.market_value or 0.0,
         reverse=True,
     )
