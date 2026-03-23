@@ -1,5 +1,6 @@
 """detect_market 单元测试。"""
-import pytest
+from pathlib import Path
+
 from hiveflow.domain.market import CN_A_SHARE, CRYPTO, ANNUALIZATION_FACTOR, detect_market
 
 
@@ -51,12 +52,6 @@ def test_annualization_factor_crypto() -> None:
 def test_annualization_factor_cn() -> None:
     assert ANNUALIZATION_FACTOR[CN_A_SHARE] == 252
 
-
-# tests/test_market_detection.py — 在文件末尾追加
-
-import os
-import tempfile
-from pathlib import Path
 
 
 def test_lightweight_migration_adds_market_to_position(tmp_path: Path) -> None:
