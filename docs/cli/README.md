@@ -141,10 +141,10 @@ uv run hiveflow sync --days 30
 **日常流程（建议 4 步）**
 
 ```bash
-uv run hiveflow sync               # 1) 同步最新持仓和价格（约 5 秒）
-uv run hiveflow check              # 2) 输出健康结论（回撤风险）
-uv run hiveflow positions drift    # 3) 查看当前持仓与目标持仓偏离
-uv run hiveflow signal snapshot    # 4) 输出统一信号快照（可供 Agent 消费）
+uv run hiveflow sync                            # 1) 同步最新持仓和价格（约 5 秒）
+uv run hiveflow check                           # 2) 输出健康结论（回撤风险）
+uv run hiveflow positions drift                 # 3) 查看当前持仓与目标持仓偏离
+uv run hiveflow signal snapshot --symbol BTC    # 4) 输出指定资产的信号快照（可供 Agent 消费）
 ```
 
 `positions drift` 会**忽略市值 <= 0.01 USDT** 的极小仓位，避免噪声币影响判断。
@@ -175,20 +175,33 @@ uv run hiveflow signal snapshot    # 4) 输出统一信号快照（可供 Agent 
 | -10% ~ -20% | ⚠️ 注意 |
 | 低于 -20% | 🔴 危险 |
 
-`signal snapshot` 输出示例（节选）：
+`signal snapshot` 输出示例（节选，`--symbol BTC` 时输出 17 个 BTC 指标 + 7 个组合级指标共 24 个信号）：
 
 ```json
 {
+  "symbol": "BTC",
   "snapshot_id": "sig-202603201234560001",
   "feature_set_version": "signal-v1.0",
-  "style_preset_version": "style-v1.0",
-  "symbols_hash": "c2a9...",
-  "params_hash": "9f11...",
-  "code_version": "07eab86",
   "signals": [ ... 24 items ... ],
   "category_metrics": { ... },
   "conflict_matrix": [ ... ]
 }
+```
+
+**信号命令速查**
+
+```bash
+# 单资产信号（指定 --symbol）
+uv run hiveflow signal trend --symbol BTC       # BTC 趋势类信号（金叉/死叉/动量等）
+uv run hiveflow signal risk --symbol BTC        # BTC 风险类信号（回撤/波动率等）
+uv run hiveflow signal snapshot --symbol BTC    # BTC 完整快照（全部 24 个信号）
+
+# 所有持仓并排输出（不带 --symbol）
+uv run hiveflow signal trend                    # 所有持仓的趋势信号，每资产一组
+uv run hiveflow signal risk                     # 所有持仓的风险信号
+
+# 组合级别信号（不依赖单一资产）
+uv run hiveflow signal portfolio                # 集中度、相关性、市场广度、数据质量等 7 个信号
 ```
 
 **需要看历史对比时**
