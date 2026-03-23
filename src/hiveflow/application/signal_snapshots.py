@@ -55,6 +55,7 @@ def save_signal_snapshot(payload: dict, settings: Settings | None = None) -> Sig
         snapshot_id=snapshot_id,
         as_of=as_of,
         symbol=payload.get("symbol", "PORTFOLIO"),
+        market=payload.get("market", "crypto"),
         feature_set_version=payload.get("feature_set_version"),
         style_preset_version=payload.get("style_preset_version"),
         symbols_hash=payload.get("symbols_hash"),

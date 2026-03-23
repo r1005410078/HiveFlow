@@ -838,3 +838,103 @@ def test_signal_overview_fails_without_market_data(tmp_path, monkeypatch) -> Non
     assert "code" in payload
     assert payload["details"]["strict_mode"] is True
     assert payload.get("context") == "signal.snapshot"  # passthrough from underlying error
+
+
+def test_signal_snapshot_cn_symbol_uses_cn_params(tmp_path, monkeypatch) -> None:
+    """A 股 symbol 触发时，signal 输出应包含 market='cn_a_share'。"""
+    # 需要先用 A 股行情数据 seed
+    from hiveflow.config import Settings
+    from hiveflow.db import create_all_tables, get_session
+    from hiveflow.domain.market_data import MarketBar
+    from hiveflow.domain.positions import Position
+    from datetime import datetime, timezone
+
+    db_url = f"sqlite:///{tmp_path / 'hiveflow.db'}"
+    settings = Settings(database_url=db_url)
+    create_all_tables(settings)
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", db_url)
+
+    from datetime import timedelta
+
+    base_dt = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    with get_session(settings) as session:
+        for i in range(42):
+            ts = base_dt + timedelta(days=i)
+            session.add(MarketBar(
+                symbol="000001.SZ",
+                timestamp=ts,
+                open=10.0 + i * 0.1,
+                high=10.5 + i * 0.1,
+                low=9.8 + i * 0.1,
+                close=10.2 + i * 0.1,
+                volume=1_000_000.0,
+                market="cn_a_share",
+            ))
+            session.add(MarketBar(
+                symbol="600000.SH",
+                timestamp=ts,
+                open=20.0 + i * 0.05,
+                high=20.5 + i * 0.05,
+                low=19.8 + i * 0.05,
+                close=20.2 + i * 0.05,
+                volume=2_000_000.0,
+                market="cn_a_share",
+            ))
+        session.add(Position(symbol="000001.SZ", quantity=1000, market_value=10200, weight=0.6, market="cn_a_share"))
+        session.add(Position(symbol="600000.SH", quantity=500, market_value=6800, weight=0.4, market="cn_a_share"))
+        session.commit()
+
+    from hiveflow.application.signals import build_signal_snapshot
+    payload = build_signal_snapshot("000001.SZ", settings=settings)
+    assert payload["market"] == "cn_a_share"
+    assert payload["symbol"] == "000001.SZ"
+
+
+def test_signal_snapshot_cn_writes_market_to_db(tmp_path, monkeypatch) -> None:
+    """build_signal_snapshot 落库后，SignalSnapshot.market == 'cn_a_share'。"""
+    from hiveflow.config import Settings
+    from hiveflow.db import create_all_tables, get_session
+    from hiveflow.domain.market_data import MarketBar
+    from hiveflow.domain.positions import Position
+    from hiveflow.domain.signal_snapshots import SignalSnapshot
+    from datetime import datetime, timedelta, timezone
+    from sqlmodel import select
+
+    db_url = f"sqlite:///{tmp_path / 'hiveflow.db'}"
+    settings = Settings(database_url=db_url)
+    create_all_tables(settings)
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", db_url)
+
+    base_dt = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    with get_session(settings) as session:
+        for i in range(42):
+            ts = base_dt + timedelta(days=i)
+            session.add(MarketBar(
+                symbol="000001.SZ",
+                timestamp=ts,
+                open=10.0 + i * 0.1, high=10.5 + i * 0.1,
+                low=9.8 + i * 0.1, close=10.2 + i * 0.1,
+                volume=1_000_000.0, market="cn_a_share",
+            ))
+            session.add(MarketBar(
+                symbol="600000.SH",
+                timestamp=ts,
+                open=20.0 + i * 0.05, high=20.5 + i * 0.05,
+                low=19.8 + i * 0.05, close=20.2 + i * 0.05,
+                volume=2_000_000.0, market="cn_a_share",
+            ))
+        session.add(Position(symbol="000001.SZ", quantity=1000, market_value=10200, weight=0.6, market="cn_a_share"))
+        session.add(Position(symbol="600000.SH", quantity=500, market_value=6800, weight=0.4, market="cn_a_share"))
+        session.commit()
+
+    from hiveflow.application.signal_snapshots import save_signal_snapshot
+    from hiveflow.application.signals import build_signal_snapshot
+    payload = build_signal_snapshot("000001.SZ", settings=settings)
+    save_signal_snapshot(payload, settings=settings)
+
+    with get_session(settings) as session:
+        snap = session.exec(
+            select(SignalSnapshot).where(SignalSnapshot.symbol == "000001.SZ")
+        ).first()
+    assert snap is not None
+    assert snap.market == "cn_a_share"

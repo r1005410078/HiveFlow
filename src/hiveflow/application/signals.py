@@ -19,6 +19,7 @@ from hiveflow.application.repro_meta import (
     stable_hash,
 )
 from hiveflow.domain.common import utc_now
+from hiveflow.domain.market import CN_A_SHARE, CRYPTO, detect_market
 from hiveflow.domain.market_data import MarketBar
 from hiveflow.domain.positions import Position
 
@@ -58,6 +59,11 @@ SIGNALS_BY_CATEGORY: dict[str, list[str]] = {
         "signal_stability",
         "confidence_score",
     ],
+}
+
+SIGNAL_PARAMS: dict[str, dict[str, int]] = {
+    CRYPTO:     {"ma_short": 7,  "ma_long": 30, "vol_window": 30},
+    CN_A_SHARE: {"ma_short": 5,  "ma_long": 20, "vol_window": 20},
 }
 
 STYLE_NAMES: list[str] = [
@@ -306,6 +312,11 @@ def build_signal_snapshot(
         volume_df = volume_df.tail(scoped)
 
     symbol = symbol.upper()
+    market = detect_market(symbol)
+    _params = SIGNAL_PARAMS.get(market, SIGNAL_PARAMS[CRYPTO])
+    _ma_short = _params["ma_short"]    # crypto=7, cn_a_share=5
+    _ma_long  = _params["ma_long"]     # crypto=30, cn_a_share=20
+    _vol_win  = _params["vol_window"]  # crypto=30, cn_a_share=20
     if symbol not in close_df.columns:
         raise _fail(
             context="signal.snapshot",
@@ -369,10 +380,10 @@ def build_signal_snapshot(
     signals_by_key: dict[str, dict] = {}
 
     # ── trend ──
-    fast_cur = float(close.tail(7).mean())
-    slow_cur = float(close.tail(30).mean())
-    fast_prev = float(close.iloc[-8:-1].mean())
-    slow_prev = float(close.iloc[-31:-1].mean())
+    fast_cur = float(close.tail(_ma_short).mean())
+    slow_cur = float(close.tail(_ma_long).mean())
+    fast_prev = float(close.iloc[-(_ma_short+1):-1].mean())
+    slow_prev = float(close.iloc[-(_ma_long+1):-1].mean())
     golden = fast_prev <= slow_prev and fast_cur > slow_cur
     death = fast_prev >= slow_prev and fast_cur < slow_cur
 
@@ -922,6 +933,7 @@ def build_signal_snapshot(
     return {
         "as_of": as_of,
         "symbol": symbol,
+        "market": market,
         "window_bars": window_bars,
         "feature_set_version": FEATURE_SET_VERSION,
         "style_preset_version": STYLE_PRESET_VERSION,
