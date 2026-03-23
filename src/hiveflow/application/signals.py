@@ -939,7 +939,7 @@ def build_signal_snapshot(
     }
 
 
-def build_signal_category(category: str, settings: Settings | None = None) -> dict:
+def build_signal_category(category: str, symbol: str, settings: Settings | None = None) -> dict:
     """按分类输出信号。"""
     if category not in SIGNALS_BY_CATEGORY:
         raise _fail(
@@ -953,8 +953,7 @@ def build_signal_category(category: str, settings: Settings | None = None) -> di
             },
             hint={"action": "use_supported_category"},
         )
-    leader = _autodetect_symbol(settings)
-    snapshot = build_signal_snapshot(leader, settings=settings)
+    snapshot = build_signal_snapshot(symbol, settings=settings)
     return {
         "category": category,
         "as_of": snapshot["as_of"],

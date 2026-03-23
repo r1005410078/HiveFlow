@@ -496,7 +496,7 @@ def signal_trend_command(
 ) -> None:
     """输出趋势类信号。"""
     try:
-        payload = build_signal_category("trend", settings=Settings())
+        payload = build_signal_category("trend", _autodetect_symbol(Settings()), settings=Settings())
     except SignalPipelineError as exc:
         _emit_strict_failure(
             code=ErrorCode.SIGNAL_REQUIRED_MISSING,
@@ -533,7 +533,7 @@ def signal_risk_command(
 ) -> None:
     """输出风险类信号。"""
     try:
-        payload = build_signal_category("risk", settings=Settings())
+        payload = build_signal_category("risk", _autodetect_symbol(Settings()), settings=Settings())
     except SignalPipelineError as exc:
         _emit_strict_failure(
             code=ErrorCode.SIGNAL_REQUIRED_MISSING,
@@ -570,7 +570,7 @@ def signal_confirm_command(
 ) -> None:
     """输出确认类信号。"""
     try:
-        payload = build_signal_category("confirm", settings=Settings())
+        payload = build_signal_category("confirm", _autodetect_symbol(Settings()), settings=Settings())
     except SignalPipelineError as exc:
         _emit_strict_failure(
             code=ErrorCode.SIGNAL_REQUIRED_MISSING,
@@ -607,7 +607,7 @@ def signal_regime_command(
 ) -> None:
     """输出市场状态类信号。"""
     try:
-        payload = build_signal_category("regime", settings=Settings())
+        payload = build_signal_category("regime", _autodetect_symbol(Settings()), settings=Settings())
     except SignalPipelineError as exc:
         _emit_strict_failure(
             code=ErrorCode.SIGNAL_REQUIRED_MISSING,
@@ -644,7 +644,7 @@ def signal_quality_command(
 ) -> None:
     """输出质量类信号。"""
     try:
-        payload = build_signal_category("quality", settings=Settings())
+        payload = build_signal_category("quality", _autodetect_symbol(Settings()), settings=Settings())
     except SignalPipelineError as exc:
         _emit_strict_failure(
             code=ErrorCode.SIGNAL_REQUIRED_MISSING,

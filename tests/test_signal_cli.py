@@ -659,3 +659,13 @@ def test_pick_leader_symbol_returns_max_market_value_position(tmp_path, monkeypa
     from hiveflow.application.signals import pick_leader_symbol
     leader = pick_leader_symbol()
     assert leader == "BTC"  # _seed_market_and_positions 里 BTC market_value=800 最大
+
+
+def test_build_signal_category_accepts_explicit_symbol(tmp_path, monkeypatch) -> None:
+    _seed_market_and_positions(tmp_path, monkeypatch)
+    from hiveflow.application.signals import build_signal_category
+    payload = build_signal_category("trend", "ETH")
+    assert payload["symbol"] == "ETH"
+    assert payload["category"] == "trend"
+    assert len(payload["signals"]) == 6
+    assert all(s["symbol"] == "ETH" for s in payload["signals"])
