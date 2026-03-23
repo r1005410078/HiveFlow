@@ -22,6 +22,7 @@ from hiveflow.application.signals import (
     build_portfolio_signals,
     build_signal_category,
     build_signal_category_multi,
+    build_signal_overview,
     build_signal_snapshot,
     pick_leader_symbol,
     signal_keys_of,
@@ -814,6 +815,79 @@ def signal_portfolio_command(
             "✓" if item["triggered"] else "-",
         )
     console.print(table)
+
+
+@signal_app.command("overview")
+def signal_overview_command(
+    output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
+) -> None:
+    """输出所有持仓资产的信号分类摘要与组合级信号。"""
+    try:
+        payload = build_signal_overview(settings=Settings())
+    except SignalPipelineError as exc:
+        _emit_strict_failure(
+            code=ErrorCode.SIGNAL_REQUIRED_MISSING,
+            message=exc.message,
+            details=exc.details,
+            hint=exc.hint,
+            output=output,
+            context=exc.context,
+        )
+        return
+
+    if output == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    console.print(f"\n[bold]信号总览[/bold]  [dim]{payload['as_of']}[/dim]")
+
+    _STATE_STYLE: dict[str, str] = {
+        "bullish": "green", "bearish": "red", "neutral": "dim",
+        "low": "green", "medium": "yellow", "high": "bold red",
+        "good": "green", "warning": "yellow", "bad": "bold red",
+    }
+
+    table = Table(box=box.SIMPLE, show_header=True, header_style="bold")
+    table.add_column("资产", min_width=6)
+    table.add_column("趋势", min_width=6)
+    table.add_column("风险", min_width=8)
+    table.add_column("确认", min_width=6)
+    table.add_column("状态", min_width=6)
+    table.add_column("触发/总计", justify="right")
+
+    for asset in payload["assets"]:
+        cs = asset["category_summary"]
+        row_cells: list[str] = [asset["symbol"]]
+        for cat in ("trend", "risk", "confirm", "regime"):
+            state = cs[cat]["state"]
+            label = _signal_state_label(cat, state)
+            style = _STATE_STYLE.get(state, "")
+            row_cells.append(f"[{style}]{label}[/{style}]" if style else label)
+        row_cells.append(f"{asset['triggered_total']} / {asset['signals_total']}")
+        table.add_row(*row_cells)
+    console.print(table)
+
+    # 组合摘要行（4 个关键指标）
+    port_by_key = {s["signal_key"]: s for s in payload["portfolio"]["signals"]}
+    parts: list[str] = []
+    for key, label in [
+        ("concentration_risk", "集中度"),
+        ("correlation_spike", "相关性"),
+        ("local_breadth_proxy", "宽度"),
+        ("confidence_score", "置信度"),
+    ]:
+        if key not in port_by_key:
+            continue
+        sig = port_by_key[key]
+        state = sig["state"]
+        style = _STATE_STYLE.get(state, "")
+        if key == "confidence_score":
+            val_str = f"{sig['value']:.2f}"
+        else:
+            val_str = _signal_state_label(sig["category"], state)
+        cell = f"[{style}]{val_str}[/{style}]" if style else val_str
+        parts.append(f"{label}:{cell}")
+    console.print("[dim]组合  [/dim]" + "  ".join(parts))
 
 
 @signal_app.command("snapshot")

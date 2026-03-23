@@ -796,3 +796,45 @@ def test_build_signal_overview_returns_all_positions(tmp_path, monkeypatch) -> N
     assert len(payload["portfolio"]["signals"]) == 7
     assert all(s["symbol"] == "PORTFOLIO" for s in payload["portfolio"]["signals"])
     assert "as_of" in payload
+
+
+def test_signal_overview_json_returns_all_positions(tmp_path, monkeypatch) -> None:
+    _seed_market_and_positions(tmp_path, monkeypatch)
+    result = CliRunner().invoke(app, ["signal", "overview", "--output", "json"])
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert {a["symbol"] for a in payload["assets"]} == {"BTC", "ETH", "SOL"}
+    for asset in payload["assets"]:
+        assert set(asset["category_summary"].keys()) == {"trend", "risk", "confirm", "regime"}
+        assert asset["signals_total"] == 17
+
+
+def test_signal_overview_json_includes_portfolio(tmp_path, monkeypatch) -> None:
+    _seed_market_and_positions(tmp_path, monkeypatch)
+    result = CliRunner().invoke(app, ["signal", "overview", "--output", "json"])
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert len(payload["portfolio"]["signals"]) == 7
+    assert all(s["symbol"] == "PORTFOLIO" for s in payload["portfolio"]["signals"])
+
+
+def test_signal_overview_pretty_prints_table(tmp_path, monkeypatch) -> None:
+    _seed_market_and_positions(tmp_path, monkeypatch)
+    result = CliRunner().invoke(app, ["signal", "overview"])
+    assert result.exit_code == 0, result.stdout
+    assert "信号总览" in result.stdout
+    assert "触发" in result.stdout
+    assert "组合" in result.stdout
+    assert "状态" in result.stdout
+
+
+def test_signal_overview_fails_without_market_data(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "no-market.db"
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    create_all_tables()
+    result = CliRunner().invoke(app, ["signal", "overview", "--output", "json"])
+    assert result.exit_code == 1, result.stdout
+    payload = json.loads(result.stdout)
+    assert "code" in payload
+    assert payload["details"]["strict_mode"] is True
+    assert payload.get("context") == "signal.snapshot"  # passthrough from underlying error
