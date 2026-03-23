@@ -130,3 +130,31 @@
 - 文档：`ROADMAP` 新增 M11（规划中）段落，`CURRENT_STATE` 的“下一步建议”已切换为 M11 执行顺序。
 - 决策：M10 需求整体砍掉，不进入实现排期；`ROADMAP` 已同步标记为“已取消”。
 - 文档：新增信号模块一页验收清单 `docs/context/SIGNAL_ACCEPTANCE_CHECKLIST.md`，用于版本验收与回归核对。
+
+## 2026-03-23
+
+- 决策：进一步明确三层架构分工，`HiveFlow` 只做确定性数据与工具输出，AI 决策层放入 `Skill`，由 `Codex` / `Claude` 等大模型执行。
+- 文档：重写 `skills/hiveflow-daily-check/SKILL.md`，将其收口为基于 `context daily` 的每日检查工作流，输出 `verdict / evidence / next_command` 结构。
+- 文档：新增 `skills/hiveflow-strategy-selector/SKILL.md`，用于策略比较、策略切换判断与执行前交接。
+- 文档：新增 `skills/hiveflow-rebalance-executor/SKILL.md`，用于调仓预览、候选动作生成、用户确认门控与交易执行前交接。
+- 文档：重写 `skills/hiveflow-portfolio-advisor/SKILL.md` 为总控 Skill，并同步更新 `PROJECT_CONTEXT.md`、`CURRENT_STATE.md` 的三层分工描述。
+- 文档：重写 `docs/cli/README.md` 首页与核心场景，将入口从“功能清单”收口为“三层架构 + 三个 Skill 工作流 + 核心闭环”。
+- 文档：新增 `docs/skills/README.md`，集中说明 4 个 Skill 的触发条件、路由关系、核心命令与安全边界，并在 CLI README 中补入口链接。
+- 文档：更新 `docs/product/hiveflow-readme.md`、`docs/product/product-positioning.md`、`docs/product/README.md`，将产品表述同步到“HiveFlow 工具层 + Skill 决策层 + Agent 执行层”。
+- 文档：新增 `docs/superpowers/plans/2026-03-23-investment-effectiveness-upgrades-plan.md`，将“提升真实投资有效性的 8 项改造”正式落为计划文档；`ROADMAP` / `CURRENT_STATE` 已同步追加 M12 规划方向。
+- 文档：统一修正文档中的边界表述，将“Agent”明确为项目外部的 `Agent Runtime`，项目内仅维护 `HiveFlow + Skill` 两层。
+- 实现：按 TDD 落地 M12 Step 1 三层脚手架，新增 `application/policy`、`application/evaluation`、`application/execution` 子包与 4 个模块：`rebalance_policy`、`strategy_switch_policy`、`strategy_evaluation`、`execution_planner`。
+- 行为：已具备调仓门控（漂移阈值/高风险禁买/冷却期）、策略切换门控（优势分阈值/冷却期）、策略健康度判定（healthy/watch/paused）以及执行计划构建（`ready_for_confirmation`/`review_only`）。
+- 测试：新增 `tests/test_rebalance_policy.py`、`tests/test_strategy_switch_policy.py`、`tests/test_strategy_evaluation.py`、`tests/test_execution_planner.py`，并通过 `uv run pytest tests/test_rebalance_policy.py tests/test_strategy_switch_policy.py tests/test_strategy_evaluation.py tests/test_execution_planner.py -q`（`9 passed`）。
+- 实现：按 TDD 落地 M12 Step 2，CLI 新增三层命令组与子命令：`policy rebalance-check`、`policy strategy-switch-check`、`evaluation strategy-health`、`execution plan`，支持 `--output json`。
+- 测试：新增 `tests/test_policy_eval_execution_cli.py`（7 例）并通过；联合阶段测试 `16 passed`，并完成回归 `tests/test_cli.py`（`66 passed`）。
+- 实现：按 TDD 落地 M12 Step 3，`context daily` 聚合结果新增 `policy`、`evaluation`、`execution_plan` 三块上下文，形成“检查/偏离/信号/风格 + 规则/评价/执行计划”的单次输出闭环。
+- 测试：扩展 `tests/test_signal_cli.py::test_context_daily_json_success_with_latest_snapshots` 断言并通过；信号模块回归 `45 passed`，三层模块与 CLI 联合测试保持 `16 passed`。
+- 实现：按 TDD 落地 M12 Step 4，`context daily.policy` 新增 `strategy_switch` 输出；候选策略来自 `style_latest.rank_table` 首位，结合当前策略评分执行策略切换门控评估。
+- 测试：扩展 `context daily` 成功路径断言 `policy.strategy_switch` 字段并通过；`tests/test_signal_cli.py` 保持 `45 passed`，阶段联测保持 `16 passed`。
+- 实现：按 TDD 落地 M12 Step 5，新增 `context decision` 命令，输出轻量决策上下文（`policy/evaluation/execution_plan`）并支持 `--json-schema/--envelope`；同时抽取 `_build_decision_blocks`，统一 `context daily` 与 `context decision` 的决策字段生成逻辑。
+- 测试：新增 `context decision` 三条用例并通过；`tests/test_signal_cli.py` 更新为 `48 passed`，阶段联测保持 `16 passed`。
+- 文档：新增 `docs/context/DECISION_CONTEXT_CONTRACT.md`，固化 `context decision` 成功/失败字段契约与示例；并在 `docs/cli/README.md` 场景二增加 `context decision` 命令入口。
+- 测试：新增 `context decision --envelope` 用例并通过；`tests/test_signal_cli.py` 更新为 `49 passed`。
+- 决策：Skill 默认上下文入口调整为轻量优先，先调用 `context decision` 做规则门控与执行态判断，再按需升级到 `context daily`。
+- 文档：更新 `skills/hiveflow-daily-check/SKILL.md`、`skills/hiveflow-portfolio-advisor/SKILL.md`、`docs/skills/README.md`，统一该路由顺序与命令示例。

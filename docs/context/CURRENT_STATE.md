@@ -18,6 +18,7 @@
   - `positions list` 区分自由持仓与网格持仓（含 inst_type：SPOT/SWAP）
   - `skills list / install` Skills 纳入版本控制，软链接安装到 `~/.agents/skills/`
   - `hiveflow-daily-check` + `hiveflow-portfolio-advisor` Skills 已迁移到 `skills/`
+  - Skill 分层收口：新增 `hiveflow-strategy-selector` 与 `hiveflow-rebalance-executor`，`hiveflow-portfolio-advisor` 调整为总控 Skill
   - `quant list / run / history` 内置 8 种量化策略，结果落库，支持 `--apply`
   - `backtest quant-run` 量化策略动态再平衡回测（每隔 N 天重新计算权重，backtest_type=dynamic）
   - **M7：`backtest show <id>` + `backtest compare <id1> <id2> ...`** 回测权益曲线可视化（Unicode Sparkline），equity_curve 字段落库，支持旧记录降级提示与 `--output json`
@@ -51,6 +52,7 @@
 
 - 全量测试最近结果：`280 passed`
 - `skills/` 目录已纳入版本控制，`~/.agents/skills/hiveflow-*` 为软链接
+- 当前推荐分层：`HiveFlow` 只做确定性数据与工具，投资判断放到 `skills/`，由 `Codex` / `Claude` 等大模型执行
 - 本地存在未跟踪数据文件：`data/`、`strategies.csv`、`prices.csv`（不应提交）
 - 本次增量：`positions drift` 与 `check` 已忽略 `market_value <= 0.01 USDT` 的极小持仓，避免噪声仓位干扰结果
 - 本次验证：`uv run pytest tests/test_health_check.py tests/test_cli.py -q`（`72 passed`）、`uv run pytest tests/test_cli_check.py -q`（`4 passed`）
@@ -108,8 +110,38 @@
 - 本次验证：新增 schema version 断言后通过；`tests/test_signal_cli.py` 保持 `25 passed`，回归集合保持 `122 passed`。
 - 本次实现进展（Signal Phase 2.14）：新增 `WINDOW_AUDIT_CONTRACT.md` 契约文档，固化 `window_audit` 字段定义、示例与兼容策略；README 与验收清单已对齐引用。
 - 本次验证：本次为文档收口，无代码变更测试；沿用最近一次验证基线 `tests/test_signal_cli.py` `25 passed`、回归集合 `122 passed`。
+- 本次实现进展（M12 / Step 1）：新增三层脚手架模块 `application/policy`、`application/evaluation`、`application/execution`，并落地最小可用能力：
+  - `rebalance_policy`：漂移阈值、风险买入门控、冷却期门控
+  - `strategy_switch_policy`：优势分阈值与切换冷却期门控
+  - `strategy_evaluation`：策略健康度与退化标记输出
+  - `execution_planner`：候选动作转执行计划（orders/skipped + plan_state）
+- 本次验证：新增 4 组测试（共 9 例）并通过，`uv run pytest tests/test_rebalance_policy.py tests/test_strategy_switch_policy.py tests/test_strategy_evaluation.py tests/test_execution_planner.py -q`（`9 passed`）。
+- 本次实现进展（M12 / Step 2）：CLI 接入三层入口命令组：
+  - `policy rebalance-check`
+  - `policy strategy-switch-check`
+  - `evaluation strategy-health`
+  - `execution plan`
+  支持 `--output json`，用于 Agent/Skill 结构化消费。
+- 本次验证：新增 `tests/test_policy_eval_execution_cli.py`（7 例）并通过；联合本阶段测试 `uv run pytest tests/test_rebalance_policy.py tests/test_strategy_switch_policy.py tests/test_strategy_evaluation.py tests/test_execution_planner.py tests/test_policy_eval_execution_cli.py -q`（`16 passed`）；回归 `uv run pytest tests/test_cli.py -q`（`66 passed`）。
+- 本次实现进展（M12 / Step 3）：`context daily` 聚合输出新增三层结构化上下文：
+  - `policy.rebalance`：基于 `drift + check` 推导的调仓门控结果
+  - `evaluation`：基于信号质量分与健康状态推导的策略健康度快照
+  - `execution_plan`：基于 drift 候选动作与 policy 门控生成的执行计划（`orders/skipped/plan_state`）
+- 本次验证：扩展 `test_context_daily_json_success_with_latest_snapshots` 字段断言并通过；`uv run pytest tests/test_signal_cli.py -q`（`45 passed`），并复验三层命令与模块测试 `16 passed`。
+- 本次实现进展（M12 / Step 4）：`context daily.policy` 新增 `strategy_switch`，基于当前策略健康分与 style 排名首位候选，输出策略切换门控结果（`switch_allowed/switch_threshold_passed/cooldown_active/reason_codes`）及 `current_strategy/candidate_strategy`。
+- 本次验证：扩展 `context daily` 成功路径断言（`policy.strategy_switch`）并通过；`uv run pytest tests/test_signal_cli.py -q`（`45 passed`），三层模块与 CLI 联测保持 `16 passed`。
+- 本次实现进展（M12 / Step 5）：新增轻量聚合命令 `context decision`，只输出 `policy/evaluation/execution_plan` + `source_meta/decision_boundary`，用于 Agent 快速消费规则层与执行层上下文；并抽取 `_build_decision_blocks` 供 `context daily` 与 `context decision` 复用，保持两者决策字段口径一致。
+- 本次验证：新增 `context decision` 测试（缺少快照严格失败、成功输出、json-schema）并通过；`uv run pytest tests/test_signal_cli.py -q`（`48 passed`），三层模块与 CLI 联测保持 `16 passed`。
+- 本次实现进展（M12 / Step 6）：新增 `DECISION_CONTEXT_CONTRACT.md`，固化 `context decision` 字段定义、失败协议与示例；并在 `docs/cli/README.md` 场景二补充 `context decision` 命令入口与契约文档链接。
+- 本次验证：新增 `context decision --envelope` 用例并通过；`uv run pytest tests/test_signal_cli.py -q` 更新为 `49 passed`。
+- 本次实现进展（M12 / Step 7）：Skill 调度默认链路调整为“先轻量 `context decision`，再按需 `context daily` 深化”。
+  - `skills/hiveflow-daily-check/SKILL.md`：输入顺序改为 `sync -> context decision -> positions list`，并在需要深度证据时再补 `context daily`
+  - `skills/hiveflow-portfolio-advisor/SKILL.md`：标准流程新增第一步 `context decision` 轻量判定
+  - `docs/skills/README.md`：同步更新 skill 典型输入与推荐命令面
+- 本次验证：本次仅文档与 Skill 工作流编排更新，无代码行为变更，未新增测试。
 
 ## 下一步建议
 
 1. 已进入 M11 规划阶段：先按 `docs/superpowers/plans/2026-03-20-m11-signal-contractization-plan.md` 完成契约与 schema 对齐
 2. M11 执行顺序建议：Phase A（契约）→ Phase B（消费闭环）→ Phase C（演进规则）
+3. M11 完成后进入 M12 规划方向：按 `docs/superpowers/plans/2026-03-23-investment-effectiveness-upgrades-plan.md` 逐步补齐规则层与评价层

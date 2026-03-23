@@ -1,5 +1,6 @@
 import json
-from datetime import datetime, timezone
+from dataclasses import asdict
+from datetime import datetime, timedelta, timezone
 from time import perf_counter
 from pathlib import Path
 from typing import Any
@@ -93,6 +94,19 @@ from hiveflow.application.blend import (
     update_blend,
 )
 from hiveflow.application.risk_analysis import analyze_asset_risk, analyze_portfolio_risk
+from hiveflow.application.policy.rebalance_policy import (
+    RebalancePolicyInput,
+    evaluate_rebalance_policy,
+)
+from hiveflow.application.policy.strategy_switch_policy import (
+    StrategySwitchPolicyInput,
+    evaluate_strategy_switch_policy,
+)
+from hiveflow.application.evaluation.strategy_evaluation import build_strategy_evaluation
+from hiveflow.application.execution.execution_planner import (
+    RebalanceAction,
+    build_execution_plan,
+)
 from hiveflow.application.perf import (
     PerfCompareResult,
     PortfolioSnapshotView,
@@ -166,6 +180,9 @@ perf_app = typer.Typer(help="实盘绩效追踪命令。")
 signal_app = typer.Typer(help="信号系统命令。")
 style_app = typer.Typer(help="风格回测排名命令。")
 context_app = typer.Typer(help="Agent 上下文聚合命令。")
+policy_app = typer.Typer(help="调仓与切换规则门控命令。")
+evaluation_app = typer.Typer(help="策略评价命令。")
+execution_app = typer.Typer(help="执行计划命令。")
 console = Console()
 JSON_SCHEMA_VERSION = "1.0.0"
 
@@ -379,6 +396,128 @@ def _decision_boundary_meta() -> dict[str, str]:
     }
 
 
+def _build_decision_blocks(
+    *,
+    positions: list[Any],
+    check_result: HealthCheckResult,
+    current_strategy: str | None,
+    drift_items: list[Any],
+    signal_latest_payload: dict[str, Any],
+    style_latest_payload: dict[str, Any],
+) -> dict[str, Any]:
+    """构建 policy / evaluation / execution_plan 三块决策上下文。"""
+    risk_level = {
+        "safe": "low",
+        "watch": "medium",
+        "danger": "high",
+    }.get(check_result.verdict, "medium")
+    drift_max_abs = max((abs(item.delta) for item in drift_items), default=0.0)
+    rebalance_policy = evaluate_rebalance_policy(
+        RebalancePolicyInput(
+            drift_max_abs=drift_max_abs,
+            risk_level=risk_level,
+            now=datetime.now(timezone.utc),
+        )
+    )
+
+    def _signal_value_or_default(signal_key: str, default: float) -> float:
+        for item in signal_latest_payload.get("signals", []):
+            if item.get("signal_key") != signal_key:
+                continue
+            try:
+                return float(item.get("value"))
+            except (TypeError, ValueError):
+                return default
+        return default
+
+    def _clip_score(score: float) -> float:
+        return max(0.0, min(1.0, score))
+
+    def _normalize_signed_score(value: float) -> float:
+        # Map (-inf, +inf) to (0, 1) without extra dependencies.
+        return _clip_score(0.5 + (value / (1.0 + abs(value))) / 2.0)
+
+    evaluation = build_strategy_evaluation(
+        strategy=current_strategy or "unknown",
+        current_market_fit={"safe": "high", "watch": "medium", "danger": "low"}.get(
+            check_result.verdict,
+            "medium",
+        ),
+        backtest_quality_score=_clip_score(_signal_value_or_default("confidence_score", 0.5)),
+        stability_score=_clip_score(_signal_value_or_default("signal_stability", 0.5)),
+        as_of=datetime.now(timezone.utc),
+    )
+    rank_table = style_latest_payload.get("rank_table", [])
+    current_score = float(evaluation.composite_score)
+    candidate_strategy = current_strategy or "unknown"
+    candidate_score = current_score
+    if rank_table:
+        top_row = rank_table[0]
+        candidate_strategy = str(top_row.get("style_name") or candidate_strategy)
+        try:
+            candidate_raw_score = float(top_row.get("calmar"))
+        except (TypeError, ValueError):
+            candidate_raw_score = current_score
+        candidate_score = _normalize_signed_score(candidate_raw_score)
+
+    strategy_switch_policy = evaluate_strategy_switch_policy(
+        StrategySwitchPolicyInput(
+            current_strategy=current_strategy or "unknown",
+            candidate_strategy=candidate_strategy,
+            current_score=current_score,
+            candidate_score=candidate_score,
+            min_advantage_score=0.10,
+            now=datetime.now(timezone.utc),
+        )
+    )
+
+    total_market_value = sum(max(float(item.market_value), 0.0) for item in positions)
+    actions: list[RebalanceAction] = []
+    for item in drift_items:
+        reason_codes: list[str] = []
+        allowed = True
+        if item.action == "hold":
+            allowed = False
+            reason_codes.append("hold_no_action")
+        if not rebalance_policy.rebalance_allowed:
+            allowed = False
+            reason_codes.extend(rebalance_policy.reason_codes)
+        if item.action == "buy" and not rebalance_policy.buy_allowed:
+            allowed = False
+            if "risk_gate_buy_disabled" not in reason_codes:
+                reason_codes.append("risk_gate_buy_disabled")
+        if item.action == "sell" and not rebalance_policy.sell_allowed:
+            allowed = False
+            reason_codes.append("sell_not_allowed")
+
+        actions.append(
+            RebalanceAction(
+                symbol=item.symbol,
+                action=item.action,
+                priority=item.drift_level,
+                allowed=allowed,
+                reason_codes=list(dict.fromkeys(reason_codes)),
+                estimated_usdt=round(abs(item.delta) * total_market_value, 2),
+            )
+        )
+
+    execution_plan = build_execution_plan(actions)
+    evaluation_payload = asdict(evaluation)
+    evaluation_payload["as_of"] = evaluation.as_of.isoformat()
+    return {
+        "policy": {
+            "rebalance": asdict(rebalance_policy),
+            "strategy_switch": {
+                **asdict(strategy_switch_policy),
+                "current_strategy": current_strategy or "unknown",
+                "candidate_strategy": candidate_strategy,
+            },
+        },
+        "evaluation": evaluation_payload,
+        "execution_plan": asdict(execution_plan),
+    }
+
+
 def _action_label(action: str) -> str:
     """动作枚举中文显示。"""
     return {"buy": "买入", "sell": "卖出", "hold": "持有"}.get(action, action)
@@ -445,6 +584,43 @@ def _parse_weights(text: str) -> dict[str, float]:
     if not result:
         raise typer.BadParameter("weights 不能为空。")
     return result
+
+
+def _parse_bool_token(text: str) -> bool:
+    token = text.strip().lower()
+    if token in {"true", "1", "yes", "y"}:
+        return True
+    if token in {"false", "0", "no", "n"}:
+        return False
+    raise typer.BadParameter(f"布尔值仅支持 true/false（收到：{text}）。")
+
+
+def _parse_execution_action(text: str) -> RebalanceAction:
+    parts = [p.strip() for p in text.split(",")]
+    if len(parts) < 5:
+        raise typer.BadParameter(
+            "action 格式错误，示例：BTC,sell,high,true,800[,reason_a|reason_b]"
+        )
+    if len(parts) > 6:
+        raise typer.BadParameter(
+            "action 字段过多，示例：BTC,sell,high,true,800[,reason_a|reason_b]"
+        )
+    symbol, action, priority, allowed_text, estimated_text = parts[:5]
+    reason_codes: list[str] = []
+    if len(parts) == 6 and parts[5]:
+        reason_codes = [code.strip() for code in parts[5].split("|") if code.strip()]
+    try:
+        estimated_usdt = float(estimated_text)
+    except ValueError as exc:
+        raise typer.BadParameter(f"estimated_usdt 必须是数字（收到：{estimated_text}）。") from exc
+    return RebalanceAction(
+        symbol=symbol.upper(),
+        action=action.lower(),
+        priority=priority.lower(),
+        allowed=_parse_bool_token(allowed_text),
+        reason_codes=reason_codes,
+        estimated_usdt=estimated_usdt,
+    )
 
 
 def _signal_key_label(signal_key: str) -> str:
@@ -1189,6 +1365,104 @@ def style_show_command(
     console.print(table)
 
 
+@context_app.command("decision")
+def context_decision_command(
+    output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
+    envelope: bool = typer.Option(False, "--envelope", help="JSON 输出使用统一 envelope"),
+    json_schema: bool = typer.Option(False, "--json-schema", help="输出 JSON schema 后退出"),
+) -> None:
+    """输出轻量决策上下文（policy/evaluation/execution_plan）。"""
+    if json_schema:
+        _print_json_schema("context.decision")
+        return
+
+    app_settings = Settings()
+    signal_rows = list_signal_snapshots(limit=1, settings=app_settings)
+    if not signal_rows:
+        _emit_strict_failure(
+            code=ErrorCode.SIGNAL_REQUIRED_MISSING,
+            context="context.decision",
+            message="缺少 signal 快照历史，请先执行 signal snapshot。",
+            details={
+                "strict_mode": True,
+                "missing_component": "signal_latest",
+            },
+            hint={"action": "run_signal_snapshot"},
+            output=output,
+        )
+        return
+
+    style_rows = list_style_backtest_results(limit=1, settings=app_settings)
+    if not style_rows:
+        _emit_strict_failure(
+            code=ErrorCode.STYLE_EVAL_FAILED,
+            context="context.decision",
+            message="缺少 style 回测历史，请先执行 style backtest-rank。",
+            details={
+                "strict_mode": True,
+                "missing_component": "style_latest",
+            },
+            hint={"action": "run_style_backtest_rank"},
+            output=output,
+        )
+        return
+
+    signal_age = _calc_age_hours(signal_rows[0].as_of)
+    style_age = _calc_age_hours(style_rows[0].as_of)
+    source_meta = {
+        "signal_latest": {
+            "record_id": signal_rows[0].id,
+            "snapshot_id": signal_rows[0].snapshot_id,
+            "as_of": signal_rows[0].as_of,
+            "age_hours": round(signal_age, 6) if signal_age is not None else None,
+        },
+        "style_latest": {
+            "record_id": style_rows[0].id,
+            "run_id": style_rows[0].run_id,
+            "as_of": style_rows[0].as_of,
+            "age_hours": round(style_age, 6) if style_age is not None else None,
+        },
+    }
+
+    signal_latest_payload = get_signal_snapshot(record_id=signal_rows[0].id, settings=app_settings)
+    style_latest_payload = get_style_backtest_result(record_id=style_rows[0].id, settings=app_settings)
+    positions, bars_by_symbol = _load_check_data(app_settings)
+    check_result = run_health_check(positions=positions, bars_by_symbol=bars_by_symbol)
+    current = show_current_strategy().current_strategy
+    drift_items = analyze_positions_drift(strategy_name=current)
+    decision_blocks = _build_decision_blocks(
+        positions=positions,
+        check_result=check_result,
+        current_strategy=current,
+        drift_items=drift_items,
+        signal_latest_payload=signal_latest_payload,
+        style_latest_payload=style_latest_payload,
+    )
+
+    payload = {
+        "as_of": signal_rows[0].as_of,
+        "decision_boundary": _decision_boundary_meta(),
+        "source_meta": source_meta,
+        **decision_blocks,
+    }
+
+    if output == "json":
+        _print_json(payload, command="context.decision", envelope=envelope)
+        return
+
+    table = Table(title="Decision Context", box=box.SIMPLE)
+    table.add_column("字段")
+    table.add_column("值")
+    table.add_row("as_of", payload["as_of"])
+    table.add_row("strategy_health", payload["evaluation"]["strategy_health"])
+    table.add_row("rebalance_allowed", str(payload["policy"]["rebalance"]["rebalance_allowed"]))
+    table.add_row("switch_allowed", str(payload["policy"]["strategy_switch"]["switch_allowed"]))
+    table.add_row("plan_state", payload["execution_plan"]["plan_state"])
+    table.add_row("orders", str(len(payload["execution_plan"]["orders"])))
+    table.add_row("skipped", str(len(payload["execution_plan"]["skipped"])))
+    console.print(table)
+
+
 @context_app.command("daily")
 def context_daily_command(
     output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
@@ -1296,6 +1570,17 @@ def context_daily_command(
     check_result = run_health_check(positions=positions, bars_by_symbol=bars_by_symbol)
     current = show_current_strategy().current_strategy
     drift_items = analyze_positions_drift(strategy_name=current)
+    signal_latest_payload = get_signal_snapshot(record_id=signal_rows[0].id, settings=app_settings)
+    style_latest_payload = get_style_backtest_result(record_id=style_rows[0].id, settings=app_settings)
+
+    decision_blocks = _build_decision_blocks(
+        positions=positions,
+        check_result=check_result,
+        current_strategy=current,
+        drift_items=drift_items,
+        signal_latest_payload=signal_latest_payload,
+        style_latest_payload=style_latest_payload,
+    )
 
     payload = {
         "as_of": signal_rows[0].as_of,
@@ -1320,8 +1605,9 @@ def context_daily_command(
             "items": [item.to_dict() for item in drift_items],
         },
         "source_meta": source_meta,
-        "signal_latest": get_signal_snapshot(record_id=signal_rows[0].id, settings=app_settings),
-        "style_latest": get_style_backtest_result(record_id=style_rows[0].id, settings=app_settings),
+        "signal_latest": signal_latest_payload,
+        "style_latest": style_latest_payload,
+        **decision_blocks,
     }
 
     try:
@@ -3331,6 +3617,166 @@ def trade_execute_command(
         console.print("\n[bold green]执行完成。[/bold green]")
 
 
+@policy_app.command("rebalance-check")
+def policy_rebalance_check_command(
+    drift_max_abs: float = typer.Option(..., "--drift-max-abs", help="当前组合最大偏离绝对值（0~1）。"),
+    risk_level: str = typer.Option(..., "--risk-level", help="风险水位：low/medium/high。"),
+    min_drift_threshold: float = typer.Option(0.03, "--min-drift-threshold", help="最小触发调仓偏离阈值。"),
+    cooldown_hours: int = typer.Option(24, "--cooldown-hours", help="调仓冷却小时数。"),
+    last_rebalance_hours_ago: float | None = typer.Option(
+        None,
+        "--last-rebalance-hours-ago",
+        help="距离上次调仓的小时数；不传表示无历史调仓。",
+    ),
+    output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
+) -> None:
+    """评估调仓执行门控策略。"""
+    now = datetime.now(timezone.utc)
+    last_rebalance_at = (
+        now - timedelta(hours=last_rebalance_hours_ago)
+        if last_rebalance_hours_ago is not None
+        else None
+    )
+    result = evaluate_rebalance_policy(
+        RebalancePolicyInput(
+            drift_max_abs=drift_max_abs,
+            risk_level=risk_level.lower(),
+            now=now,
+            min_drift_threshold=min_drift_threshold,
+            last_rebalance_at=last_rebalance_at,
+            cooldown_hours=cooldown_hours,
+        )
+    )
+    payload = asdict(result)
+    if output == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    table = Table(title="调仓规则评估", box=box.SIMPLE)
+    table.add_column("字段")
+    table.add_column("值")
+    table.add_row("rebalance_allowed", str(payload["rebalance_allowed"]))
+    table.add_row("buy_allowed", str(payload["buy_allowed"]))
+    table.add_row("sell_allowed", str(payload["sell_allowed"]))
+    table.add_row("cooldown_active", str(payload["cooldown_active"]))
+    table.add_row("reason_codes", ",".join(payload["reason_codes"]) or "-")
+    console.print(table)
+
+
+@policy_app.command("strategy-switch-check")
+def policy_strategy_switch_check_command(
+    current_strategy: str = typer.Option(..., "--current-strategy", help="当前策略名称。"),
+    candidate_strategy: str = typer.Option(..., "--candidate-strategy", help="候选策略名称。"),
+    current_score: float = typer.Option(..., "--current-score", help="当前策略评分。"),
+    candidate_score: float = typer.Option(..., "--candidate-score", help="候选策略评分。"),
+    min_advantage_score: float = typer.Option(0.10, "--min-advantage-score", help="最小优势分阈值。"),
+    cooldown_hours: int = typer.Option(24, "--cooldown-hours", help="切换冷却小时数。"),
+    last_switch_hours_ago: float | None = typer.Option(
+        None,
+        "--last-switch-hours-ago",
+        help="距离上次切换策略的小时数；不传表示无历史切换。",
+    ),
+    output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
+) -> None:
+    """评估策略切换门控规则。"""
+    now = datetime.now(timezone.utc)
+    last_switch_at = (
+        now - timedelta(hours=last_switch_hours_ago)
+        if last_switch_hours_ago is not None
+        else None
+    )
+    result = evaluate_strategy_switch_policy(
+        StrategySwitchPolicyInput(
+            current_strategy=current_strategy,
+            candidate_strategy=candidate_strategy,
+            current_score=current_score,
+            candidate_score=candidate_score,
+            min_advantage_score=min_advantage_score,
+            now=now,
+            last_switch_at=last_switch_at,
+            cooldown_hours=cooldown_hours,
+        )
+    )
+    payload = asdict(result)
+    if output == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    table = Table(title="策略切换规则评估", box=box.SIMPLE)
+    table.add_column("字段")
+    table.add_column("值")
+    table.add_row("switch_allowed", str(payload["switch_allowed"]))
+    table.add_row("switch_threshold_passed", str(payload["switch_threshold_passed"]))
+    table.add_row("cooldown_active", str(payload["cooldown_active"]))
+    table.add_row("advantage_score", f"{payload['advantage_score']:.4f}")
+    table.add_row("reason_codes", ",".join(payload["reason_codes"]) or "-")
+    console.print(table)
+
+
+@evaluation_app.command("strategy-health")
+def evaluation_strategy_health_command(
+    strategy: str = typer.Option(..., "--strategy", help="策略名称。"),
+    current_market_fit: str = typer.Option(..., "--current-market-fit", help="当前市场适配度：low/medium/high。"),
+    backtest_quality_score: float = typer.Option(..., "--backtest-quality-score", help="回测质量分。"),
+    stability_score: float = typer.Option(..., "--stability-score", help="稳定性分。"),
+    output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
+) -> None:
+    """生成策略健康度评价快照。"""
+    result = build_strategy_evaluation(
+        strategy=strategy,
+        current_market_fit=current_market_fit.lower(),
+        backtest_quality_score=backtest_quality_score,
+        stability_score=stability_score,
+        as_of=datetime.now(timezone.utc),
+    )
+    payload = asdict(result)
+    payload["as_of"] = result.as_of.isoformat()
+    if output == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    table = Table(title="策略健康度评价", box=box.SIMPLE)
+    table.add_column("字段")
+    table.add_column("值")
+    table.add_row("strategy", payload["strategy"])
+    table.add_row("current_market_fit", payload["current_market_fit"])
+    table.add_row("backtest_quality_score", f"{payload['backtest_quality_score']:.4f}")
+    table.add_row("stability_score", f"{payload['stability_score']:.4f}")
+    table.add_row("composite_score", f"{payload['composite_score']:.4f}")
+    table.add_row("strategy_health", payload["strategy_health"])
+    table.add_row("degradation_flag", str(payload["degradation_flag"]))
+    console.print(table)
+
+
+@execution_app.command("plan")
+def execution_plan_command(
+    action: list[str] = typer.Option(
+        [],
+        "--action",
+        "-a",
+        help="候选动作，格式：SYMBOL,action,priority,allowed,estimated_usdt[,reason_a|reason_b]；可重复传入。",
+    ),
+    output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
+) -> None:
+    """将候选动作构建为执行计划。"""
+    if not action:
+        raise typer.BadParameter("至少传入一个 --action。")
+    actions = [_parse_execution_action(item) for item in action]
+    plan = build_execution_plan(actions)
+    payload = asdict(plan)
+    if output == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    table = Table(title="执行计划", box=box.SIMPLE)
+    table.add_column("字段")
+    table.add_column("值")
+    table.add_row("plan_state", payload["plan_state"])
+    table.add_row("orders", str(len(payload["orders"])))
+    table.add_row("skipped", str(len(payload["skipped"])))
+    console.print(table)
+
+
 app.add_typer(positions_app, name="positions")
 app.add_typer(risk_app, name="risk")
 app.add_typer(targets_app, name="targets")
@@ -3350,6 +3796,9 @@ app.add_typer(perf_app, name="perf")
 app.add_typer(signal_app, name="signal")
 app.add_typer(style_app, name="style")
 app.add_typer(context_app, name="context")
+app.add_typer(policy_app, name="policy")
+app.add_typer(evaluation_app, name="evaluation")
+app.add_typer(execution_app, name="execution")
 
 
 @skills_app.command("list")

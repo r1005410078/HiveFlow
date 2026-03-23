@@ -32,6 +32,72 @@ def test_context_command_group_is_available() -> None:
     assert result.exit_code == 0
 
 
+def test_context_decision_json_strict_failure_when_missing_signal_history(
+    tmp_path, monkeypatch
+) -> None:
+    _seed_market_and_positions(tmp_path, monkeypatch)
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["context", "decision", "--output", "json"])
+    assert result.exit_code == 1, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["code"] == "E_SIGNAL_REQUIRED_MISSING"
+    assert payload["context"] == "context.decision"
+    assert payload["details"]["strict_mode"] is True
+
+
+def test_context_decision_json_success_with_latest_snapshots(tmp_path, monkeypatch) -> None:
+    _seed_market_and_positions(tmp_path, monkeypatch)
+    runner = CliRunner()
+
+    signal_result = runner.invoke(app, ["signal", "snapshot", "--symbol", "BTC", "--output", "json"])
+    assert signal_result.exit_code == 0, signal_result.stdout
+    style_result = runner.invoke(app, ["style", "backtest-rank", "--output", "json"])
+    assert style_result.exit_code == 0, style_result.stdout
+
+    result = runner.invoke(app, ["context", "decision", "--output", "json"])
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert "as_of" in payload
+    assert "source_meta" in payload
+    assert "policy" in payload
+    assert "evaluation" in payload
+    assert "execution_plan" in payload
+    assert payload["decision_boundary"]["system"] == "data_only"
+    assert payload["decision_boundary"]["agent"] == "analysis_and_decision"
+    assert "rebalance" in payload["policy"]
+    assert "strategy_switch" in payload["policy"]
+    assert payload["execution_plan"]["plan_state"] in {
+        "ready_for_confirmation",
+        "review_only",
+    }
+
+
+def test_context_decision_supports_json_schema() -> None:
+    result = CliRunner().invoke(app, ["context", "decision", "--json-schema"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["title"] == "HiveFlow context.decision output envelope"
+    assert "data" in payload["properties"]
+
+
+def test_context_decision_json_supports_envelope(tmp_path, monkeypatch) -> None:
+    _seed_market_and_positions(tmp_path, monkeypatch)
+    runner = CliRunner()
+    assert runner.invoke(app, ["signal", "snapshot", "--symbol", "BTC", "--output", "json"]).exit_code == 0
+    assert runner.invoke(app, ["style", "backtest-rank", "--output", "json"]).exit_code == 0
+
+    result = runner.invoke(app, ["context", "decision", "--output", "json", "--envelope"])
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["schema_version"] == "1.0.0"
+    assert payload["command"] == "context.decision"
+    assert "data" in payload
+    assert "policy" in payload["data"]
+    assert "evaluation" in payload["data"]
+    assert "execution_plan" in payload["data"]
+
+
 def test_context_daily_json_strict_failure_when_missing_signal_history(
     tmp_path, monkeypatch
 ) -> None:
@@ -65,6 +131,9 @@ def test_context_daily_json_success_with_latest_snapshots(tmp_path, monkeypatch)
     assert "source_meta" in payload
     assert "signal_latest" in payload
     assert "style_latest" in payload
+    assert "policy" in payload
+    assert "evaluation" in payload
+    assert "execution_plan" in payload
     assert payload["decision_boundary"]["system"] == "data_only"
     assert payload["decision_boundary"]["agent"] == "analysis_and_decision"
     assert payload["check"]["verdict"] in {"safe", "watch", "danger"}
@@ -105,6 +174,20 @@ def test_context_daily_json_success_with_latest_snapshots(tmp_path, monkeypatch)
     assert "risk_diff" in payload["window_diff"]
     assert "consensus_score" in payload["window_diff"]
     assert 0.0 <= payload["window_diff"]["consensus_score"] <= 1.0
+    assert "rebalance" in payload["policy"]
+    assert "strategy_switch" in payload["policy"]
+    assert isinstance(payload["policy"]["rebalance"]["reason_codes"], list)
+    assert isinstance(payload["policy"]["strategy_switch"]["reason_codes"], list)
+    assert isinstance(payload["policy"]["strategy_switch"]["switch_allowed"], bool)
+    assert isinstance(payload["policy"]["strategy_switch"]["switch_threshold_passed"], bool)
+    assert payload["evaluation"]["strategy_health"] in {"healthy", "watch", "paused"}
+    assert isinstance(payload["evaluation"]["degradation_flag"], bool)
+    assert payload["execution_plan"]["plan_state"] in {
+        "ready_for_confirmation",
+        "review_only",
+    }
+    assert isinstance(payload["execution_plan"]["orders"], list)
+    assert isinstance(payload["execution_plan"]["skipped"], list)
 
 
 def test_context_daily_supports_json_schema() -> None:

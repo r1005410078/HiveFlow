@@ -1,16 +1,46 @@
 # HiveFlow 新手入门
 
-HiveFlow 是一个本地运行的加密资产组合管理工具，帮你追踪持仓健康、运行量化策略、对比回测与实盘表现。
+HiveFlow 是一个本地运行的投资工具系统。它负责输出确定性的持仓、行情、风险、信号、回测和调仓数据；投资判断放在 `Skill` 中，由 `Codex`、`Claude` 等大模型执行。
+
+## 项目内 / 项目外分层
+
+1. `HiveFlow`
+负责确定性工具与 JSON 上下文输出，不做投资判断。
+
+2. `Skill`
+负责把分析步骤组织成可复用流程，例如每日检查、策略比较、调仓执行前确认。
+
+3. `Agent Runtime`
+由 `Codex`、`Claude` 等外部大模型平台提供，负责执行 Skill、调用 CLI、与用户交互。
+
+项目内真正需要建设的是：
+
+- `HiveFlow`
+- `Skill`
+
+## 推荐工作流
+
+当前推荐围绕 3 个 Skill 展开：
+
+| 目标 | 推荐 Skill | 作用 |
+|---|---|---|
+| 每日检查组合状态 | `hiveflow-daily-check` | 判断今天是否安全、是否需要进一步动作 |
+| 比较策略并决定是否切换 | `hiveflow-strategy-selector` | 比较回测与当前市场状态，选策略 |
+| 从目标仓位进入执行 | `hiveflow-rebalance-executor` | 生成候选动作，等待用户确认后执行 |
+
+若用户的问题跨阶段，可以使用总控 Skill：`hiveflow-portfolio-advisor`。
+
+Skill 触发条件与路由关系详见：[docs/skills/README.md](/Users/rongts/strat-flow/docs/skills/README.md)
 
 ## 你想做什么？
 
 | 我想做什么 | 去哪里 |
 |---|---|
-| 第一次用，从零开始 | [场景一：从零到第一份调仓建议](#场景一从零到第一份调仓建议约-10-分钟) |
-| 每天检查我的持仓健康 | [场景二：每日持仓健康检查](#场景二每日持仓健康检查约-1-分钟) |
-| 跑量化回测，找最优配置 | [场景三：量化回测——找历史最优策略](#场景三量化回测找历史最优策略约-15-分钟) |
-| 混合多个策略，自动优化权重 | [场景四：多策略混合优化](#场景四多策略混合优化约-5-分钟) |
-| 对比实盘和回测的差距 | [场景五：实盘 vs 回测对比](#场景五实盘-vs-回测对比持续追踪) |
+| 第一次用，从零开始 | [准备工作](#准备工作) + [场景一：先建立可用上下文](#场景一先建立可用上下文约-10-分钟) |
+| 每天检查我的持仓健康 | [场景二：每日检查闭环](#场景二每日检查闭环约-1-分钟) |
+| 比较策略并决定是否切换 | [场景三：策略筛选闭环](#场景三策略筛选闭环约-15-分钟) |
+| 根据目标仓位准备执行 | [场景四：调仓执行闭环](#场景四调仓执行闭环约-5-分钟) |
+| 持续对比实盘和回测 | [场景五：实盘 vs 回测追踪](#场景五实盘-vs-回测追踪持续追踪) |
 
 ---
 
@@ -52,11 +82,11 @@ HIVEFLOW_OKX_API_PASSPHRASE=你的passphrase
 
 ---
 
-## 场景一：从零到第一份调仓建议（约 10 分钟）
+## 场景一：先建立可用上下文（约 10 分钟）
 
-> **我想做什么：** 我刚安装好，还没有 OKX API，想先看看系统能给我什么建议。
+> **我想做什么：** 我刚安装好，还没有 OKX API，想先把系统跑通，并给 Agent 一个能用的上下文。
 
-这个场景使用内置演示数据，不需要 OKX 账户，可以完整体验从持仓到调仓建议的全流程。
+这个场景使用内置演示数据，不需要 OKX 账户，目标是先跑通“数据 -> 上下文 -> 调仓预览”的最小闭环。
 
 **第 1 步：生成演示数据**
 
@@ -124,9 +154,9 @@ uv run hiveflow rebalance preview
 
 ---
 
-## 场景二：每日持仓健康检查（约 1 分钟）
+## 场景二：每日检查闭环（约 1 分钟）
 
-> **我想做什么：** 我每天花 30 秒确认持仓有没有异常，有风险立刻看到。
+> **我想做什么：** 我每天花 30 秒确认持仓有没有异常，并让 Agent 判断今天要不要继续动作。
 
 **前提：** 已完成准备工作第 3 步（OKX 已连接）。
 
@@ -138,14 +168,15 @@ uv run hiveflow sync --days 30
 
 `check`/`signal` 依赖最近历史价格计算指标，首次建议至少同步 30 天。
 
-**日常流程（建议 4 步）**
+**日常流程（建议 3 步）**
 
 ```bash
-uv run hiveflow sync                            # 1) 同步最新持仓和价格（约 5 秒）
-uv run hiveflow check                           # 2) 输出健康结论（回撤风险）
-uv run hiveflow positions drift                 # 3) 查看当前持仓与目标持仓偏离
-uv run hiveflow signal snapshot --symbol BTC    # 4) 输出指定资产的信号快照（可供 Agent 消费）
+uv run hiveflow sync
+uv run hiveflow context daily --output json
+uv run hiveflow positions list --output json
 ```
+
+推荐让 Agent 执行 `hiveflow-daily-check`，把上面三条命令串成一份每日结论。
 
 `positions drift` 会**忽略市值 <= 0.01 USDT** 的极小仓位，避免噪声币影响判断。
 
@@ -188,20 +219,10 @@ uv run hiveflow signal snapshot --symbol BTC    # 4) 输出指定资产的信号
 }
 ```
 
-**信号命令速查**
+**需要单独查看某个资产时**
 
 ```bash
-# 单资产信号（指定 --symbol）
-uv run hiveflow signal trend --symbol BTC       # BTC 趋势类信号（金叉/死叉/动量等）
-uv run hiveflow signal risk --symbol BTC        # BTC 风险类信号（回撤/波动率等）
-uv run hiveflow signal snapshot --symbol BTC    # BTC 完整快照（全部 24 个信号）
-
-# 所有持仓并排输出（不带 --symbol）
-uv run hiveflow signal trend                    # 所有持仓的趋势信号，每资产一组
-uv run hiveflow signal risk                     # 所有持仓的风险信号
-
-# 组合级别信号（不依赖单一资产）
-uv run hiveflow signal portfolio                # 集中度、相关性、市场广度、数据质量等 7 个信号
+uv run hiveflow signal snapshot --symbol BTC --output json
 ```
 
 **需要看历史对比时**
@@ -246,6 +267,16 @@ uv run hiveflow context daily --output json --windows 12,24
 此外新增 `window_audit` 子对象（含上述审计字段），平铺字段继续保留以兼容现有消费方。
 `window_audit` 内含 `window_audit_schema_version`（当前 `v1`），便于下游按版本做解析升级。
 完整字段定义与示例见：`docs/context/WINDOW_AUDIT_CONTRACT.md`。
+若只需要轻量决策上下文（不含窗口多尺度计算），可使用：
+
+```bash
+uv run hiveflow context decision --output json
+uv run hiveflow context decision --output json --envelope
+uv run hiveflow context decision --json-schema
+```
+
+`context decision` 输出 `policy + evaluation + execution_plan`，适合 Agent 快速决策路由。
+完整字段定义与示例见：`docs/context/DECISION_CONTEXT_CONTRACT.md`。
 可选窗口严格策略：
 
 ```bash
@@ -273,9 +304,9 @@ uv run hiveflow perf setup-cron              # 实际安装
 
 ---
 
-## 场景三：量化回测——找历史最优策略（约 15 分钟）
+## 场景三：策略筛选闭环（约 15 分钟）
 
-> **我想做什么：** 我想知道哪种量化策略过去表现最好，再决定用哪个。
+> **我想做什么：** 我想知道当前市场更适合哪种策略，再决定要不要切换。
 
 **第 1 步：准备行情数据**
 
@@ -300,13 +331,13 @@ uv run hiveflow quant list
 
 系统内置 8 种策略：EqualWeight（等权重）、Momentum（动量）、MeanReversion（均值回归）、MovingAverageCross（均线交叉）、BollingerBand（布林带）、RiskParity（风险平价）、MaxSharpe（最大夏普）、MinVariance（最小方差）。
 
-**第 3 步：快速看一个策略的配比建议**
+**第 3 步：快速看一个策略当前权重**
 
 ```bash
 uv run hiveflow quant run --strategy MomentumStrategy
 ```
 
-这个命令按当前数据点计算一次权重，输出建议配比，但**不含历史回测**。用来快速了解策略逻辑。
+这个命令按当前数据点计算一次权重，输出建议配比，但**不含历史回测**。用来快速理解策略当前偏好。
 
 **第 4 步：运行历史回测**
 
@@ -360,7 +391,9 @@ uv run hiveflow risk-analysis assets
 
 输出每个资产的年化波动率、历史最大回撤和资产间的相关性（相关性越低，组合分散效果越好）。
 
-**第 8 步（可选）：将最优配比写入目标持仓**
+推荐让 Agent 执行 `hiveflow-strategy-selector`，把当前 `context daily`、策略列表和回测比较串起来，回答“该不该切换”。
+
+**第 7 步（可选）：将最优配比写入目标持仓**
 
 找到表现最好的回测 ID 后：
 
@@ -371,80 +404,40 @@ uv run hiveflow rebalance preview              # 查看对应的调仓建议
 
 ---
 
-## 场景四：多策略混合优化（约 5 分钟）
+## 场景四：调仓执行闭环（约 5 分钟）
 
-> **我想做什么：** 我觉得单一策略风险太集中，想把几个策略组合起来，让系统自动分配权重。
+> **我想做什么：** 我已经选好了策略或目标仓位，想生成动作计划，但不想跳过确认直接交易。
 
-**前提：** 已完成场景三（至少跑过几次回测，有历史数据）。
+**前提：** 已完成场景三，或者已经有目标持仓。
 
-**第 1 步：创建多策略混合（自动权重）**
-
-```bash
-uv run hiveflow quant blend create my_blend \
-  --strategies MomentumStrategy,EqualWeightStrategy,RiskParityStrategy
-```
-
-不传 `--weights` 时，系统自动按各策略的夏普比率（Sharpe ratio，收益/风险比）归一化计算权重。
-
-**第 2 步：运行混合策略，查看结果**
+**第 1 步：写入目标持仓**
 
 ```bash
-uv run hiveflow quant blend run my_blend
+uv run hiveflow targets set-from-backtest <backtest_id>
 ```
 
-输出示例：
-
-```
-Blend 'my_blend' 资产权重
-
-  资产    权重
-  BTC    0.4200
-  ETH    0.3100
-  SOL    0.1800
-  BNB    0.0900
-```
-
-**第 3 步：查看混合详情**
+**第 2 步：查看偏离与调仓建议**
 
 ```bash
-uv run hiveflow quant blend show my_blend
+uv run hiveflow positions drift --output json
+uv run hiveflow rebalance preview --output json
 ```
 
-**第 4 步（可选）：直接写入目标持仓**
+**第 3 步：让 Agent 生成候选执行计划**
+
+推荐让 Agent 执行 `hiveflow-rebalance-executor`。它应该只生成候选动作，并等待用户确认。
+
+**第 4 步：用户确认后执行**
 
 ```bash
-uv run hiveflow quant blend run my_blend --apply
+uv run hiveflow trade execute --orders '[{"symbol":"ETH","action":"buy","usdt":500}]'
 ```
 
-**其他常用操作：**
-
-手动指定权重（权重数量必须和策略数量一致）：
-
-```bash
-uv run hiveflow quant blend create manual_blend \
-  --strategies MomentumStrategy,EqualWeightStrategy \
-  --weights 0.7,0.3
-```
-
-按 Calmar ratio（年化收益/最大回撤）优化权重：
-
-```bash
-uv run hiveflow quant blend create calmar_blend \
-  --strategies MomentumStrategy,EqualWeightStrategy,RiskParityStrategy \
-  --optimize-metric calmar
-```
-
-修改已有 blend：
-
-```bash
-uv run hiveflow quant blend update my_blend \
-  --strategies MomentumStrategy,EqualWeightStrategy \
-  --weights 0.6,0.4
-```
+> 不推荐跳过预览和确认，直接执行交易。
 
 ---
 
-## 场景五：实盘 vs 回测对比（持续追踪）
+## 场景五：实盘 vs 回测追踪（持续追踪）
 
 > **我想做什么：** 我按量化策略配置了持仓，想持续追踪实盘表现是否跟上回测。
 

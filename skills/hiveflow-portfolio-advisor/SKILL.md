@@ -1,197 +1,95 @@
 ---
 name: hiveflow-portfolio-advisor
-description: Deep portfolio analysis and rebalancing for HiveFlow users. Runs backtests on candidate allocations, recommends optimal allocation based on investment theory, generates rebalancing orders, and executes on OKX after user confirmation. Use when user says "调仓", "rebalance", "分析配比", "我该怎么动", or any request for portfolio decision-making beyond daily risk check.
+description: Use when a HiveFlow user wants an end-to-end portfolio decision workflow that may include daily review, strategy comparison, rebalance planning, and trade execution after confirmation.
 ---
 
 # HiveFlow Portfolio Advisor
 
-深度决策工具。从回测配比到 OKX 执行，全程辅助。
+总控 Skill。它不负责把所有判断硬编码在一个长流程里，而是根据任务阶段，调度三个子 Skill：
 
-## 前置条件
+- `hiveflow-daily-check`
+- `hiveflow-strategy-selector`
+- `hiveflow-rebalance-executor`
 
-确保已执行 `hiveflow sync --days 30` 积累至少 30 天行情数据。
+目标是让 Agent 按“先检查、再选策略、最后执行”的顺序推进，而不是一上来就直接生成订单。
 
-## 执行流程
+## When to Use
 
-### Step 1：获取当前自由持仓
+- 用户说“调仓”、“rebalance”、“分析配比”、“我该怎么动”
+- 用户需要一个从检查到执行的完整工作流
+- 用户的问题可能跨越多个阶段，而不是只停留在单一步骤
+
+## Routing Rules
+
+先判断用户处于哪个阶段，再调用对应 Skill。
+
+### 1. 仅做日常检查
+
+如果用户只是问：
+- “今天状态怎么样”
+- “帮我看下组合”
+- “现在需不需要动”
+
+优先使用：
+- `hiveflow-daily-check`
+
+### 2. 需要比较策略或决定是否切换
+
+如果用户在问：
+- “现在哪种策略更合适”
+- “要不要从当前策略切换”
+- “帮我比较几种策略”
+
+优先使用：
+- `hiveflow-strategy-selector`
+
+### 3. 已经准备落地调仓
+
+如果用户已经：
+- 选好了策略
+- 已写入目标持仓
+- 想从建议进入执行
+
+优先使用：
+- `hiveflow-rebalance-executor`
+
+## Standard Workflow
+
+默认按以下顺序推进：
+
+1. 先拉取 `context decision` 做轻量判定（规则门控 + 健康度 + 执行状态）
+2. 再做 `hiveflow-daily-check`
+3. 如果需要更进一步，再做 `hiveflow-strategy-selector`
+4. 只有在策略或目标仓位已经明确后，才进入 `hiveflow-rebalance-executor`
+
+不要跳过前面的判断步骤，直接把用户推到交易执行。
+
+## Core Commands
+
+这个总控 Skill 主要围绕以下命令组织：
 
 ```bash
-uv run hiveflow positions list --output json
-```
-
-从 `free` 数组提取持仓资产列表（排除 USDT）。
-
-### Step 2：运行量化策略获取权重信号
-
-先用内置量化策略生成数学信号，供后续决策参考：
-
-```bash
+uv run hiveflow sync
+uv run hiveflow context decision --output json
+uv run hiveflow context daily --output json
 uv run hiveflow quant list
-# 查看可用策略
-
-uv run hiveflow quant run --strategy MomentumStrategy --output json
-uv run hiveflow quant run --strategy MeanReversionStrategy --output json
-```
-
-JSON 输出示例（`MomentumStrategy`）：
-
-```json
-{
-  "strategy": "MomentumStrategy",
-  "params": {"lookback_days": 30, "top_k": 3, "min_usdt": 0.1},
-  "weights": {
-    "BTC": 0.45,
-    "ETH": 0.30,
-    "SOL": 0.15,
-    "USDT": 0.10
-  },
-  "run_id": 7,
-  "run_at": "2026-03-17T10:30:00Z"
-}
-```
-
-**分析量化信号的方式：**
-- 对比两个策略的输出权重：动量与均值回归方向一致时，信号更可信
-- 将量化权重与当前持仓对比，判断偏离方向
-- 结合风险信号（`check --output json`）决定是否采纳
-
-**决策框架：**
-- 量化策略 = **数学工具**（确定性，给定输入总是输出同样结果）
-- **是否采纳、如何调整 = Agent/你的判断**，不能盲目跟从
-- 若量化推荐与风险信号矛盾（如动量看涨但回撤 -20%），优先尊重风险信号
-
-**若认可量化结果，直接写入目标：**
-
-```bash
-uv run hiveflow quant run --strategy MomentumStrategy --apply
-```
-
-`--apply` 会以 replace 模式写入 TargetAllocation，并记录 DecisionLog。跳过 Step 3-5，直接到 Step 6。
-
-**若需要微调权重，导出 CSV 后导入：**
-
-```bash
-# 将量化权重导出为 CSV，手动调整后导入
-uv run hiveflow targets import --strategy "MomentumStrategy-adjusted" --mode replace
-```
-
-### Step 3：生成候选配比并写入策略（手动方案）
-
-若量化信号不满足要求，或需要更灵活的配比，手动生成三组候选配比：
-
-**生成规则：**
-- USDT 最低 10%（弹药底线，不可低于此值）
-- 单资产上限 60%（避免过度集中）
-- BTC 作为核心资产，建议权重不低于 20%
-
-**三个模板（根据实际持仓资产动态调整权重，确保加总为 1）：**
-
-| 模板 | 特点 | USDT | BTC | 其他 |
-|---|---|---|---|---|
-| 激进版 | 高风险高收益 | 10% | 50%+ | 剩余均分 |
-| 均衡版 | 风险收益平衡 | 20% | 40% | 剩余均分 |
-| 保守版 | 低风险稳健 | 40% | 30% | 剩余均分 |
-
-对每个配比执行：
-```bash
-uv run hiveflow targets import --strategy "激进版" --mode replace
-uv run hiveflow backtest run --strategy "激进版"
-```
-
-### Step 4：比较回测结果
-
-```bash
-uv run hiveflow backtest list --output json
-```
-
-展示对比表格（只看最近三次回测）：
-
-| 策略 | 总收益 | 最大回撤 | 夏普比率 |
-|---|---|---|---|
-| 激进版 | ... | ... | ... |
-| 均衡版 | ... | ... | ... |
-| 保守版 | ... | ... | ... |
-
-### Step 5：给出推荐并说明理由
-
-**投资理论框架（按优先级应用）：**
-
-1. **回撤优先**：最大回撤是第一过滤条件。加密市场暴跌频繁，-30% 以下的配比要明确警示风险。优先推荐最大回撤控制在 -25% 以内的配比。
-
-2. **风险调整收益（夏普比率）**：在同等回撤约束下，优先选夏普更高的。夏普 > 1.0 为优秀，0.5~1.0 为可接受，< 0.5 需谨慎。
-
-3. **USDT 弹药原则**：保留 USDT 不是保守，是保留机会。市场突然下跌时，手头有 USDT 才能低位补仓。
-
-4. **分散但不稀释**：3-5 个资产足够。超过 5 个资产时，权重过小的资产（< 5%）等于没有。
-
-**推荐格式示例：**
-```
-推荐：均衡版（BTC 40% ETH 25% SOL 15% USDT 20%）
-
-理由：
-- 最大回撤 -18%，低于激进版的 -28%，风险可控
-- 夏普比率 1.35，是三个配比中最高的
-- USDT 20% 保留足够弹药
-
-激进版回撤过大（-28%），在加密市场波动环境下不建议。
-保守版总收益明显低，当前持仓中高波动资产较多时意义不大。
-```
-
-**帮助用户了解自己的风险偏好：**
-每次分析结束后问一句：
-> "这个配比的最大回撤 -18% 你能接受吗？如果市值一个月内从 10 万跌到 8.2 万，你会慌吗？"
-
-**其他策略科普（仅教育）：**
-- 动量策略：过去表现好的资产持续持有，适合牛市
-- 均值回归：跌多了买，涨多了卖，适合震荡市
-- 网格交易：横盘震荡时效果好，当前系统不执行，可以建议手动在 OKX 设置
-- 合约/杠杆：放大收益也放大风险，不在本系统范围内，高风险谨慎参与
-
-### Step 6：用户选定配比后设置目标
-
-```bash
+uv run hiveflow backtest quant-run --strategy <StrategyName>
+uv run hiveflow backtest compare <id1> <id2> ... --output json
 uv run hiveflow targets set-from-backtest <backtest_id>
-```
-
-### Step 7：预览调仓建议
-
-```bash
+uv run hiveflow positions drift --output json
 uv run hiveflow rebalance preview --output json
+uv run hiveflow trade execute --orders '...'
 ```
 
-分析 `suggestions` 数组，生成人类可读的调仓报告：
-- HIGH priority：需要立即处理
-- MEDIUM：建议处理
-- LOW：可选
+## Guardrails
 
-### Step 8：生成订单并确认执行
+- 不直接跳到 `trade execute`
+- 不在数据不足时硬做结论
+- 不因为用户说“调仓”就默认应该马上动仓
+- 始终把“分析结论”和“已执行结果”区分开
 
-将调仓建议转换为订单列表，展示给用户：
+## Output Style
 
-```
-调仓计划：
-  买入 ETH  约 500 USDT（当前 25% → 目标 30%）
-  卖出 SOL  约 200 USDT（当前 20% → 目标 15%）
-  保留 BTC（偏差 < 2%，无需调整）
-
-总交易量：约 700 USDT
-预估手续费：~0.1%（约 0.7 USDT）
-
-确认执行？
-```
-
-用户确认后：
-```bash
-uv run hiveflow trade execute --orders '[{"symbol":"ETH","action":"buy","usdt":500},{"symbol":"SOL","action":"sell","usdt":200}]'
-```
-
-### Step 9：执行后汇报
-
-展示执行结果，记录本次调仓决策。
-
-## 注意事项
-
-- 执行前确保 `.env` 中已配置 Trade API Key（`HIVEFLOW_OKX_TRADE_API_KEY` 等）
-- 网格持仓中的资产不计入调仓计算，请从 `positions list` 的 `grid` 区块确认
-- 市价单会产生滑点，实际成交价格可能与预览略有偏差
-- 若执行部分失败，系统会给出成功的订单 ID，请在 OKX 手动确认账户状态
+- 先说明当前处于哪个阶段
+- 再给出下一步最合适的 Skill 或命令
+- 需要升级到执行时，明确提示用户确认

@@ -1,76 +1,116 @@
 ---
 name: hiveflow-daily-check
-description: Daily 5-minute portfolio health check for HiveFlow users. Syncs OKX data, checks risk signals, interprets drawdown trends, and gives a one-sentence verdict. Use when user says "check my portfolio", "今日检查", "daily check", or any similar daily review request.
+description: Use when a HiveFlow user wants a daily portfolio review, health check, or quick risk status update before deciding whether further analysis or rebalancing is needed.
 ---
 
-# HiveFlow 每日持仓健康检查
+# HiveFlow Daily Check
 
-每天 5 分钟，三步完成：同步数据 → 风险检查 → 给出结论。
+用于每日例行检查。目标不是直接下单，而是回答三件事：今天是否安全、哪些仓位需要关注、是否值得进入下一步调仓分析。
 
-## 执行步骤
+## When to Use
 
-### Step 1：同步数据
+- 用户说“daily check”、“今日检查”、“check my portfolio”、“今天要不要动”
+- 用户想先看整体状态，再决定是否继续调仓
+- 用户需要一个简短、结构化、可解释的结论
+- 不适合：用户已经明确要做策略切换、深度回测比较或直接执行调仓
+
+## Inputs
+
+优先按下面顺序取数：
 
 ```bash
 uv run hiveflow sync
-```
-
-同步当天持仓和价格。若已在当天同步过，可跳过。
-
-### Step 2：检查风险
-
-```bash
-uv run hiveflow check --output json
+uv run hiveflow context decision --output json
 uv run hiveflow positions list --output json
 ```
 
-### Step 3：解读并给出结论
+若需要多窗口分歧、来源新鲜度、信号全量细节，再补充：
 
-收到 JSON 后，按以下框架分析：
-
-**风险信号解读：**
-- 看 `signals` 数组中每个资产的 `max_drawdown_7d_pct`
-- 不要只看单日数字——结合趋势：连续下跌比单日大跌更危险
-- DANGER（< -20%）：必须提及，建议用户认真考虑是否需要减仓
-- WARNING（-10% ~ -20%）：提醒关注，不必恐慌
-- NORMAL（> -10%）：简单带过即可
-
-**USDT 弹药检查：**
-- 从 `positions list` 的 `free` 数组中找到 USDT 的 `weight`
-- weight < 0.10（10%）：标注"弹药不足"，建议考虑增加稳定币缓冲
-- weight > 0.40（40%）：可以提示"弹药充足，可考虑择机建仓"
-
-**结论规则：**
-- 无任何告警：一句话说安全，不需要废话
-- 有 WARNING：点名资产，提示关注
-- 有 DANGER：明确说危险，建议启动 portfolio-advisor 做深度分析
-
-**何时建议升级到 portfolio-advisor：**
-- 任意资产出现 DANGER 信号
-- 用户主动询问"该怎么调仓"
-- USDT 占比极低（< 5%）且有多个 WARNING
-
-## 输出格式
-
-简洁明了，不超过 10 行。示例：
-
-```
-今日检查完成 2026-03-16
-
-[结论] ✅ 安全，无需操作
-
-持仓：BTC 44.6%  USDT 54.8%  弹药充足
-风险：BTC -3.2% 正常  ETH -8.1% 正常
+```bash
+uv run hiveflow context daily --output json
 ```
 
-或：
+如果 `context decision` 或 `context daily` 失败，明确说明失败原因，不要自行补脑，也不要输出看起来完整但其实缺数据的结论。
 
+## Decision Rules
+
+按以下顺序判断：
+
+1. 看上下文可用性
+- `context decision` 若严格失败，先报告“上下文不足”
+- 需要深度证据时，再看 `context daily` 的来源时效与窗口执行结果
+- 数据不完整时，结论只能是“需要补数据”或“只做有限观察”
+
+2. 看风险与异常
+- 优先关注 `check`
+- 再看 `signal` 中的风险、趋势恶化、质量异常
+- 再看 `positions drift`
+
+3. 看是否需要进入调仓分析
+- 若风险正常、信号稳定、偏离不大：维持观察
+- 若风险抬升但还不明确：建议关注，不直接调仓
+- 若高风险或偏离明显：进入 `rebalance preview`
+
+## Escalation
+
+在以下情况下，继续调用：
+
+```bash
+uv run hiveflow rebalance preview --output json
 ```
-今日检查完成 2026-03-16
 
-[结论] ⚠️ 建议关注 ETH — 近7日回撤 -14.2%
+- `positions drift` 中存在明显偏离
+- 风险高且持仓集中
+- 用户明确追问“那我该怎么动”
+- 需要把“观察”升级为“候选动作”
 
-持仓：BTC 45%  ETH 30%  USDT 10%  ⚠️ 弹药偏低
-风险：BTC -3.2% 正常  ETH -14.2% 注意  SOL -5.1% 正常
-建议：观察 ETH 走势，若继续下跌考虑启动 portfolio-advisor。
+如果只是普通波动，不要过度升级。
+
+## Output Contract
+
+输出尽量简短，优先结构化表达，建议包含：
+
+```json
+{
+  "status": "success",
+  "decision": {
+    "verdict": "stable|watch|action_needed|context_insufficient",
+    "recommended_next_step": "hold|review_rebalance|reduce_risk|sync_first"
+  },
+  "evidence": {
+    "risk_summary": [],
+    "signal_summary": [],
+    "drift_summary": []
+  },
+  "actions": [],
+  "risks": [],
+  "next_command": []
+}
 ```
+
+同时给用户一段 3 到 6 行的人类可读摘要。
+
+## Response Style
+
+- 先给一句结论
+- 再列 2 到 4 个最重要证据
+- 没有异常时，不要制造紧张感
+- 有异常时，指出资产、原因、下一步
+- 不要假装 AI 已经做了交易决定
+
+## Example
+
+```text
+今日结论：watch
+
+- ETH 风险抬升，近端信号转弱
+- 当前总仓位结构可控，但 ETH 偏离目标较明显
+- 建议下一步查看 rebalance preview，不急于直接执行
+```
+
+## Common Mistakes
+
+- 把 daily check 变成完整调仓报告
+- 只看一个信号就下结论
+- 在上下文不足时硬给明确建议
+- 跳过 `context decision` / `context daily`，只凭零散命令拼凑判断

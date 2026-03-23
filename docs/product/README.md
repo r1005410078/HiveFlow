@@ -14,6 +14,7 @@
 4. `mvp-requirements.md`
 5. `product-design-plan.md`
 6. `strategy-taxonomy.md`
+7. `../skills/README.md`
 
 ## 每份文档是做什么的
 
@@ -55,6 +56,19 @@
 - 它和其他工具的区别是什么
 
 这份文档决定产品边界和对外表达方式。
+
+### `../skills/README.md`
+
+这是当前 AI/Skill 工作流总览。
+
+主要回答：
+
+- 当前有哪些 Skill
+- 这些 Skill 的触发条件是什么
+- 它们之间如何路由
+- Agent 应该怎样使用 HiveFlow CLI
+
+如果你想快速理解“AI 层现在放在哪里”，这份文档最直接。
 
 ### `mvp-requirements.md`
 

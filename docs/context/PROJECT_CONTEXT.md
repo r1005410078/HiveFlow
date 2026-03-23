@@ -32,13 +32,21 @@
 - **不做推荐输出**（不推荐风格、不推荐买卖动作），只输出可追溯数据
 - **不输出部分降级结果作为决策上下文**（严格模式下缺失即失败）
 
-### 智能层（Agent/Skill 做的事）
+### 智能工作流层（Skill 做的事）
 
 - 分析 HiveFlow 输出的上下文（持仓、风险、回测结果、策略信号）
 - 做投资判断（该不该调仓、选哪个策略、风险是否可接受）
-- 调用 CLI 工具完成动作
+- 把判断组织成可复用工作流（Skill）
 
-> 术语统一：系统做“风险数据输出”，Agent 做“风险分析与决策”。
+### 外部运行时（Agent Runtime 做的事）
+
+- 读取用户问题
+- 加载和执行 Skill
+- 调用 HiveFlow CLI
+- 读取 JSON 输出并组织回复
+- 在需要时请求用户确认
+
+> 术语统一：系统做“风险数据输出”，Skill 做“决策流程编排”，Agent Runtime 做“外部执行与交互”。
 
 ### 分工原则
 
@@ -46,8 +54,24 @@
 |---|---|---|
 | HiveFlow CLI | 数据 + 工具（确定性）| Python CLI，可测试 |
 | 量化策略 | 数学工具，输出信号/权重 | `BaseStrategy` 子类 |
-| Skill | 分析逻辑 + 投资判断 | Markdown 提示词 |
-| Agent | 执行工作流，调用 CLI | Claude / 其他 AI |
+| Skill | 决策流程 + 判断框架 | Markdown 工作流 |
+| Agent Runtime | 执行 Skill，调用 CLI，与用户交互 | Codex / Claude / 其他 AI 平台 |
+
+### 项目内 / 项目外边界
+
+- 项目内：`HiveFlow` + `Skill`
+- 项目外：`Agent Runtime`
+
+结论：
+- 你不需要自己实现 Agent
+- 你需要维护的是稳定的 Tool Layer 和 Workflow Layer
+
+### 当前推荐的智能工作流
+
+- `hiveflow-daily-check`：先做每日检查，判断是否需要进一步动作
+- `hiveflow-strategy-selector`：需要时比较策略、决定是否切换
+- `hiveflow-rebalance-executor`：在目标明确后生成候选动作并等待确认
+- `hiveflow-portfolio-advisor`：作为总控 Skill，负责在多阶段任务中调度上述子 Skill
 
 ### 判断一个功能是否该加的问题
 

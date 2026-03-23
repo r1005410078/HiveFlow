@@ -101,6 +101,12 @@
 - 目标：固化 `context daily` / `window_audit` 契约，提升 Agent/前端消费稳定性，不改变系统边界。
 - 规划文档：`docs/superpowers/plans/2026-03-20-m11-signal-contractization-plan.md`
 
+## M12：提升真实投资有效性的规则与评价闭环（规划中）
+
+- 决策：在 M11 完成后，新增独立里程碑 M12，聚焦“更接近真实投资使用”的规则层与评价层增强。
+- 目标：补齐调仓执行门槛、策略切换规则、回测实盘化指标、组合级风险约束，并逐步引入策略健康度、参数稳定性和决策复盘。
+- 规划文档：`docs/superpowers/plans/2026-03-23-investment-effectiveness-upgrades-plan.md`
+
 ## 决策规则（防止“抓芝麻”）
 
 - 不新增“看起来很酷但不改变主线结果”的功能
