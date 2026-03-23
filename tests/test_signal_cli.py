@@ -650,4 +650,4 @@ def test_build_signal_snapshot_raises_on_unknown_symbol(tmp_path, monkeypatch) -
     from hiveflow.application.signals import build_signal_snapshot, SignalPipelineError
     with pytest.raises(SignalPipelineError) as exc_info:
         build_signal_snapshot("XYZ_NOT_EXIST")
-    assert "symbol_not_found" in str(exc_info.value.details)
+    assert exc_info.value.details.get("reason") == "symbol_not_found"

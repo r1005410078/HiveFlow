@@ -1075,10 +1075,10 @@ def context_daily_command(
 
     windows_payload: dict[str, dict] = {}
     window_failures: list[dict] = []
+    win_leader_sym = _autodetect_symbol(app_settings)
     for size in window_sizes:
         window_key = f"w{size}"
         try:
-            win_leader_sym = _autodetect_symbol(app_settings)
             win_signal = build_signal_snapshot(win_leader_sym, settings=app_settings, window_bars=size)
         except SignalPipelineError as exc:
             failure = {
