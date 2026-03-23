@@ -982,3 +982,41 @@ def build_portfolio_signals(
         "signals": portfolio_sigs,
         "data_window": snapshot["data_window"],
     }
+
+
+def build_signal_category_multi(
+    category: str,
+    settings: Settings | None = None,
+) -> dict:
+    """对所有活跃持仓（market_value > 0.01）分别计算指定分类的信号。
+
+    无持仓时退化为 MarketBar 中全部非 USDT symbol。
+    返回格式：{"category": ..., "symbols": [...], "signals_by_symbol": {...}}
+    """
+    if category not in SIGNALS_BY_CATEGORY:
+        raise _fail(
+            context=f"signal.{category}",
+            message=f"未知信号分类 {category!r}。",
+            details={"valid_categories": list(SIGNALS_BY_CATEGORY.keys())},
+        )
+    s = settings or Settings()
+    close_df, _, _, _, positions = _load_market_context(s)
+
+    active = [
+        p.symbol.upper()
+        for p in positions
+        if (p.market_value or 0.0) > 0.01
+    ]
+    if not active:
+        active = sorted(col for col in close_df.columns if col != "USDT")
+
+    signals_by_symbol: dict[str, list[dict]] = {}
+    for sym in active:
+        snapshot = build_signal_snapshot(sym, settings=s)
+        signals_by_symbol[sym] = [sg for sg in snapshot["signals"] if sg["category"] == category]
+
+    return {
+        "category": category,
+        "symbols": active,
+        "signals_by_symbol": signals_by_symbol,
+    }

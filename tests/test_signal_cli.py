@@ -671,6 +671,21 @@ def test_build_signal_category_accepts_explicit_symbol(tmp_path, monkeypatch) ->
     assert all(s["symbol"] == "ETH" for s in payload["signals"])
 
 
+def test_build_signal_category_multi_returns_all_positions(tmp_path, monkeypatch) -> None:
+    """无 symbol 时应对所有持仓各计算一次分类信号。"""
+    _seed_market_and_positions(tmp_path, monkeypatch)
+    from hiveflow.application.signals import build_signal_category_multi
+    payload = build_signal_category_multi("trend")
+    assert payload["category"] == "trend"
+    assert set(payload["symbols"]) == {"BTC", "ETH", "SOL"}
+    assert set(payload["signals_by_symbol"].keys()) == {"BTC", "ETH", "SOL"}
+    for sym in ("BTC", "ETH", "SOL"):
+        sigs = payload["signals_by_symbol"][sym]
+        assert len(sigs) == 6
+        assert all(s["category"] == "trend" for s in sigs)
+        assert all(s["symbol"] == sym for s in sigs)
+
+
 def test_build_portfolio_signals_returns_7_portfolio_signals(tmp_path, monkeypatch) -> None:
     _seed_market_and_positions(tmp_path, monkeypatch)
     from hiveflow.application.signals import build_portfolio_signals
