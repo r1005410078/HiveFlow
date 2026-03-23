@@ -50,7 +50,7 @@ def test_context_daily_json_success_with_latest_snapshots(tmp_path, monkeypatch)
     _seed_market_and_positions(tmp_path, monkeypatch)
     runner = CliRunner()
 
-    signal_result = runner.invoke(app, ["signal", "snapshot", "--output", "json"])
+    signal_result = runner.invoke(app, ["signal", "snapshot", "--symbol", "BTC", "--output", "json"])
     assert signal_result.exit_code == 0, signal_result.stdout
     style_result = runner.invoke(app, ["style", "backtest-rank", "--output", "json"])
     assert style_result.exit_code == 0, style_result.stdout
@@ -118,7 +118,7 @@ def test_context_daily_supports_json_schema() -> None:
 def test_context_daily_json_supports_envelope(tmp_path, monkeypatch) -> None:
     _seed_market_and_positions(tmp_path, monkeypatch)
     runner = CliRunner()
-    assert runner.invoke(app, ["signal", "snapshot", "--output", "json"]).exit_code == 0
+    assert runner.invoke(app, ["signal", "snapshot", "--symbol", "BTC", "--output", "json"]).exit_code == 0
     assert runner.invoke(app, ["style", "backtest-rank", "--output", "json"]).exit_code == 0
 
     result = runner.invoke(app, ["context", "daily", "--output", "json", "--envelope"])
@@ -135,7 +135,7 @@ def test_context_daily_json_supports_envelope(tmp_path, monkeypatch) -> None:
 def test_context_daily_fresh_fails_when_latest_snapshot_is_stale(tmp_path, monkeypatch) -> None:
     _seed_market_and_positions(tmp_path, monkeypatch)
     runner = CliRunner()
-    assert runner.invoke(app, ["signal", "snapshot", "--output", "json"]).exit_code == 0
+    assert runner.invoke(app, ["signal", "snapshot", "--symbol", "BTC", "--output", "json"]).exit_code == 0
     assert runner.invoke(app, ["style", "backtest-rank", "--output", "json"]).exit_code == 0
 
     stale_at = datetime(2025, 1, 1, tzinfo=timezone.utc)
@@ -175,7 +175,7 @@ def test_context_daily_fresh_fails_when_latest_snapshot_is_stale(tmp_path, monke
 def test_context_daily_fresh_succeeds_with_relaxed_max_age(tmp_path, monkeypatch) -> None:
     _seed_market_and_positions(tmp_path, monkeypatch)
     runner = CliRunner()
-    assert runner.invoke(app, ["signal", "snapshot", "--output", "json"]).exit_code == 0
+    assert runner.invoke(app, ["signal", "snapshot", "--symbol", "BTC", "--output", "json"]).exit_code == 0
     assert runner.invoke(app, ["style", "backtest-rank", "--output", "json"]).exit_code == 0
 
     result = runner.invoke(
@@ -204,7 +204,7 @@ def test_context_daily_strict_window_partial_returns_success_with_failures(
 ) -> None:
     _seed_market_and_positions(tmp_path, monkeypatch)
     runner = CliRunner()
-    assert runner.invoke(app, ["signal", "snapshot", "--output", "json"]).exit_code == 0
+    assert runner.invoke(app, ["signal", "snapshot", "--symbol", "BTC", "--output", "json"]).exit_code == 0
     assert runner.invoke(app, ["style", "backtest-rank", "--output", "json"]).exit_code == 0
 
     original = __import__("hiveflow.cli", fromlist=["run_style_backtest_rank"]).run_style_backtest_rank
@@ -260,7 +260,7 @@ def test_context_daily_strict_window_all_fails_when_any_window_failed(
 ) -> None:
     _seed_market_and_positions(tmp_path, monkeypatch)
     runner = CliRunner()
-    assert runner.invoke(app, ["signal", "snapshot", "--output", "json"]).exit_code == 0
+    assert runner.invoke(app, ["signal", "snapshot", "--symbol", "BTC", "--output", "json"]).exit_code == 0
     assert runner.invoke(app, ["style", "backtest-rank", "--output", "json"]).exit_code == 0
 
     original = __import__("hiveflow.cli", fromlist=["run_style_backtest_rank"]).run_style_backtest_rank
@@ -315,7 +315,7 @@ def test_context_daily_strict_window_all_fails_when_any_window_failed(
 def test_context_daily_supports_custom_windows(tmp_path, monkeypatch) -> None:
     _seed_market_and_positions(tmp_path, monkeypatch)
     runner = CliRunner()
-    assert runner.invoke(app, ["signal", "snapshot", "--output", "json"]).exit_code == 0
+    assert runner.invoke(app, ["signal", "snapshot", "--symbol", "BTC", "--output", "json"]).exit_code == 0
     assert runner.invoke(app, ["style", "backtest-rank", "--output", "json"]).exit_code == 0
 
     result = runner.invoke(
@@ -374,7 +374,7 @@ def test_signal_snapshot_json_returns_strict_failure_and_writes_system_log(
     monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
     runner = CliRunner()
 
-    result = runner.invoke(app, ["signal", "snapshot", "--output", "json"])
+    result = runner.invoke(app, ["signal", "snapshot", "--symbol", "BTC", "--output", "json"])
     assert result.exit_code == 1
 
     payload = json.loads(result.stdout)
@@ -458,7 +458,7 @@ def test_signal_snapshot_json_success_with_seed_data(tmp_path, monkeypatch) -> N
     _seed_market_and_positions(tmp_path, monkeypatch)
     runner = CliRunner()
 
-    result = runner.invoke(app, ["signal", "snapshot", "--output", "json"])
+    result = runner.invoke(app, ["signal", "snapshot", "--symbol", "BTC", "--output", "json"])
     assert result.exit_code == 0, result.stdout
 
     payload = json.loads(result.stdout)
@@ -496,7 +496,8 @@ def test_signal_trend_json_outputs_only_trend_category(tmp_path, monkeypatch) ->
     _seed_market_and_positions(tmp_path, monkeypatch)
     runner = CliRunner()
 
-    result = runner.invoke(app, ["signal", "trend", "--output", "json"])
+    # 指定 --symbol 时返回单资产格式
+    result = runner.invoke(app, ["signal", "trend", "--symbol", "BTC", "--output", "json"])
     assert result.exit_code == 0, result.stdout
 
     payload = json.loads(result.stdout)
@@ -574,7 +575,7 @@ def test_signal_snapshot_history_and_show_json(tmp_path, monkeypatch) -> None:
     _seed_market_and_positions(tmp_path, monkeypatch)
     runner = CliRunner()
 
-    snapshot_result = runner.invoke(app, ["signal", "snapshot", "--output", "json"])
+    snapshot_result = runner.invoke(app, ["signal", "snapshot", "--symbol", "BTC", "--output", "json"])
     assert snapshot_result.exit_code == 0, snapshot_result.stdout
 
     history_result = runner.invoke(app, ["signal", "history", "--output", "json"])
@@ -699,3 +700,71 @@ def test_build_portfolio_signals_returns_7_portfolio_signals(tmp_path, monkeypat
         "data_freshness", "data_completeness", "signal_stability", "confidence_score",
     }
     assert {s["signal_key"] for s in payload["signals"]} == expected_keys
+
+
+# ── Task 6 tests ─────────────────────────────────────────────────────────────
+
+def test_signal_snapshot_with_explicit_symbol_succeeds(tmp_path, monkeypatch) -> None:
+    _seed_market_and_positions(tmp_path, monkeypatch)
+    result = CliRunner().invoke(app, ["signal", "snapshot", "--symbol", "BTC", "--output", "json"])
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["symbol"] == "BTC"
+    assert len(payload["signals"]) == 24
+
+
+def test_signal_snapshot_without_symbol_fails(tmp_path, monkeypatch) -> None:
+    _seed_market_and_positions(tmp_path, monkeypatch)
+    result = CliRunner().invoke(app, ["signal", "snapshot", "--output", "json"])
+    # typer 对必填 Option 缺失返回 exit_code=2
+    assert result.exit_code == 2
+
+
+# ── Task 7 tests ─────────────────────────────────────────────────────────────
+
+def test_signal_trend_with_symbol_outputs_single_asset(tmp_path, monkeypatch) -> None:
+    _seed_market_and_positions(tmp_path, monkeypatch)
+    result = CliRunner().invoke(app, ["signal", "trend", "--symbol", "ETH", "--output", "json"])
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["symbol"] == "ETH"
+    assert payload["category"] == "trend"
+    assert len(payload["signals"]) == 6
+    assert all(s["symbol"] == "ETH" for s in payload["signals"])
+
+
+def test_signal_trend_without_symbol_outputs_all_positions(tmp_path, monkeypatch) -> None:
+    _seed_market_and_positions(tmp_path, monkeypatch)
+    result = CliRunner().invoke(app, ["signal", "trend", "--output", "json"])
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["category"] == "trend"
+    assert set(payload["symbols"]) == {"BTC", "ETH", "SOL"}
+    for sym in ("BTC", "ETH", "SOL"):
+        assert len(payload["signals_by_symbol"][sym]) == 6
+
+
+# ── Task 8 tests ─────────────────────────────────────────────────────────────
+
+def test_signal_portfolio_json_outputs_7_portfolio_signals(tmp_path, monkeypatch) -> None:
+    _seed_market_and_positions(tmp_path, monkeypatch)
+    result = CliRunner().invoke(app, ["signal", "portfolio", "--output", "json"])
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["category"] == "portfolio"
+    assert "as_of" in payload
+    assert len(payload["signals"]) == 7
+    assert all(s["symbol"] == "PORTFOLIO" for s in payload["signals"])
+    expected_keys = {
+        "concentration_risk", "correlation_spike", "local_breadth_proxy",
+        "data_freshness", "data_completeness", "signal_stability", "confidence_score",
+    }
+    assert {s["signal_key"] for s in payload["signals"]} == expected_keys
+
+
+def test_signal_portfolio_pretty_prints_table(tmp_path, monkeypatch) -> None:
+    _seed_market_and_positions(tmp_path, monkeypatch)
+    result = CliRunner().invoke(app, ["signal", "portfolio"])
+    assert result.exit_code == 0, result.stdout
+    assert "信号键" in result.stdout
+    assert "状态" in result.stdout

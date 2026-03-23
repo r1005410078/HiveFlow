@@ -19,9 +19,11 @@ from hiveflow.application.error_protocol import ErrorCode, build_error_payload, 
 from hiveflow.application.signals import (
     SIGNALS_BY_CATEGORY,
     SignalPipelineError,
-    _autodetect_symbol,
+    build_portfolio_signals,
     build_signal_category,
+    build_signal_category_multi,
     build_signal_snapshot,
+    pick_leader_symbol,
     signal_keys_of,
 )
 from hiveflow.application.system_logs import record_system_log
@@ -492,11 +494,15 @@ def _emit_strict_failure(
 
 @signal_app.command("trend")
 def signal_trend_command(
+    symbol: str | None = typer.Option(None, "--symbol", "-s", help="目标资产 symbol；不指定则输出所有持仓"),
     output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
 ) -> None:
     """输出趋势类信号。"""
     try:
-        payload = build_signal_category("trend", _autodetect_symbol(Settings()), settings=Settings())
+        if symbol is not None:
+            payload = build_signal_category("trend", symbol.upper(), settings=Settings())
+        else:
+            payload = build_signal_category_multi("trend", settings=Settings())
     except SignalPipelineError as exc:
         _emit_strict_failure(
             code=ErrorCode.SIGNAL_REQUIRED_MISSING,
@@ -512,28 +518,44 @@ def signal_trend_command(
         typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
         return
 
-    table = Table(title="趋势信号", box=box.SIMPLE)
-    table.add_column("信号键")
-    table.add_column("状态")
-    table.add_column("数值", justify="right")
-    table.add_column("触发")
-    for item in payload["signals"]:
-        table.add_row(
-            _signal_key_label(item["signal_key"]),
-            _signal_state_label(item["category"], item["state"]),
-            str(item["value"]),
-            "✓" if item["triggered"] else "-",
-        )
+    if "signals_by_symbol" in payload:
+        table = Table("资产", "信号键", "状态", "数值", "触发", title="趋势信号（所有持仓）", box=box.SIMPLE)
+        for sym in payload["symbols"]:
+            for item in payload["signals_by_symbol"][sym]:
+                table.add_row(
+                    sym,
+                    _signal_key_label(item["signal_key"]),
+                    _signal_state_label(item["category"], item["state"]),
+                    str(item["value"]),
+                    "✓" if item["triggered"] else "-",
+                )
+    else:
+        table = Table(title="趋势信号", box=box.SIMPLE)
+        table.add_column("信号键")
+        table.add_column("状态")
+        table.add_column("数值", justify="right")
+        table.add_column("触发")
+        for item in payload["signals"]:
+            table.add_row(
+                _signal_key_label(item["signal_key"]),
+                _signal_state_label(item["category"], item["state"]),
+                str(item["value"]),
+                "✓" if item["triggered"] else "-",
+            )
     console.print(table)
 
 
 @signal_app.command("risk")
 def signal_risk_command(
+    symbol: str | None = typer.Option(None, "--symbol", "-s", help="目标资产 symbol；不指定则输出所有持仓"),
     output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
 ) -> None:
     """输出风险类信号。"""
     try:
-        payload = build_signal_category("risk", _autodetect_symbol(Settings()), settings=Settings())
+        if symbol is not None:
+            payload = build_signal_category("risk", symbol.upper(), settings=Settings())
+        else:
+            payload = build_signal_category_multi("risk", settings=Settings())
     except SignalPipelineError as exc:
         _emit_strict_failure(
             code=ErrorCode.SIGNAL_REQUIRED_MISSING,
@@ -549,28 +571,44 @@ def signal_risk_command(
         typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
         return
 
-    table = Table(title="风险信号", box=box.SIMPLE)
-    table.add_column("信号键")
-    table.add_column("状态")
-    table.add_column("数值", justify="right")
-    table.add_column("触发")
-    for item in payload["signals"]:
-        table.add_row(
-            _signal_key_label(item["signal_key"]),
-            _signal_state_label(item["category"], item["state"]),
-            str(item["value"]),
-            "✓" if item["triggered"] else "-",
-        )
+    if "signals_by_symbol" in payload:
+        table = Table("资产", "信号键", "状态", "数值", "触发", title="风险信号（所有持仓）", box=box.SIMPLE)
+        for sym in payload["symbols"]:
+            for item in payload["signals_by_symbol"][sym]:
+                table.add_row(
+                    sym,
+                    _signal_key_label(item["signal_key"]),
+                    _signal_state_label(item["category"], item["state"]),
+                    str(item["value"]),
+                    "✓" if item["triggered"] else "-",
+                )
+    else:
+        table = Table(title="风险信号", box=box.SIMPLE)
+        table.add_column("信号键")
+        table.add_column("状态")
+        table.add_column("数值", justify="right")
+        table.add_column("触发")
+        for item in payload["signals"]:
+            table.add_row(
+                _signal_key_label(item["signal_key"]),
+                _signal_state_label(item["category"], item["state"]),
+                str(item["value"]),
+                "✓" if item["triggered"] else "-",
+            )
     console.print(table)
 
 
 @signal_app.command("confirm")
 def signal_confirm_command(
+    symbol: str | None = typer.Option(None, "--symbol", "-s", help="目标资产 symbol；不指定则输出所有持仓"),
     output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
 ) -> None:
     """输出确认类信号。"""
     try:
-        payload = build_signal_category("confirm", _autodetect_symbol(Settings()), settings=Settings())
+        if symbol is not None:
+            payload = build_signal_category("confirm", symbol.upper(), settings=Settings())
+        else:
+            payload = build_signal_category_multi("confirm", settings=Settings())
     except SignalPipelineError as exc:
         _emit_strict_failure(
             code=ErrorCode.SIGNAL_REQUIRED_MISSING,
@@ -586,28 +624,44 @@ def signal_confirm_command(
         typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
         return
 
-    table = Table(title="确认信号", box=box.SIMPLE)
-    table.add_column("信号键")
-    table.add_column("状态")
-    table.add_column("数值", justify="right")
-    table.add_column("触发")
-    for item in payload["signals"]:
-        table.add_row(
-            _signal_key_label(item["signal_key"]),
-            _signal_state_label(item["category"], item["state"]),
-            str(item["value"]),
-            "✓" if item["triggered"] else "-",
-        )
+    if "signals_by_symbol" in payload:
+        table = Table("资产", "信号键", "状态", "数值", "触发", title="确认信号（所有持仓）", box=box.SIMPLE)
+        for sym in payload["symbols"]:
+            for item in payload["signals_by_symbol"][sym]:
+                table.add_row(
+                    sym,
+                    _signal_key_label(item["signal_key"]),
+                    _signal_state_label(item["category"], item["state"]),
+                    str(item["value"]),
+                    "✓" if item["triggered"] else "-",
+                )
+    else:
+        table = Table(title="确认信号", box=box.SIMPLE)
+        table.add_column("信号键")
+        table.add_column("状态")
+        table.add_column("数值", justify="right")
+        table.add_column("触发")
+        for item in payload["signals"]:
+            table.add_row(
+                _signal_key_label(item["signal_key"]),
+                _signal_state_label(item["category"], item["state"]),
+                str(item["value"]),
+                "✓" if item["triggered"] else "-",
+            )
     console.print(table)
 
 
 @signal_app.command("regime")
 def signal_regime_command(
+    symbol: str | None = typer.Option(None, "--symbol", "-s", help="目标资产 symbol；不指定则输出所有持仓"),
     output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
 ) -> None:
     """输出市场状态类信号。"""
     try:
-        payload = build_signal_category("regime", _autodetect_symbol(Settings()), settings=Settings())
+        if symbol is not None:
+            payload = build_signal_category("regime", symbol.upper(), settings=Settings())
+        else:
+            payload = build_signal_category_multi("regime", settings=Settings())
     except SignalPipelineError as exc:
         _emit_strict_failure(
             code=ErrorCode.SIGNAL_REQUIRED_MISSING,
@@ -623,28 +677,44 @@ def signal_regime_command(
         typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
         return
 
-    table = Table(title="市场状态信号", box=box.SIMPLE)
-    table.add_column("信号键")
-    table.add_column("状态")
-    table.add_column("数值", justify="right")
-    table.add_column("触发")
-    for item in payload["signals"]:
-        table.add_row(
-            _signal_key_label(item["signal_key"]),
-            _signal_state_label(item["category"], item["state"]),
-            str(item["value"]),
-            "✓" if item["triggered"] else "-",
-        )
+    if "signals_by_symbol" in payload:
+        table = Table("资产", "信号键", "状态", "数值", "触发", title="市场状态信号（所有持仓）", box=box.SIMPLE)
+        for sym in payload["symbols"]:
+            for item in payload["signals_by_symbol"][sym]:
+                table.add_row(
+                    sym,
+                    _signal_key_label(item["signal_key"]),
+                    _signal_state_label(item["category"], item["state"]),
+                    str(item["value"]),
+                    "✓" if item["triggered"] else "-",
+                )
+    else:
+        table = Table(title="市场状态信号", box=box.SIMPLE)
+        table.add_column("信号键")
+        table.add_column("状态")
+        table.add_column("数值", justify="right")
+        table.add_column("触发")
+        for item in payload["signals"]:
+            table.add_row(
+                _signal_key_label(item["signal_key"]),
+                _signal_state_label(item["category"], item["state"]),
+                str(item["value"]),
+                "✓" if item["triggered"] else "-",
+            )
     console.print(table)
 
 
 @signal_app.command("quality")
 def signal_quality_command(
+    symbol: str | None = typer.Option(None, "--symbol", "-s", help="目标资产 symbol；不指定则输出所有持仓"),
     output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
 ) -> None:
     """输出质量类信号。"""
     try:
-        payload = build_signal_category("quality", _autodetect_symbol(Settings()), settings=Settings())
+        if symbol is not None:
+            payload = build_signal_category("quality", symbol.upper(), settings=Settings())
+        else:
+            payload = build_signal_category_multi("quality", settings=Settings())
     except SignalPipelineError as exc:
         _emit_strict_failure(
             code=ErrorCode.SIGNAL_REQUIRED_MISSING,
@@ -660,14 +730,60 @@ def signal_quality_command(
         typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
         return
 
-    table = Table(title="质量信号", box=box.SIMPLE)
-    table.add_column("信号键")
-    table.add_column("状态")
-    table.add_column("数值", justify="right")
-    table.add_column("触发")
+    if "signals_by_symbol" in payload:
+        table = Table("资产", "信号键", "状态", "数值", "触发", title="质量信号（所有持仓）", box=box.SIMPLE)
+        for sym in payload["symbols"]:
+            for item in payload["signals_by_symbol"][sym]:
+                table.add_row(
+                    sym,
+                    _signal_key_label(item["signal_key"]),
+                    _signal_state_label(item["category"], item["state"]),
+                    str(item["value"]),
+                    "✓" if item["triggered"] else "-",
+                )
+    else:
+        table = Table(title="质量信号", box=box.SIMPLE)
+        table.add_column("信号键")
+        table.add_column("状态")
+        table.add_column("数值", justify="right")
+        table.add_column("触发")
+        for item in payload["signals"]:
+            table.add_row(
+                _signal_key_label(item["signal_key"]),
+                _signal_state_label(item["category"], item["state"]),
+                str(item["value"]),
+                "✓" if item["triggered"] else "-",
+            )
+    console.print(table)
+
+
+@signal_app.command("portfolio")
+def signal_portfolio_command(
+    output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
+) -> None:
+    """输出组合级别信号（集中度、相关性、市场广度、数据质量等）。"""
+    try:
+        payload = build_portfolio_signals(settings=Settings())
+    except SignalPipelineError as exc:
+        _emit_strict_failure(
+            code=ErrorCode.SIGNAL_REQUIRED_MISSING,
+            message=exc.message,
+            details=exc.details,
+            hint=exc.hint,
+            output=output,
+            context=exc.context or "signal.portfolio",
+        )
+        return
+
+    if output == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    table = Table("信号键", "分类", "状态", "数值", "触发", title="组合级别信号", box=box.SIMPLE)
     for item in payload["signals"]:
         table.add_row(
             _signal_key_label(item["signal_key"]),
+            item["category"],
             _signal_state_label(item["category"], item["state"]),
             str(item["value"]),
             "✓" if item["triggered"] else "-",
@@ -677,13 +793,13 @@ def signal_quality_command(
 
 @signal_app.command("snapshot")
 def signal_snapshot_command(
+    symbol: str = typer.Option(..., "--symbol", "-s", help="目标资产 symbol，如 BTC"),
     output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
 ) -> None:
-    """输出聚合信号快照。"""
+    """输出指定资产的聚合信号快照（含组合级信号）。"""
     app_settings = Settings()
     try:
-        leader_sym = _autodetect_symbol(app_settings)
-        payload = build_signal_snapshot(leader_sym, settings=app_settings)
+        payload = build_signal_snapshot(symbol.upper(), settings=app_settings)
     except SignalPipelineError as exc:
         _emit_strict_failure(
             code=ErrorCode.SIGNAL_REQUIRED_MISSING,
@@ -1073,13 +1189,25 @@ def context_daily_command(
         "style_latest": get_style_backtest_result(record_id=style_rows[0].id, settings=app_settings),
     }
 
+    try:
+        leader = pick_leader_symbol(settings=app_settings)
+    except SignalPipelineError as exc:
+        _emit_strict_failure(
+            code=ErrorCode.SIGNAL_REQUIRED_MISSING,
+            message=exc.message,
+            details=exc.details,
+            hint=exc.hint,
+            output=output,
+            context="context.daily",
+        )
+        return
+
     windows_payload: dict[str, dict] = {}
     window_failures: list[dict] = []
-    win_leader_sym = _autodetect_symbol(app_settings)
     for size in window_sizes:
         window_key = f"w{size}"
         try:
-            win_signal = build_signal_snapshot(win_leader_sym, settings=app_settings, window_bars=size)
+            win_signal = build_signal_snapshot(leader, settings=app_settings, window_bars=size)
         except SignalPipelineError as exc:
             failure = {
                 "window_key": window_key,
