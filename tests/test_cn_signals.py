@@ -173,9 +173,10 @@ def test_fetch_pe_pb_akshare_success() -> None:
     import hiveflow.infrastructure.cn_signal_provider as mod
     from hiveflow.infrastructure.cn_signal_provider import CNSignalProvider
 
-    mock_df = pd.DataFrame({"pe": [7.10, 8.32], "pb": [0.65, 0.76]})
+    mock_df_pe = pd.DataFrame({"date": ["2026-03-22", "2026-03-23"], "value": [7.10, 8.32]})
+    mock_df_pb = pd.DataFrame({"date": ["2026-03-22", "2026-03-23"], "value": [0.65, 0.76]})
     mock_ak = MagicMock()
-    mock_ak.stock_a_lg_indicator.return_value = mock_df
+    mock_ak.stock_zh_valuation_baidu.side_effect = [mock_df_pe, mock_df_pb]
     original = mod.akshare
     mod.akshare = mock_ak
     try:
@@ -193,19 +194,19 @@ def test_fetch_pe_pb_akshare_strips_suffix() -> None:
     import hiveflow.infrastructure.cn_signal_provider as mod
     from hiveflow.infrastructure.cn_signal_provider import CNSignalProvider
 
-    mock_df = pd.DataFrame({"pe": [12.5], "pb": [1.2]})
+    mock_df = pd.DataFrame({"date": ["2026-03-23"], "value": [12.5]})
     mock_ak = MagicMock()
-    mock_ak.stock_a_lg_indicator.return_value = mock_df
+    mock_ak.stock_zh_valuation_baidu.return_value = mock_df
     original = mod.akshare
     mod.akshare = mock_ak
     try:
         provider = CNSignalProvider()
         provider._fetch_pe_pb_akshare("600000.SH")
-        call_kwargs = mock_ak.stock_a_lg_indicator.call_args
+        first_call_kwargs = mock_ak.stock_zh_valuation_baidu.call_args_list[0]
     finally:
         mod.akshare = original
     # 确认传入的 symbol 不含后缀
-    passed = call_kwargs[1].get("symbol") or call_kwargs[0][0]
+    passed = first_call_kwargs[1].get("symbol") or first_call_kwargs[0][0]
     assert "." not in passed
     assert passed == "600000"
 
@@ -216,7 +217,7 @@ def test_fetch_pe_pb_akshare_failure() -> None:
     from hiveflow.infrastructure.cn_signal_provider import CNSignalProvider
 
     mock_ak = MagicMock()
-    mock_ak.stock_a_lg_indicator.side_effect = Exception("network error")
+    mock_ak.stock_zh_valuation_baidu.side_effect = Exception("network error")
     original = mod.akshare
     mod.akshare = mock_ak
     try:

@@ -165,15 +165,15 @@ class CNSignalProvider:
             return None, None
 
     def _fetch_pe_pb_akshare(self, symbol: str) -> tuple[float | None, float | None]:
-        """akshare 获取 PE/PB。"""
+        """akshare 获取 PE/PB（百度股市通）。"""
         try:
             _ak = self._get_akshare()
             code = symbol.split(".")[0] if "." in symbol else symbol
-            df = _ak.stock_a_lg_indicator(symbol=code)
-            if df is None or df.empty:
-                return None, None
-            row = df.iloc[-1]
-            return float(row["pe"]), float(row["pb"])
+            df_pe = _ak.stock_zh_valuation_baidu(symbol=code, indicator="市盈率(TTM)", period="近一年")
+            df_pb = _ak.stock_zh_valuation_baidu(symbol=code, indicator="市净率", period="近一年")
+            pe = float(df_pe.iloc[-1]["value"]) if df_pe is not None and not df_pe.empty else None
+            pb = float(df_pb.iloc[-1]["value"]) if df_pb is not None and not df_pb.empty else None
+            return pe, pb
         except Exception as e:
             warnings.warn(f"akshare PE/PB {symbol!r} 获取失败: {e}")
             return None, None
