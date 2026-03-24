@@ -183,3 +183,86 @@ def test_build_cn_market_signal_uses_provider(tmp_path) -> None:
 
         MockProvider.assert_called_once_with(settings=settings)
         instance.fetch_market_signal.assert_called_once()
+
+
+# ------------------------------------------------------------------ #
+# 补全缺失场景
+# ------------------------------------------------------------------ #
+
+def test_build_cn_stock_signal_tencent_fallback(tmp_path) -> None:
+    """akshare fallback 成功后，应用层收到 limit_up_hit=True / limit_down_hit=False。"""
+    from hiveflow.db import create_all_tables
+    settings = _make_settings(tmp_path)
+    create_all_tables(settings)
+
+    with patch(
+        "hiveflow.application.cn_signals.CNSignalProvider"
+    ) as MockProvider:
+        instance = MockProvider.return_value
+        instance.fetch_stock_signal.return_value = {
+            "limit_up_hit": True,
+            "limit_down_hit": False,
+            "pe_ratio": None,
+            "pb_ratio": None,
+            "timestamp": datetime(2026, 3, 24, 7, 0, 0, tzinfo=timezone.utc),
+        }
+
+        from hiveflow.application.cn_signals import build_cn_stock_signal
+        result = build_cn_stock_signal("000001.SZ", settings=settings)
+
+    assert result.limit_up_hit is True
+    assert result.limit_down_hit is False
+
+
+def test_build_cn_stock_signal_all_fail(tmp_path) -> None:
+    """所有数据源失败时，字段均为 None，不抛异常。"""
+    from hiveflow.db import create_all_tables
+    settings = _make_settings(tmp_path)
+    create_all_tables(settings)
+
+    with patch(
+        "hiveflow.application.cn_signals.CNSignalProvider"
+    ) as MockProvider:
+        instance = MockProvider.return_value
+        instance.fetch_stock_signal.return_value = {
+            "pe_ratio": None,
+            "pb_ratio": None,
+            "limit_up_hit": None,
+            "limit_down_hit": None,
+            "timestamp": datetime(2026, 3, 24, 7, 0, 0, tzinfo=timezone.utc),
+        }
+
+        from hiveflow.application.cn_signals import build_cn_stock_signal
+        result = build_cn_stock_signal("000001.SZ", settings=settings)
+
+    assert result.pe_ratio is None
+    assert result.pb_ratio is None
+    assert result.limit_up_hit is None
+    assert result.limit_down_hit is None
+
+
+def test_build_cn_market_signal_partial_none(tmp_path) -> None:
+    """部分字段为 None 时，返回实体字段正确保留 None。"""
+    from hiveflow.db import create_all_tables
+    settings = _make_settings(tmp_path)
+    create_all_tables(settings)
+
+    with patch(
+        "hiveflow.application.cn_signals.CNSignalProvider"
+    ) as MockProvider:
+        instance = MockProvider.return_value
+        instance.fetch_market_signal.return_value = {
+            "northbound_net_flow": 32.5,
+            "margin_balance": None,
+            "limit_up_count": 43,
+            "limit_down_count": None,
+            "timestamp": datetime(2026, 3, 24, 7, 0, 0, tzinfo=timezone.utc),
+        }
+
+        from hiveflow.application.cn_signals import build_cn_market_signal
+        result = build_cn_market_signal(settings=settings)
+
+    assert result.northbound_net_flow == 32.5
+    assert result.margin_balance is None
+    assert result.limit_up_count == 43
+    assert result.limit_down_count is None
