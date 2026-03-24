@@ -104,3 +104,112 @@ def test_cn_provider_missing_akshare_raises_import_error() -> None:
             provider.fetch_bars(["000001.SZ"], days=5)
     finally:
         provider_mod.akshare = original
+
+
+def test_to_tencent_code() -> None:
+    """_to_tencent_code 转换各交易所格式。"""
+    from hiveflow.infrastructure.cn_market_data_provider import CNMarketDataProvider
+    p = CNMarketDataProvider(source="tencent")
+    assert p._to_tencent_code("000001.SZ") == "sz000001"
+    assert p._to_tencent_code("600000.SH") == "sh600000"
+    assert p._to_tencent_code("830017.BJ") == "bj830017"
+    # 无后缀：按首位推断
+    assert p._to_tencent_code("600584") == "sh600584"
+    assert p._to_tencent_code("002050") == "sz002050"
+
+
+def _make_tencent_response(
+    code: str = "000001",
+    close: str = "12.34",
+    open_: str = "12.10",
+    high: str = "13.00",
+    low: str = "11.80",
+    volume: str = "100",  # 手
+    ts: str = "20260324150000",
+) -> bytes:
+    """构造腾讯行情接口的模拟响应（GBK 编码）。"""
+    # 35 个字段，只填写关键位置，其余用空字符串
+    parts = [""] * 45
+    parts[1] = "平安银行"
+    parts[2] = code
+    parts[3] = close
+    parts[5] = open_
+    parts[6] = volume
+    parts[30] = ts
+    parts[33] = high
+    parts[34] = low
+    data = "~".join(parts)
+    line = f'v_sz{code}="{data}";\n'
+    return line.encode("gbk")
+
+
+def test_cn_provider_tencent_parses_mock_response(monkeypatch) -> None:
+    """tencent 后端：mock HTTP 响应，验证字段解析正确。"""
+    import io
+    from unittest.mock import MagicMock
+    import urllib.request
+    from hiveflow.infrastructure.cn_market_data_provider import CNMarketDataProvider
+    from hiveflow.domain.market import CN_A_SHARE
+
+    mock_body = _make_tencent_response()
+
+    class _FakeResp:
+        def read(self):
+            return mock_body
+        def __enter__(self):
+            return self
+        def __exit__(self, *_):
+            pass
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **kw: _FakeResp())
+
+    provider = CNMarketDataProvider(source="tencent")
+    bars = provider.fetch_bars(["000001.SZ"], days=1)
+
+    assert len(bars) == 1
+    bar = bars[0]
+    assert bar.close == 12.34
+    assert bar.open == 12.10
+    assert bar.high == 13.00
+    assert bar.low == 11.80
+    assert bar.volume == 10000.0  # 100手 × 100
+    assert bar.market == CN_A_SHARE
+    assert bar.symbol == "000001.SZ"
+
+
+def test_cn_provider_tencent_network_error_returns_empty(monkeypatch) -> None:
+    """tencent 后端：网络异常时返回空列表，不抛出。"""
+    import urllib.request
+    from hiveflow.infrastructure.cn_market_data_provider import CNMarketDataProvider
+
+    monkeypatch.setattr(
+        urllib.request, "urlopen",
+        lambda *a, **kw: (_ for _ in ()).throw(ConnectionError("timeout"))
+    )
+
+    provider = CNMarketDataProvider(source="tencent")
+    bars = provider.fetch_bars(["000001.SZ"], days=1)
+    assert bars == []
+
+
+def test_cn_provider_akshare_retries_and_recovers() -> None:
+    """akshare 首次失败后应自动重试，后续成功则返回数据。"""
+    import hiveflow.infrastructure.cn_market_data_provider as provider_mod
+
+    mock_ak = MagicMock()
+    mock_ak.stock_zh_a_hist.side_effect = [
+        ConnectionError("temporary network issue"),
+        _make_akshare_df("000001"),
+    ]
+
+    original = provider_mod.akshare
+    provider_mod.akshare = mock_ak
+    try:
+        from hiveflow.infrastructure.cn_market_data_provider import CNMarketDataProvider
+        provider = CNMarketDataProvider(source="akshare")
+        bars = provider.fetch_bars(["000001.SZ"], days=5)
+    finally:
+        provider_mod.akshare = original
+
+    assert len(bars) == 2
+    assert mock_ak.stock_zh_a_hist.call_count == 2
