@@ -130,7 +130,7 @@ class CNSignalProvider:
             return None, None, None
 
     # ------------------------------------------------------------------ #
-    # akshare 后端（stubs — will be implemented in Task 4）
+    # akshare 后端
     # ------------------------------------------------------------------ #
 
     def _get_akshare(self):
