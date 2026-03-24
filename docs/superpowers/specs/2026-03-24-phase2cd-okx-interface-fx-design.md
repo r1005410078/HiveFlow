@@ -138,7 +138,7 @@ class PortfolioSummary:
     total_cny: float
     fx_rate: float                # 本次使用的汇率（1 USDT = ? CNY）
     fx_source: str                # "akshare" | "config_fallback"
-    breakdown: dict[str, float]   # {"crypto": 0.85, "cn_a_share": 0.15}
+    breakdown: dict[str, dict]    # {"crypto": {"weight": 0.91, "value": 16600.0, "currency": "USDT"}, ...}
 
 def build_portfolio_summary(settings: Settings | None = None) -> PortfolioSummary:
     """
@@ -195,11 +195,19 @@ hiveflow portfolio summary --output json
  汇率           : 7.25  (akshare)
  ──────────────────────────────
  市场分布
-   crypto       : 91%  (16,600 USDT)
-   cn_a_share   :  9%  (1,724 USDT)
+   crypto       : 91%  16,600 USDT
+   cn_a_share   :  9%  12,500 CNY
 ```
 
-**JSON 输出：** 包含 `total_usdt`、`total_cny`、`fx_rate`、`fx_source`、`breakdown`、`positions` 数组（每项含 `symbol`、`market`、`currency`、`market_value_usdt`、`market_value_cny`、`weight_global`）。
+每个市场用**自己的本位货币**展示金额：虚拟币用 USDT，A 股用 CNY（人民币）。占比（%）仍基于 USDT 折算后的全局总值计算。
+
+**JSON 输出：** 包含 `total_usdt`、`total_cny`、`fx_rate`、`fx_source`、`breakdown`、`positions` 数组（每项含 `symbol`、`market`、`currency`、`market_value_usdt`、`market_value_cny`、`weight_global`）。`breakdown` 字典结构：
+```json
+{
+  "crypto":     {"weight": 0.91, "value": 16600.0, "currency": "USDT"},
+  "cn_a_share": {"weight": 0.09, "value": 12500.0, "currency": "CNY"}
+}
+```
 
 ---
 
