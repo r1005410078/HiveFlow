@@ -158,3 +158,184 @@ def test_fetch_stock_signal_tencent_fallback_to_akshare(monkeypatch) -> None:
     result = p.fetch_stock_signal("000001.SZ")
     assert result["limit_up_hit"] is True
     assert result["limit_down_hit"] is False
+
+
+# ------------------------------------------------------------------ #
+# akshare 后端方法测试
+# ------------------------------------------------------------------ #
+
+from unittest.mock import MagicMock  # noqa: E402
+
+
+def test_fetch_pe_pb_akshare_success() -> None:
+    """akshare 返回含 pe/pb 的 DataFrame，正确解析最新行。"""
+    import pandas as pd
+    import hiveflow.infrastructure.cn_signal_provider as mod
+    from hiveflow.infrastructure.cn_signal_provider import CNSignalProvider
+
+    mock_df = pd.DataFrame({"pe": [7.10, 8.32], "pb": [0.65, 0.76]})
+    mock_ak = MagicMock()
+    mock_ak.stock_a_lg_indicator.return_value = mock_df
+    original = mod.akshare
+    mod.akshare = mock_ak
+    try:
+        provider = CNSignalProvider()
+        pe, pb = provider._fetch_pe_pb_akshare("000001.SZ")
+    finally:
+        mod.akshare = original
+    assert pe == 8.32
+    assert pb == 0.76
+
+
+def test_fetch_pe_pb_akshare_strips_suffix() -> None:
+    """传入 .SH 后缀时，akshare 收到纯 6 位代码。"""
+    import pandas as pd
+    import hiveflow.infrastructure.cn_signal_provider as mod
+    from hiveflow.infrastructure.cn_signal_provider import CNSignalProvider
+
+    mock_df = pd.DataFrame({"pe": [12.5], "pb": [1.2]})
+    mock_ak = MagicMock()
+    mock_ak.stock_a_lg_indicator.return_value = mock_df
+    original = mod.akshare
+    mod.akshare = mock_ak
+    try:
+        provider = CNSignalProvider()
+        provider._fetch_pe_pb_akshare("600000.SH")
+        call_kwargs = mock_ak.stock_a_lg_indicator.call_args
+    finally:
+        mod.akshare = original
+    # 确认传入的 symbol 不含后缀
+    passed = call_kwargs[1].get("symbol") or call_kwargs[0][0]
+    assert "." not in passed
+    assert passed == "600000"
+
+
+def test_fetch_pe_pb_akshare_failure() -> None:
+    """akshare 抛异常时返回 (None, None)。"""
+    import hiveflow.infrastructure.cn_signal_provider as mod
+    from hiveflow.infrastructure.cn_signal_provider import CNSignalProvider
+
+    mock_ak = MagicMock()
+    mock_ak.stock_a_lg_indicator.side_effect = Exception("network error")
+    original = mod.akshare
+    mod.akshare = mock_ak
+    try:
+        provider = CNSignalProvider()
+        pe, pb = provider._fetch_pe_pb_akshare("000001.SZ")
+    finally:
+        mod.akshare = original
+    assert pe is None
+    assert pb is None
+
+
+def test_fetch_northbound_akshare_success() -> None:
+    """akshare 返回北向资金 DataFrame，正确取最新行净买入值。"""
+    import pandas as pd
+    import hiveflow.infrastructure.cn_signal_provider as mod
+    from hiveflow.infrastructure.cn_signal_provider import CNSignalProvider
+
+    mock_df = pd.DataFrame({"净买入": [12.5, 88.3]})
+    mock_ak = MagicMock()
+    mock_ak.stock_em_hsgt_north_net_flow_in.return_value = mock_df
+    original = mod.akshare
+    mod.akshare = mock_ak
+    try:
+        provider = CNSignalProvider()
+        result = provider._fetch_northbound_akshare()
+    finally:
+        mod.akshare = original
+    assert result == 88.3
+
+
+def test_fetch_northbound_akshare_failure() -> None:
+    """akshare 抛异常时返回 None。"""
+    import hiveflow.infrastructure.cn_signal_provider as mod
+    from hiveflow.infrastructure.cn_signal_provider import CNSignalProvider
+
+    mock_ak = MagicMock()
+    mock_ak.stock_em_hsgt_north_net_flow_in.side_effect = Exception("timeout")
+    original = mod.akshare
+    mod.akshare = mock_ak
+    try:
+        provider = CNSignalProvider()
+        result = provider._fetch_northbound_akshare()
+    finally:
+        mod.akshare = original
+    assert result is None
+
+
+def test_fetch_margin_balance_akshare_success() -> None:
+    """akshare 返回沪深融资余额，正确求和返回亿元。"""
+    import pandas as pd
+    import hiveflow.infrastructure.cn_signal_provider as mod
+    from hiveflow.infrastructure.cn_signal_provider import CNSignalProvider
+
+    sh_df = pd.DataFrame({"融资余额": [10000.0, 12000.0]})
+    sz_df = pd.DataFrame({"融资余额": [8000.0, 9000.0]})
+    mock_ak = MagicMock()
+    mock_ak.stock_em_margin_sh.return_value = sh_df
+    mock_ak.stock_em_margin_sz.return_value = sz_df
+    original = mod.akshare
+    mod.akshare = mock_ak
+    try:
+        provider = CNSignalProvider()
+        result = provider._fetch_margin_balance_akshare()
+    finally:
+        mod.akshare = original
+    # 取各自最新行：12000 + 9000 = 21000 亿元
+    assert result == 21000.0
+
+
+def test_fetch_margin_balance_akshare_failure() -> None:
+    """akshare 抛异常时返回 None。"""
+    import hiveflow.infrastructure.cn_signal_provider as mod
+    from hiveflow.infrastructure.cn_signal_provider import CNSignalProvider
+
+    mock_ak = MagicMock()
+    mock_ak.stock_em_margin_sh.side_effect = Exception("error")
+    original = mod.akshare
+    mod.akshare = mock_ak
+    try:
+        provider = CNSignalProvider()
+        result = provider._fetch_margin_balance_akshare()
+    finally:
+        mod.akshare = original
+    assert result is None
+
+
+def test_fetch_limit_counts_akshare_success() -> None:
+    """akshare 返回涨跌停统计 DataFrame，正确解析家数。"""
+    import pandas as pd
+    import hiveflow.infrastructure.cn_signal_provider as mod
+    from hiveflow.infrastructure.cn_signal_provider import CNSignalProvider
+
+    mock_df = pd.DataFrame({"涨停家数": [45], "跌停家数": [12]})
+    mock_ak = MagicMock()
+    mock_ak.stock_limit_up_down_em.return_value = mock_df
+    original = mod.akshare
+    mod.akshare = mock_ak
+    try:
+        provider = CNSignalProvider()
+        up, down = provider._fetch_limit_counts_akshare()
+    finally:
+        mod.akshare = original
+    assert up == 45
+    assert down == 12
+
+
+def test_fetch_limit_counts_akshare_failure() -> None:
+    """akshare 抛异常时返回 (None, None)。"""
+    import hiveflow.infrastructure.cn_signal_provider as mod
+    from hiveflow.infrastructure.cn_signal_provider import CNSignalProvider
+
+    mock_ak = MagicMock()
+    mock_ak.stock_limit_up_down_em.side_effect = Exception("error")
+    original = mod.akshare
+    mod.akshare = mock_ak
+    try:
+        provider = CNSignalProvider()
+        up, down = provider._fetch_limit_counts_akshare()
+    finally:
+        mod.akshare = original
+    assert up is None
+    assert down is None

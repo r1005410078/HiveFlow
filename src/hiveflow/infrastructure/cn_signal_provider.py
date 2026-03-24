@@ -166,16 +166,52 @@ class CNSignalProvider:
 
     def _fetch_pe_pb_akshare(self, symbol: str) -> tuple[float | None, float | None]:
         """akshare 获取 PE/PB。"""
-        return None, None
+        try:
+            _ak = self._get_akshare()
+            code = symbol.split(".")[0] if "." in symbol else symbol
+            df = _ak.stock_a_lg_indicator(symbol=code)
+            if df is None or df.empty:
+                return None, None
+            row = df.iloc[-1]
+            return float(row["pe"]), float(row["pb"])
+        except Exception as e:
+            warnings.warn(f"akshare PE/PB {symbol!r} 获取失败: {e}")
+            return None, None
 
     def _fetch_northbound_akshare(self) -> float | None:
         """akshare 获取北向资金净流入（亿元）。"""
-        return None
+        try:
+            _ak = self._get_akshare()
+            df = _ak.stock_em_hsgt_north_net_flow_in(symbol="沪深港通北向资金")
+            if df is None or df.empty:
+                return None
+            return float(df.iloc[-1]["净买入"])
+        except Exception as e:
+            warnings.warn(f"akshare 北向资金获取失败: {e}")
+            return None
 
     def _fetch_margin_balance_akshare(self) -> float | None:
         """akshare 获取沪深融资余额合计（亿元）。"""
-        return None
+        try:
+            _ak = self._get_akshare()
+            sh_df = _ak.stock_em_margin_sh()
+            sz_df = _ak.stock_em_margin_sz()
+            sh_val = float(sh_df.iloc[-1]["融资余额"]) if sh_df is not None and not sh_df.empty else 0.0
+            sz_val = float(sz_df.iloc[-1]["融资余额"]) if sz_df is not None and not sz_df.empty else 0.0
+            return sh_val + sz_val
+        except Exception as e:
+            warnings.warn(f"akshare 融资余额获取失败: {e}")
+            return None
 
     def _fetch_limit_counts_akshare(self) -> tuple[int | None, int | None]:
         """akshare 获取全市场涨停/跌停家数。"""
-        return None, None
+        try:
+            _ak = self._get_akshare()
+            df = _ak.stock_limit_up_down_em()
+            if df is None or df.empty:
+                return None, None
+            row = df.iloc[-1]
+            return int(row["涨停家数"]), int(row["跌停家数"])
+        except Exception as e:
+            warnings.warn(f"akshare 涨跌停家数获取失败: {e}")
+            return None, None
