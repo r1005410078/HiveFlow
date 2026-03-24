@@ -1074,6 +1074,10 @@ def signal_cn_stock_command(
     output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
 ) -> None:
     """拉取并输出 A 股个股信号（PE/PB、涨跌停）。"""
+    if "." not in symbol:
+        prefix = symbol[0]
+        suffix = "SH" if prefix == "6" else "BJ" if prefix in ("8", "4") else "SZ"
+        symbol = f"{symbol}.{suffix}"
     entity = build_cn_stock_signal(symbol)
     if output == "json":
         typer.echo(json.dumps({
