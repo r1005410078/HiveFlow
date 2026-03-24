@@ -66,6 +66,7 @@ from hiveflow.application.slots import list_slots
 from hiveflow.application.slots import set_slot_weight
 from hiveflow.application.summary import get_summary_stats
 from hiveflow.application.cn_sync import sync_cn_market_data
+from hiveflow.application.cn_signals import build_cn_stock_signal, build_cn_market_signal
 from hiveflow.application.targets import export_target_template
 from hiveflow.application.targets import generate_targets_for_strategy
 from hiveflow.application.targets import get_target_template_config
@@ -1065,6 +1066,57 @@ def signal_overview_command(
         cell = f"[{style}]{val_str}[/{style}]" if style else val_str
         parts.append(f"{label}:{cell}")
     console.print("[dim]组合  [/dim]" + "  ".join(parts))
+
+
+@signal_app.command("cn-stock")
+def signal_cn_stock_command(
+    symbol: str = typer.Argument(..., help="A 股个股 symbol，如 000001.SZ"),
+    output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
+) -> None:
+    """拉取并输出 A 股个股信号（PE/PB、涨跌停）。"""
+    entity = build_cn_stock_signal(symbol)
+    if output == "json":
+        typer.echo(json.dumps({
+            "symbol": entity.symbol,
+            "date": entity.date,
+            "pe_ratio": entity.pe_ratio,
+            "pb_ratio": entity.pb_ratio,
+            "limit_up_hit": entity.limit_up_hit,
+            "limit_down_hit": entity.limit_down_hit,
+        }, ensure_ascii=False))
+        return
+    def _fmt(v: object) -> str:
+        return "N/A" if v is None else str(v)
+    typer.echo(f"symbol        : {entity.symbol}")
+    typer.echo(f"date          : {entity.date}")
+    typer.echo(f"pe_ratio      : {_fmt(entity.pe_ratio)}")
+    typer.echo(f"pb_ratio      : {_fmt(entity.pb_ratio)}")
+    typer.echo(f"limit_up_hit  : {_fmt(entity.limit_up_hit)}")
+    typer.echo(f"limit_down_hit: {_fmt(entity.limit_down_hit)}")
+
+
+@signal_app.command("cn-market")
+def signal_cn_market_command(
+    output: str = typer.Option("pretty", "--output", "-o", callback=_validate_output_format),
+) -> None:
+    """拉取并输出市场级 A 股信号（北向资金、融资余额、涨跌停家数）。"""
+    entity = build_cn_market_signal()
+    if output == "json":
+        typer.echo(json.dumps({
+            "date": entity.date,
+            "northbound_net_flow": entity.northbound_net_flow,
+            "margin_balance": entity.margin_balance,
+            "limit_up_count": entity.limit_up_count,
+            "limit_down_count": entity.limit_down_count,
+        }, ensure_ascii=False))
+        return
+    def _fmt(v: object) -> str:
+        return "N/A" if v is None else str(v)
+    typer.echo(f"date               : {entity.date}")
+    typer.echo(f"northbound_net_flow: {_fmt(entity.northbound_net_flow)}")
+    typer.echo(f"margin_balance     : {_fmt(entity.margin_balance)}")
+    typer.echo(f"limit_up_count     : {_fmt(entity.limit_up_count)}")
+    typer.echo(f"limit_down_count   : {_fmt(entity.limit_down_count)}")
 
 
 @signal_app.command("snapshot")
@@ -3266,6 +3318,13 @@ def sync_market_data_command(
         raise typer.Exit(1)
     except Exception as exc:
         typer.echo(f"同步失败：{exc}", err=True)
+        raise typer.Exit(1)
+
+    if result.imported == 0:
+        typer.echo(
+            "同步失败：0 条行情记录。请检查网络连通性、symbol 是否正确，或稍后重试。",
+            err=True,
+        )
         raise typer.Exit(1)
 
     if output == "json":

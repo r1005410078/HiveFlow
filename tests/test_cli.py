@@ -1596,6 +1596,29 @@ def test_market_data_sync_cn_json_output(tmp_path: _Path, monkeypatch) -> None:
     assert "000001.SZ" in payload["symbols"]
 
 
+def test_market_data_sync_cn_fails_when_imported_zero(tmp_path: _Path, monkeypatch) -> None:
+    """market-data sync 导入 0 条时应返回失败，避免误报“同步成功”。"""
+    db_url = f"sqlite:///{tmp_path / 'hiveflow.db'}"
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", db_url)
+
+    from hiveflow.config import Settings
+    from hiveflow.db import create_all_tables
+    create_all_tables(Settings(database_url=db_url))
+
+    from unittest.mock import patch
+    from hiveflow.application.cn_sync import CNSyncResult
+
+    mock_result = CNSyncResult(imported=0, symbols=["000001.SZ"], source="akshare")
+    with patch("hiveflow.cli.sync_cn_market_data", return_value=mock_result):
+        result = TRunner().invoke(
+            hiveflow_app,
+            ["market-data", "sync", "--market", "cn", "--symbols", "000001.SZ"],
+        )
+    assert result.exit_code == 1
+    text = result.stdout + getattr(result, "stderr", "")
+    assert "同步失败" in text
+
+
 def test_summary_all_markets_json_schema(tmp_path: _Path, monkeypatch) -> None:
     """`summary --market all --output json` 包含 markets.crypto 和 markets.cn_a_share，无 total_value。"""
     db_url = f"sqlite:///{tmp_path / 'hiveflow.db'}"
@@ -1642,3 +1665,151 @@ def test_summary_cn_market_json_schema(tmp_path: _Path, monkeypatch) -> None:
     assert "markets" in payload
     assert "cn_a_share" in payload["markets"]
     assert "crypto" not in payload["markets"]
+
+
+# ---------------------------------------------------------------------------
+# signal cn-stock / cn-market CLI commands (Tasks 7 & 8)
+# ---------------------------------------------------------------------------
+
+import json as _json_mod2
+from unittest.mock import MagicMock, patch as _patch
+from datetime import datetime as _dt
+
+
+def _make_stock_signal(pe=8.32, pb=0.76, limit_up=False, limit_down=False, symbol="000001.SZ"):
+    m = MagicMock()
+    m.symbol = symbol
+    m.date = "2026-03-24"
+    m.pe_ratio = pe
+    m.pb_ratio = pb
+    m.limit_up_hit = limit_up
+    m.limit_down_hit = limit_down
+    return m
+
+
+def _make_market_signal(northbound=32.5, margin=14832.6, limit_up=43, limit_down=12):
+    m = MagicMock()
+    m.date = "2026-03-24"
+    m.northbound_net_flow = northbound
+    m.margin_balance = margin
+    m.limit_up_count = limit_up
+    m.limit_down_count = limit_down
+    return m
+
+
+def test_cli_cn_stock_text_output(tmp_path, monkeypatch) -> None:
+    """signal cn-stock text output contains all fields."""
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{tmp_path / 'hiveflow.db'}")
+    mock_entity = _make_stock_signal()
+    with _patch("hiveflow.cli.build_cn_stock_signal", return_value=mock_entity) as mock_fn:
+        result = CliRunner().invoke(app, ["signal", "cn-stock", "000001.SZ"])
+    assert result.exit_code == 0, result.stdout
+    out = result.stdout
+    assert "symbol" in out
+    assert "000001.SZ" in out
+    assert "pe_ratio" in out
+    assert "8.32" in out
+    assert "pb_ratio" in out
+    assert "0.76" in out
+    assert "limit_up_hit" in out
+    assert "limit_down_hit" in out
+    mock_fn.assert_called_once_with("000001.SZ")
+
+
+def test_cli_cn_stock_text_output_none_as_na(tmp_path, monkeypatch) -> None:
+    """signal cn-stock text output shows N/A for None fields."""
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{tmp_path / 'hiveflow.db'}")
+    mock_entity = _make_stock_signal(pe=None, pb=None, limit_up=None, limit_down=None)
+    with _patch("hiveflow.cli.build_cn_stock_signal", return_value=mock_entity):
+        result = CliRunner().invoke(app, ["signal", "cn-stock", "000001.SZ"])
+    assert result.exit_code == 0, result.stdout
+    assert "N/A" in result.stdout
+
+
+def test_cli_cn_stock_json_output(tmp_path, monkeypatch) -> None:
+    """signal cn-stock --output json returns valid JSON with all fields."""
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{tmp_path / 'hiveflow.db'}")
+    mock_entity = _make_stock_signal()
+    with _patch("hiveflow.cli.build_cn_stock_signal", return_value=mock_entity):
+        result = CliRunner().invoke(app, ["signal", "cn-stock", "000001.SZ", "--output", "json"])
+    assert result.exit_code == 0, result.stdout
+    payload = _json_mod2.loads(result.stdout)
+    assert payload["symbol"] == "000001.SZ"
+    assert payload["date"] == "2026-03-24"
+    assert payload["pe_ratio"] == 8.32
+    assert payload["pb_ratio"] == 0.76
+    assert payload["limit_up_hit"] is False
+    assert payload["limit_down_hit"] is False
+
+
+def test_cli_cn_stock_json_output_none_as_null(tmp_path, monkeypatch) -> None:
+    """signal cn-stock --output json shows null for None fields."""
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{tmp_path / 'hiveflow.db'}")
+    mock_entity = _make_stock_signal(pe=None, pb=None, limit_up=None, limit_down=None)
+    with _patch("hiveflow.cli.build_cn_stock_signal", return_value=mock_entity):
+        result = CliRunner().invoke(app, ["signal", "cn-stock", "000001.SZ", "--output", "json"])
+    assert result.exit_code == 0, result.stdout
+    payload = _json_mod2.loads(result.stdout)
+    assert payload["pe_ratio"] is None
+    assert payload["pb_ratio"] is None
+    assert payload["limit_up_hit"] is None
+    assert payload["limit_down_hit"] is None
+
+
+def test_cli_cn_market_text_output(tmp_path, monkeypatch) -> None:
+    """signal cn-market text output contains all fields."""
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{tmp_path / 'hiveflow.db'}")
+    mock_entity = _make_market_signal()
+    with _patch("hiveflow.cli.build_cn_market_signal", return_value=mock_entity):
+        result = CliRunner().invoke(app, ["signal", "cn-market"])
+    assert result.exit_code == 0, result.stdout
+    out = result.stdout
+    assert "date" in out
+    assert "2026-03-24" in out
+    assert "northbound_net_flow" in out
+    assert "32.5" in out
+    assert "margin_balance" in out
+    assert "14832.6" in out
+    assert "limit_up_count" in out
+    assert "43" in out
+    assert "limit_down_count" in out
+    assert "12" in out
+
+
+def test_cli_cn_market_text_output_none_as_na(tmp_path, monkeypatch) -> None:
+    """signal cn-market text output shows N/A for None fields."""
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{tmp_path / 'hiveflow.db'}")
+    mock_entity = _make_market_signal(northbound=None, margin=None, limit_up=None, limit_down=None)
+    with _patch("hiveflow.cli.build_cn_market_signal", return_value=mock_entity):
+        result = CliRunner().invoke(app, ["signal", "cn-market"])
+    assert result.exit_code == 0, result.stdout
+    assert "N/A" in result.stdout
+
+
+def test_cli_cn_market_json_output(tmp_path, monkeypatch) -> None:
+    """signal cn-market --output json returns valid JSON with all fields."""
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{tmp_path / 'hiveflow.db'}")
+    mock_entity = _make_market_signal()
+    with _patch("hiveflow.cli.build_cn_market_signal", return_value=mock_entity):
+        result = CliRunner().invoke(app, ["signal", "cn-market", "--output", "json"])
+    assert result.exit_code == 0, result.stdout
+    payload = _json_mod2.loads(result.stdout)
+    assert payload["date"] == "2026-03-24"
+    assert payload["northbound_net_flow"] == 32.5
+    assert payload["margin_balance"] == 14832.6
+    assert payload["limit_up_count"] == 43
+    assert payload["limit_down_count"] == 12
+
+
+def test_cli_cn_market_json_output_none_as_null(tmp_path, monkeypatch) -> None:
+    """signal cn-market --output json shows null for None fields."""
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{tmp_path / 'hiveflow.db'}")
+    mock_entity = _make_market_signal(northbound=None, margin=None, limit_up=None, limit_down=None)
+    with _patch("hiveflow.cli.build_cn_market_signal", return_value=mock_entity):
+        result = CliRunner().invoke(app, ["signal", "cn-market", "--output", "json"])
+    assert result.exit_code == 0, result.stdout
+    payload = _json_mod2.loads(result.stdout)
+    assert payload["northbound_net_flow"] is None
+    assert payload["margin_balance"] is None
+    assert payload["limit_up_count"] is None
+    assert payload["limit_down_count"] is None
