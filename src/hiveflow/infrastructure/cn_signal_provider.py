@@ -38,6 +38,8 @@ class CNSignalProvider:
         返回键：limit_up_hit, limit_down_hit, pe_ratio, pb_ratio, timestamp
         """
         limit_up, limit_down, ts = self._fetch_limit_hit_tencent(symbol)
+        if limit_up is None:
+            limit_up, limit_down = self._fetch_limit_hit_akshare(symbol)
         pe, pb = self._fetch_pe_pb_akshare(symbol)
 
         return {

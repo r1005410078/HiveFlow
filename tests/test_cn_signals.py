@@ -125,7 +125,7 @@ def test_fetch_stock_signal_tencent_limit_up(monkeypatch) -> None:
 
 
 def test_fetch_stock_signal_tencent_failure_returns_none_fields(monkeypatch) -> None:
-    """腾讯连接失败时，limit 字段为 None，不抛异常。"""
+    """腾讯连接失败且 akshare 也失败时，limit 字段为 None，不抛异常。"""
     import urllib.request
     from hiveflow.infrastructure.cn_signal_provider import CNSignalProvider
 
@@ -135,6 +135,26 @@ def test_fetch_stock_signal_tencent_failure_returns_none_fields(monkeypatch) -> 
     )
 
     p = CNSignalProvider()
+    monkeypatch.setattr(p, "_fetch_limit_hit_akshare", lambda symbol: (None, None))
+
     result = p.fetch_stock_signal("000001.SZ")
     assert result["limit_up_hit"] is None
     assert result["limit_down_hit"] is None
+
+
+def test_fetch_stock_signal_tencent_fallback_to_akshare(monkeypatch) -> None:
+    """腾讯连接失败时，自动回退至 akshare 并返回涨跌停结果。"""
+    import urllib.request
+    from hiveflow.infrastructure.cn_signal_provider import CNSignalProvider
+
+    monkeypatch.setattr(
+        urllib.request, "urlopen",
+        lambda *a, **kw: (_ for _ in ()).throw(ConnectionError("timeout"))
+    )
+
+    p = CNSignalProvider()
+    monkeypatch.setattr(p, "_fetch_limit_hit_akshare", lambda symbol: (True, False))
+
+    result = p.fetch_stock_signal("000001.SZ")
+    assert result["limit_up_hit"] is True
+    assert result["limit_down_hit"] is False
