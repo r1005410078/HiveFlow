@@ -158,3 +158,29 @@
 - 测试：新增 `context decision --envelope` 用例并通过；`tests/test_signal_cli.py` 更新为 `49 passed`。
 - 决策：Skill 默认上下文入口调整为轻量优先，先调用 `context decision` 做规则门控与执行态判断，再按需升级到 `context daily`。
 - 文档：更新 `skills/hiveflow-daily-check/SKILL.md`、`skills/hiveflow-portfolio-advisor/SKILL.md`、`docs/skills/README.md`，统一该路由顺序与命令示例。
+- 修复：A 股行情同步新增 akshare 拉取重试机制（默认 3 次，递增等待），缓解 `RemoteDisconnected` 等短暂网络异常导致的 symbol 拉取失败。
+- 修复：`market-data sync --market cn` 在导入 0 条时改为失败退出（exit code 1），不再误报“同步成功”。
+- 测试：新增 `test_cn_provider_akshare_retries_and_recovers`、`test_market_data_sync_cn_fails_when_imported_zero` 并通过；相关回归 `13 passed`。
+
+## 2026-03-24
+
+- 实现：按 Phase 2-C/D 计划落地 `Position.currency`（默认 `USDT`）与 SQLite 轻量迁移，兼容旧库自动补列。
+- 实现：新增 `Settings.cny_usdt_rate` 与 `FxRateProvider`（akshare 主、config 回退、异常不抛出、stdout/stderr 噪声抑制）。
+- 实现：`OkxProvider` 继承 `PositionProvider`，`fetch_positions` 返回 `Position`（`market=crypto`，`currency=USDT`）；`sync_from_okx` 兼容新旧市值字段并写入 `market/currency`。
+- 实现：新增 `application/portfolio.py`（`build_portfolio_summary`），支持 CNY/USDT 双币折算、全局权重与市场分布。
+- 实现：`positions list` 升级为跨市场折算视图（`市值(USDT)/市值(CNY)/占比（全局）` + 汇率），新增 `portfolio summary` 命令（文本/JSON）。
+- 测试：新增 `tests/test_phase2cd.py`（`12 passed`）。
+- 验证：受影响回归 `102 passed`；全量回归在去除本机 OKX 环境变量后通过：`442 passed, 8 warnings`。
+- 文档：更新 `docs/cli/README.md`，补充 Phase 2-C/D 跨市场折算能力说明（`positions list` 新增折算列与汇率来源、`portfolio summary` 命令与 JSON 字段、`HIVEFLOW_CNY_USDT_RATE` 回退说明）。
+- 优化：A 股持仓导入命令新增 `positions import-cn` 作为主入口；`positions import-csv` 保留为兼容别名并增加“已弃用”提示，避免旧脚本中断。
+- 测试：新增/更新 CLI 命名相关测试并通过（`tests/test_cli.py` 全量 `82 passed`）。
+- 优化：`positions import-cn --output json` 输出升级为 Agent 友好结构，新增 `result + agent_template`（命令模板、CSV 列要求、示例行、校验规则）。
+- 兼容：`positions import-csv` 在 JSON 下增加 `deprecated_notice` 字段，pretty 输出继续提示弃用。
+- 文档：`docs/cli/README.md` 补充 A 股导入新命令与 JSON 模板说明。
+- 测试：新增 JSON 模板用例并通过；`tests/test_cli.py` 全量 `83 passed`。
+- 调整：A 股导入 CSV 统一为中文表头协议（`代码,数量,市值`），`import-cn`/`import-csv` 不再接受英文表头。
+- 新增：`positions template-cn` 命令，直接生成中文表头模板文件。
+- 修复：A 股导入写入持仓时显式设置 `currency="CNY"`。
+- 验证：`tests/test_cn_positions.py` 与 `tests/test_cli.py` 相关用例通过，`tests/test_cli.py` 全量 `85 passed`。
+- 优化：`positions list` 的 pretty 输出按市场拆分为独立表格（`虚拟币持仓`、`A股持仓`，以及兜底 `其他持仓`），不再混在同一自由持仓表。
+- 验证：新增拆表展示测试并通过，`tests/test_cli.py` 全量 `86 passed`。

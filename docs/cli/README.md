@@ -152,6 +152,24 @@ uv run hiveflow rebalance preview
 
 > 当某个标的风险水位为 `high` 时，`buy` 建议会自动变为 `hold`（风险门控）。
 
+**A 股持仓导入（Agent 友好 JSON）**
+
+推荐使用新命令：
+
+```bash
+uv run hiveflow positions template-cn --file ./cn_positions.csv
+uv run hiveflow positions import-cn --file ./cn_positions.csv
+uv run hiveflow positions import-cn --file ./cn_positions.csv --output json
+```
+
+`template-cn` 生成的 CSV 使用中文表头：`代码,数量,市值`（仅支持中文表头导入）。
+
+`--output json` 会返回两部分：
+- `result`：本次导入结果（如 `imported`、`file`）
+- `agent_template`：给 Agent 的可复用模板（命令模板、CSV 列要求、示例行、校验规则）
+
+旧命令 `positions import-csv` 仍可用，但已标记为弃用，建议迁移到 `import-cn`。
+
 ---
 
 ## 场景二：每日检查闭环（约 1 分钟）
@@ -168,15 +186,24 @@ uv run hiveflow sync --days 30
 
 `check`/`signal` 依赖最近历史价格计算指标，首次建议至少同步 30 天。
 
-**日常流程（建议 3 步）**
+**日常流程（建议 4 步）**
 
 ```bash
 uv run hiveflow sync
 uv run hiveflow context daily --output json
 uv run hiveflow positions list --output json
+# 跨市场总览（新增）
+uv run hiveflow portfolio summary --output json
 ```
 
-推荐让 Agent 执行 `hiveflow-daily-check`，把上面三条命令串成一份每日结论。
+推荐让 Agent 执行 `hiveflow-daily-check`，把上面命令串成一份每日结论。
+
+`positions list` 已升级为跨市场折算视图，默认展示：
+- `市值(USDT)`
+- `市值(CNY)`
+- `占比（全局）`
+
+并在表格底部显示总资产合计与本次折算汇率来源（`akshare` 或 `config_fallback`）。
 
 `positions drift` 会**忽略市值 <= 0.01 USDT** 的极小仓位，避免噪声币影响判断。
 
@@ -277,6 +304,23 @@ uv run hiveflow context decision --json-schema
 
 `context decision` 输出 `policy + evaluation + execution_plan`，适合 Agent 快速决策路由。
 完整字段定义与示例见：`docs/context/DECISION_CONTEXT_CONTRACT.md`。
+
+**跨市场资产总览（Phase 2-C/D 新增）**
+
+当你希望快速看“组合总资产 + 市场分布（crypto/A 股）”时，使用：
+
+```bash
+uv run hiveflow portfolio summary
+uv run hiveflow portfolio summary --output json
+```
+
+`portfolio summary` 会基于持仓货币（`USDT` / `CNY`）统一折算并输出：
+- `total_usdt`、`total_cny`
+- `fx_rate`、`fx_source`
+- `breakdown`（各市场占比与本位币金额）
+- `positions`（每个标的的双币市值与全局权重）
+
+如果实时汇率拉取失败，会自动回退到配置项 `HIVEFLOW_CNY_USDT_RATE`（默认 `7.25`）。
 可选窗口严格策略：
 
 ```bash

@@ -52,9 +52,11 @@ from hiveflow.application.market_data import validate_market_data_csv
 from hiveflow.application.positions import add_position
 from hiveflow.application.positions import analyze_positions_drift
 from hiveflow.application.positions import export_positions_template
+from hiveflow.application.positions import export_cn_positions_template
 from hiveflow.application.positions import import_positions_from_csv
 from hiveflow.application.positions import list_positions
 from hiveflow.application.positions import list_grid_positions
+from hiveflow.application.portfolio import build_portfolio_summary
 from hiveflow.application.rebalance import preview_rebalance
 from hiveflow.application.risk import export_risk_template
 from hiveflow.application.risk import import_risk_signals_from_csv
@@ -185,6 +187,7 @@ context_app = typer.Typer(help="Agent 上下文聚合命令。")
 policy_app = typer.Typer(help="调仓与切换规则门控命令。")
 evaluation_app = typer.Typer(help="策略评价命令。")
 execution_app = typer.Typer(help="执行计划命令。")
+portfolio_app = typer.Typer(help="跨市场组合视图。")
 console = Console()
 JSON_SCHEMA_VERSION = "1.0.0"
 
@@ -2460,57 +2463,111 @@ def list_positions_command(
 
     output_format = _validate_output_format(output)
     ui_theme = _validate_theme(theme)
-    positions = list_positions()
-
+    summary = build_portfolio_summary(Settings())
+    positions = summary.positions
     grid_positions = list_grid_positions()
 
     if not positions and not grid_positions:
         if output_format == "json":
-            typer.echo('{"free": [], "grid": []}')
+            _print_json(
+                payload={
+                    "free": [],
+                    "grid": [],
+                    "fx": {"rate": summary.fx_rate, "source": summary.fx_source},
+                    "totals": {
+                        "total_usdt": summary.total_usdt,
+                        "total_cny": summary.total_cny,
+                    },
+                },
+                command="positions.list",
+                envelope=envelope,
+            )
         else:
             typer.echo("暂无持仓记录。")
         return
 
     if output_format == "json":
         payload = {
-            "free": [position.to_dict() for position in positions],
+            "free": [
+                {
+                    "symbol": position.symbol,
+                    "market": position.market,
+                    "currency": position.currency,
+                    "quantity": round(position.quantity, 6),
+                    "market_value": round(position.market_value, 2),
+                    "market_value_usdt": round(position.market_value_usdt, 2),
+                    "market_value_cny": round(position.market_value_cny, 2),
+                    "weight": round(position.weight_global, 6),
+                    "weight_global": round(position.weight_global, 6),
+                }
+                for position in positions
+            ],
             "grid": [g.to_dict() for g in grid_positions],
+            "fx": {"rate": round(summary.fx_rate, 6), "source": summary.fx_source},
+            "totals": {
+                "total_usdt": round(summary.total_usdt, 2),
+                "total_cny": round(summary.total_cny, 2),
+            },
         }
         _print_json(payload=payload, command="positions.list", envelope=envelope)
         return
 
-    # --- 自由持仓 ---
-    if ui_theme == "minimal":
-        console.print(":: 自由持仓 ::")
-        free_table = Table(
-            show_lines=False,
-            box=box.SIMPLE,
-        )
-        free_table.add_column("标的", justify="left")
-        free_table.add_column("数量", justify="right")
-        free_table.add_column("市值", justify="right")
-        free_table.add_column("权重", justify="right")
-    else:
-        console.print("[bold #5fd75f]:: 自由持仓 ::[/bold #5fd75f]")
-        free_table = Table(
-            show_lines=False,
-            header_style="bold #5f875f",
-            border_style="#5f875f",
-            box=box.SIMPLE_HEAVY,
-        )
-        free_table.add_column("标的", justify="left", style="#87ff87")
-        free_table.add_column("数量", justify="right", style="#5f875f")
-        free_table.add_column("市值", justify="right", style="#5f875f")
-        free_table.add_column("权重", justify="right", style="#5f875f")
+    def _render_market_table(title: str, items: list[Any]) -> None:
+        if not items:
+            return
+        if ui_theme == "minimal":
+            console.print(f":: {title} ::")
+            table = Table(show_lines=False, box=box.SIMPLE)
+            table.add_column("标的", justify="left")
+            table.add_column("数量", justify="right")
+            table.add_column("市值(USDT)", justify="right")
+            table.add_column("市值(CNY)", justify="right")
+            table.add_column("占比（全局）", justify="right")
+        else:
+            console.print(f"[bold #5fd75f]:: {title} ::[/bold #5fd75f]")
+            table = Table(
+                show_lines=False,
+                header_style="bold #5f875f",
+                border_style="#5f875f",
+                box=box.SIMPLE_HEAVY,
+            )
+            table.add_column("标的", justify="left", style="#87ff87")
+            table.add_column("数量", justify="right", style="#5f875f")
+            table.add_column("市值(USDT)", justify="right", style="#5f875f")
+            table.add_column("市值(CNY)", justify="right", style="#5f875f")
+            table.add_column("占比（全局）", justify="right", style="#5f875f")
 
-    for position in positions:
-        free_table.add_row(
-            position.symbol,
-            f"{position.quantity:.6f}",
-            f"{position.market_value:.2f}",
-            f"{position.weight:.2%}",
+        subtotal_usdt = 0.0
+        subtotal_cny = 0.0
+        subtotal_weight = 0.0
+        for position in items:
+            subtotal_usdt += position.market_value_usdt
+            subtotal_cny += position.market_value_cny
+            subtotal_weight += position.weight_global
+            table.add_row(
+                position.symbol,
+                f"{position.quantity:.6f}",
+                f"{position.market_value_usdt:.2f}",
+                f"{position.market_value_cny:.2f}",
+                f"{position.weight_global:.2%}",
+            )
+        table.add_section()
+        table.add_row(
+            "小计",
+            "-",
+            f"{subtotal_usdt:.2f}",
+            f"{subtotal_cny:.2f}",
+            f"{subtotal_weight:.2%}",
         )
-    console.print(free_table)
+        console.print(table)
+
+    crypto_positions = [p for p in positions if p.market == "crypto"]
+    cn_positions = [p for p in positions if p.market == "cn_a_share"]
+    other_positions = [p for p in positions if p.market not in {"crypto", "cn_a_share"}]
+
+    _render_market_table("虚拟币持仓", crypto_positions)
+    _render_market_table("A股持仓", cn_positions)
+    _render_market_table("其他持仓", other_positions)
 
     # --- 网格持仓 ---
     if grid_positions:
@@ -2584,6 +2641,40 @@ def import_positions_command(
         return
 
     typer.echo(f"导入完成：{result.imported} 条（模式：{result.mode}）。")
+
+
+@portfolio_app.command("summary")
+def portfolio_summary_command(
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+    envelope: bool = typer.Option(False, "--envelope", help="JSON 输出使用统一 envelope"),
+    json_schema: bool = typer.Option(False, "--json-schema", help="输出 JSON schema 后退出"),
+) -> None:
+    """输出跨市场组合汇总视图。"""
+    if json_schema:
+        _print_json_schema("portfolio.summary")
+        return
+
+    output_format = _validate_output_format(output)
+    summary = build_portfolio_summary(Settings())
+
+    if output_format == "json":
+        _print_json(payload=summary.to_dict(), command="portfolio.summary", envelope=envelope)
+        return
+
+    console.print(f"总资产（USDT） : {summary.total_usdt:,.2f}")
+    console.print(f"总资产（CNY）  : {summary.total_cny:,.2f}")
+    console.print(f"汇率           : {summary.fx_rate:.4f}  ({summary.fx_source})")
+    console.print("──────────────────────────────")
+    console.print("市场分布")
+    if not summary.breakdown:
+        console.print("  暂无持仓")
+        return
+    for market in sorted(summary.breakdown):
+        item = summary.breakdown[market]
+        console.print(
+            f"  {market:<12}: {item['weight']:.2%}  "
+            f"{item['value']:,.2f} {item['currency']}"
+        )
 
 
 @positions_app.command("drift")
@@ -2677,9 +2768,9 @@ def export_positions_template_command(
     ),
     output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
 ) -> None:
-    """导出持仓 CSV 模板文件。"""
+    """导出持仓 CSV 模板文件（中文表头）。"""
     output_format = _validate_output_format(output)
-    result = export_positions_template(file=file)
+    result = export_cn_positions_template(file=file)
     payload = result.to_dict()
     if output_format == "json":
         typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
@@ -2688,12 +2779,13 @@ def export_positions_template_command(
     typer.echo(f"模板已生成：{result.file}")
 
 
-@positions_app.command("import-csv")
-def import_cn_positions_command(
-    file: Path = typer.Option(..., "--file", "-f", help="A 股持仓 CSV 文件路径"),
+def _import_cn_positions_impl(
+    file: Path = typer.Option(..., "--file", "-f", help="A 股持仓 CSV 文件路径（中文表头）"),
     output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+    *,
+    deprecated_alias: bool = False,
 ) -> None:
-    """从 CSV 导入 A 股持仓（symbol 格式如 000001.SZ）。"""
+    """从 CSV 导入 A 股持仓（中文表头：代码/数量/市值）。"""
     from hiveflow.application.positions import import_cn_positions_from_csv
     try:
         result = import_cn_positions_from_csv(str(file), settings=Settings())
@@ -2702,10 +2794,84 @@ def import_cn_positions_command(
         raise typer.Exit(1)
 
     if output == "json":
-        typer.echo(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+        payload = {
+            "result": result.to_dict(),
+            "agent_template": {
+                "task": "import_cn_positions",
+                "command_template": (
+                    "uv run hiveflow positions import-cn --file <csv_file> --output json"
+                ),
+                "csv_template": {
+                    "required_columns": ["代码", "数量", "市值"],
+                    "optional_columns": ["市场"],
+                    "symbol_examples": ["000001.SZ", "600519.SH", "830017.BJ"],
+                    "example_rows": [
+                        {
+                            "symbol": "000001.SZ",
+                            "quantity": 1000,
+                            "market_value": 13200,
+                        },
+                        {
+                            "symbol": "600519.SH",
+                            "quantity": 10,
+                            "market_value": 16800,
+                        },
+                    ],
+                },
+                "validation_rules": [
+                    "仅允许 A 股 symbol（如 000001.SZ / 600519.SH）",
+                    "若提供 market 列，必须为 cn_a_share",
+                    "重复 symbol 会覆盖写入同 symbol 的 A 股持仓记录",
+                ],
+            },
+        }
+        if deprecated_alias:
+            payload["deprecated_notice"] = "`positions import-csv` 已弃用，请改用 `positions import-cn`。"
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
+        if deprecated_alias:
+            console.print("[yellow]提示：`positions import-csv` 已弃用，请改用 `positions import-cn`。[/yellow]")
         console.print(f"[green]导入成功：{result.imported} 条 A 股持仓[/green]")
         console.print(f"文件：{result.file}")
+
+
+@positions_app.command("import-cn")
+def import_cn_positions_command(
+    file: Path = typer.Option(..., "--file", "-f", help="A 股持仓 CSV 文件路径（中文表头）"),
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+) -> None:
+    """从 CSV 导入 A 股持仓（推荐命令）。"""
+    _import_cn_positions_impl(file=file, output=output, deprecated_alias=False)
+
+
+@positions_app.command("import-csv")
+def import_cn_positions_command_legacy(
+    file: Path = typer.Option(..., "--file", "-f", help="A 股持仓 CSV 文件路径（中文表头）"),
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+) -> None:
+    """从 CSV 导入 A 股持仓（兼容旧命令，建议改用 import-cn）。"""
+    _import_cn_positions_impl(file=file, output=output, deprecated_alias=True)
+
+
+@positions_app.command("template-cn")
+def export_cn_positions_template_command(
+    file: Path = typer.Option(
+        Path("cn_positions.csv"),
+        "--file",
+        "-f",
+        help="A 股模板输出路径（默认：./cn_positions.csv）",
+    ),
+    output: str = typer.Option("pretty", "--output", "-o", help="输出格式：pretty/json"),
+) -> None:
+    """导出 A 股持仓 CSV 中文模板。"""
+    output_format = _validate_output_format(output)
+    result = export_cn_positions_template(file=file)
+    payload = result.to_dict()
+    if output_format == "json":
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    typer.echo(f"A 股模板已生成：{result.file}")
 
 
 @risk_app.command("list")
@@ -3948,6 +4114,7 @@ app.add_typer(context_app, name="context")
 app.add_typer(policy_app, name="policy")
 app.add_typer(evaluation_app, name="evaluation")
 app.add_typer(execution_app, name="execution")
+app.add_typer(portfolio_app, name="portfolio")
 
 
 @skills_app.command("list")

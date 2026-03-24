@@ -173,6 +173,16 @@ def _run_lightweight_migrations(engine) -> None:
                         f"ALTER TABLE {_tbl} ADD COLUMN market VARCHAR DEFAULT 'crypto'"
                     )
 
+        # position 表：currency 列（Phase 2-C/D）
+        if "position" in tables:
+            pos_col_names = {row[1] for row in conn.exec_driver_sql(
+                "PRAGMA table_info(position)"
+            ).fetchall()}
+            if "currency" not in pos_col_names:
+                conn.exec_driver_sql(
+                    "ALTER TABLE position ADD COLUMN currency VARCHAR DEFAULT 'USDT'"
+                )
+
 
 @contextmanager
 def get_session(settings: Settings | None = None) -> Iterator[Session]:

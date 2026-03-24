@@ -11,6 +11,9 @@ import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from hiveflow.domain.positions import Position
+from hiveflow.domain.providers import PositionProvider
+
 BASE_URL = "https://www.okx.com"
 TIMEOUT = 10
 USER_AGENT = (
@@ -70,13 +73,13 @@ class OkxOrderResult:
     error_msg: str = ""
 
 
-class OkxProvider:
+class OkxProvider(PositionProvider):
     def __init__(self, api_key: str, api_secret: str, passphrase: str) -> None:
         self._key = api_key
         self._secret = api_secret
         self._pass = passphrase
 
-    def fetch_positions(self) -> list[OkxPosition]:
+    def fetch_positions(self) -> list[Position]:
         """拉取现货余额（GET /api/v5/account/balance），仅需 Read 权限。"""
         data = self._get_auth("/api/v5/account/balance")
         result = []
@@ -90,7 +93,15 @@ class OkxProvider:
             val = float(item.get("eqUsd") or 0)
             if qty <= 0:
                 continue
-            result.append(OkxPosition(symbol=symbol, quantity=qty, market_value_usdt=val))
+            result.append(
+                Position(
+                    symbol=symbol,
+                    quantity=qty,
+                    market_value=val,
+                    market="crypto",
+                    currency="USDT",
+                )
+            )
         return result
 
     def fetch_tickers(self, inst_ids: list[str]) -> list[OkxTicker]:

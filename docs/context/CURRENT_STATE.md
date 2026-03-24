@@ -43,6 +43,7 @@
 - `hiveflow quant list / run / history`
 - `hiveflow quant blend create / run / list / show`
 - `hiveflow perf snapshot / list / compare / setup-cron`
+- `hiveflow portfolio summary`
 - `hiveflow skills list / install`
 - `hiveflow summary`
 - `hiveflow doctor`
@@ -139,6 +140,12 @@
   - `skills/hiveflow-portfolio-advisor/SKILL.md`：标准流程新增第一步 `context decision` 轻量判定
   - `docs/skills/README.md`：同步更新 skill 典型输入与推荐命令面
 - 本次验证：本次仅文档与 Skill 工作流编排更新，无代码行为变更，未新增测试。
+- 本次实现进展（CN 同步修复）：`CNMarketDataProvider` 的 akshare 拉取新增按 symbol 自动重试（默认 3 次，递增等待），用于缓解 `RemoteDisconnected`/短暂网络抖动导致的整条 symbol 拉取失败。
+- 本次实现进展（CLI 行为修正）：`market-data sync --market cn` 在导入条数为 0 时改为失败退出（exit code 1），避免误报“同步成功：0 条行情记录”。
+- 本次验证：新增 `test_cn_provider_akshare_retries_and_recovers` 与 `test_market_data_sync_cn_fails_when_imported_zero`，并通过相关回归 `uv run pytest tests/test_cn_provider.py tests/test_cn_positions.py tests/test_cli.py::test_market_data_sync_cn_json_output tests/test_cli.py::test_market_data_sync_cn_fails_when_imported_zero -q`（`13 passed`）。
+- 本次实现进展（Phase 2-C/D）：`Position` 新增 `currency` 字段与 SQLite 轻量迁移；`OkxProvider` 实现 `PositionProvider` 并返回 `Position`；新增 `FxRateProvider`（akshare 主 + config 回退 + 噪声输出抑制）与 `application/portfolio.py` 汇总层。
+- 本次实现进展（CLI）：`positions list` 新增 `市值(USDT)/市值(CNY)/占比（全局）` 与汇率展示；新增 `portfolio summary` 命令（pretty/json）。
+- 本次验证：新增 `tests/test_phase2cd.py`（`12 passed`）；全量回归 `env -u HIVEFLOW_OKX_API_KEY -u HIVEFLOW_OKX_API_SECRET -u HIVEFLOW_OKX_API_PASSPHRASE uv run pytest -q`（`442 passed, 8 warnings`）。
 
 ## 下一步建议
 

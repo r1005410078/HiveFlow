@@ -200,6 +200,18 @@ def export_positions_template(file: Path) -> TemplateResult:
     return TemplateResult(file=str(file), rows=2)
 
 
+def export_cn_positions_template(file: Path) -> TemplateResult:
+    """导出 A 股持仓 CSV 中文模板文件。"""
+    file.parent.mkdir(parents=True, exist_ok=True)
+    template = (
+        "代码,数量,市值\n"
+        "000001.SZ,1000,13200\n"
+        "600519.SH,10,16800\n"
+    )
+    file.write_text(template, encoding="utf-8")
+    return TemplateResult(file=str(file), rows=2)
+
+
 def analyze_positions_drift(strategy_name: str | None = None) -> list[PositionDriftView]:
     """分析实际持仓与目标持仓偏离。
 
@@ -289,9 +301,9 @@ def import_cn_positions_from_csv(
     2. CSV 的 market 列（若存在）必须与 detect_market 结果一致，否则抛 ValueError（market 字段不一致）
     3. 重复导入同一 symbol 则覆盖写入（先删除旧记录）
 
-    CSV 格式（market 列可选）：
-        symbol,quantity,avg_cost,market_value
-        000001.SZ,1000,12.50,13200
+    CSV 格式（仅中文表头，market 列可选）：
+        代码,数量,市值
+        000001.SZ,1000,13200
     """
     from hiveflow.domain.market import CN_A_SHARE, detect_market
 
@@ -303,31 +315,31 @@ def import_cn_positions_from_csv(
 
     with path.open("r", encoding="utf-8-sig", newline="") as f:
         reader = DictReader(f)
-        required = {"symbol", "quantity", "market_value"}
+        required = {"代码", "数量", "市值"}
         if not reader.fieldnames or not required.issubset(set(reader.fieldnames)):
-            raise ValueError("CSV 列必须包含：symbol, quantity, market_value")
+            raise ValueError("CSV 列必须包含：代码, 数量, 市值")
 
         rows = list(reader)
 
     validated: list[dict] = []
     for row in rows:
-        sym = (row.get("symbol") or "").strip()
+        sym = (row.get("代码") or "").strip()
         inferred = detect_market(sym)
         if inferred != CN_A_SHARE:
             raise ValueError(
                 f"非 A 股 symbol：{sym!r}（detect_market 返回 {inferred!r}），"
                 "请确认 CSV 只包含 A 股标的（如 000001.SZ）"
             )
-        if "market" in row and row["market"] and row["market"].strip() != CN_A_SHARE:
+        if "市场" in row and row["市场"] and row["市场"].strip() != CN_A_SHARE:
             raise ValueError(
                 f"market 字段不一致：symbol={sym!r} 推断市场为 {CN_A_SHARE!r}，"
-                f"但 CSV market 列为 {row['market']!r}"
+                f"但 CSV market 列为 {row['市场']!r}"
             )
         validated.append(row)
 
     with get_session(settings) as session:
         for row in validated:
-            sym = row["symbol"].strip().upper()
+            sym = row["代码"].strip().upper()
             # 覆盖写入：先删除同一 symbol 的旧记录
             existing = session.exec(
                 select(Position).where(Position.symbol == sym).where(Position.market == CN_A_SHARE)
@@ -336,10 +348,11 @@ def import_cn_positions_from_csv(
                 session.delete(old)
             session.add(Position(
                 symbol=sym,
-                quantity=float(row["quantity"]),
-                market_value=float(row["market_value"]),
+                quantity=float(row["数量"]),
+                market_value=float(row["市值"]),
                 weight=0.0,  # 导入时权重后续由 drift/rebalance 计算
                 market=CN_A_SHARE,
+                currency="CNY",
             ))
         session.commit()
 

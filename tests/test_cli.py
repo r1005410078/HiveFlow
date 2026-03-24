@@ -109,6 +109,40 @@ def test_positions_add_and_list_work_with_real_data(tmp_path, monkeypatch) -> No
     assert minimal_result.exit_code == 0
 
 
+def test_positions_list_pretty_separates_crypto_and_cn_tables(tmp_path, monkeypatch) -> None:
+    # 验证 positions list 会按市场拆分展示（虚拟币 / A股）。
+    db_path = tmp_path / "list-market-split.db"
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", f"sqlite:///{db_path}")
+    runner = CliRunner()
+
+    add_crypto = runner.invoke(
+        app,
+        [
+            "positions",
+            "add",
+            "--symbol",
+            "btc",
+            "--quantity",
+            "1",
+            "--market-value",
+            "50000",
+            "--weight",
+            "0.7",
+        ],
+    )
+    assert add_crypto.exit_code == 0
+
+    cn_csv = tmp_path / "cn.csv"
+    cn_csv.write_text("代码,数量,市值\n000001.SZ,1000,13200\n", encoding="utf-8")
+    add_cn = runner.invoke(app, ["positions", "import-cn", "--file", str(cn_csv)])
+    assert add_cn.exit_code == 0, add_cn.stdout
+
+    list_result = runner.invoke(app, ["positions", "list"])
+    assert list_result.exit_code == 0
+    assert "虚拟币持仓" in list_result.stdout
+    assert "A股持仓" in list_result.stdout
+
+
 def test_summary_reads_real_database_state(tmp_path, monkeypatch) -> None:
     # 验证 summary 读取数据库真实状态，而不是 demo 文本。
     db_path = tmp_path / "summary-test.db"
@@ -286,8 +320,8 @@ def test_positions_template_generates_csv_file(tmp_path) -> None:
     assert result.exit_code == 0
     assert template_path.exists()
     content = template_path.read_text(encoding="utf-8")
-    assert "symbol,quantity,market_value,weight" in content
-    assert "BTC,1.5,120000,0.6" in content
+    assert "代码,数量,市值" in content
+    assert "000001.SZ,1000,13200" in content
 
 
 def test_positions_template_supports_json_output(tmp_path) -> None:
@@ -1543,7 +1577,7 @@ def test_positions_import_csv_valid(tmp_path: _Path, monkeypatch) -> None:
 
     csv_file = tmp_path / "cn.csv"
     csv_file.write_text(
-        "symbol,quantity,avg_cost,market_value\n000001.SZ,1000,12.50,13200\n",
+        "代码,数量,市值\n000001.SZ,1000,13200\n",
         encoding="utf-8",
     )
 
@@ -1563,11 +1597,114 @@ def test_positions_import_csv_crypto_symbol_rejected(tmp_path: _Path, monkeypatc
 
     csv_file = tmp_path / "bad.csv"
     csv_file.write_text(
-        "symbol,quantity,avg_cost,market_value\nBTC,0.5,50000,25000\n", encoding="utf-8"
+        "代码,数量,市值\nBTC,0.5,25000\n", encoding="utf-8"
     )
 
     result = TRunner().invoke(hiveflow_app, ["positions", "import-csv", "--file", str(csv_file)])
     assert result.exit_code == 1
+
+
+def test_positions_import_cn_valid(tmp_path: _Path, monkeypatch) -> None:
+    """positions import-cn 正常 A 股 CSV 导入成功，exit_code=0。"""
+    db_url = f"sqlite:///{tmp_path / 'hiveflow.db'}"
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", db_url)
+
+    from hiveflow.config import Settings
+    from hiveflow.db import create_all_tables
+
+    create_all_tables(Settings(database_url=db_url))
+
+    csv_file = tmp_path / "cn2.csv"
+    csv_file.write_text(
+        "代码,数量,市值\n600000.SH,500,4600\n",
+        encoding="utf-8",
+    )
+
+    result = TRunner().invoke(hiveflow_app, ["positions", "import-cn", "--file", str(csv_file)])
+    assert result.exit_code == 0, result.stdout
+    assert "1" in result.stdout
+
+
+def test_positions_import_csv_alias_shows_deprecated_notice(tmp_path: _Path, monkeypatch) -> None:
+    """positions import-csv 作为兼容别名应提示已弃用。"""
+    db_url = f"sqlite:///{tmp_path / 'hiveflow.db'}"
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", db_url)
+
+    from hiveflow.config import Settings
+    from hiveflow.db import create_all_tables
+
+    create_all_tables(Settings(database_url=db_url))
+
+    csv_file = tmp_path / "cn3.csv"
+    csv_file.write_text(
+        "代码,数量,市值\n000001.SZ,100,1320\n",
+        encoding="utf-8",
+    )
+
+    result = TRunner().invoke(hiveflow_app, ["positions", "import-csv", "--file", str(csv_file)])
+    assert result.exit_code == 0, result.stdout
+    assert "已弃用" in result.stdout
+
+
+def test_positions_import_cn_json_includes_agent_template(tmp_path: _Path, monkeypatch) -> None:
+    """positions import-cn --output json 返回 Agent 可消费的模板化结构。"""
+    db_url = f"sqlite:///{tmp_path / 'hiveflow.db'}"
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", db_url)
+
+    from hiveflow.config import Settings
+    from hiveflow.db import create_all_tables
+
+    create_all_tables(Settings(database_url=db_url))
+
+    csv_file = tmp_path / "cn4.csv"
+    csv_file.write_text(
+        "代码,数量,市值\n000001.SZ,100,1320\n",
+        encoding="utf-8",
+    )
+
+    result = TRunner().invoke(
+        hiveflow_app,
+        ["positions", "import-cn", "--file", str(csv_file), "--output", "json"],
+    )
+    assert result.exit_code == 0, result.stdout
+    payload = _json_mod.loads(result.stdout)
+    assert "result" in payload
+    assert payload["result"]["imported"] == 1
+    assert "agent_template" in payload
+    assert "command_template" in payload["agent_template"]
+    assert "csv_template" in payload["agent_template"]
+    assert "required_columns" in payload["agent_template"]["csv_template"]
+
+
+def test_positions_template_cn_generates_chinese_headers(tmp_path: _Path) -> None:
+    """positions template-cn 生成中文表头模板。"""
+    out_file = tmp_path / "cn_template.csv"
+    result = TRunner().invoke(
+        hiveflow_app, ["positions", "template-cn", "--file", str(out_file)]
+    )
+    assert result.exit_code == 0, result.stdout
+    content = out_file.read_text(encoding="utf-8")
+    assert "代码,数量,市值" in content
+
+
+def test_positions_import_cn_accepts_chinese_headers(tmp_path: _Path, monkeypatch) -> None:
+    """positions import-cn 支持中文表头（代码/数量/市值）。"""
+    db_url = f"sqlite:///{tmp_path / 'hiveflow.db'}"
+    monkeypatch.setenv("HIVEFLOW_DATABASE_URL", db_url)
+
+    from hiveflow.config import Settings
+    from hiveflow.db import create_all_tables
+
+    create_all_tables(Settings(database_url=db_url))
+
+    csv_file = tmp_path / "cn_zh.csv"
+    csv_file.write_text(
+        "代码,数量,市值\n000001.SZ,100,1320\n",
+        encoding="utf-8",
+    )
+
+    result = TRunner().invoke(hiveflow_app, ["positions", "import-cn", "--file", str(csv_file)])
+    assert result.exit_code == 0, result.stdout
 
 
 def test_market_data_sync_cn_json_output(tmp_path: _Path, monkeypatch) -> None:

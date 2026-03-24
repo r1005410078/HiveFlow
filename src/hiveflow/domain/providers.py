@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from hiveflow.domain.positions import Position
+
 
 class MarketDataProvider(ABC):
     """行情数据提供者接口。"""
@@ -18,6 +20,6 @@ class PositionProvider(ABC):
     """持仓数据提供者接口（面向长期连接的持仓同步，如券商 API）。"""
 
     @abstractmethod
-    def fetch_positions(self) -> list:
+    def fetch_positions(self) -> list[Position]:
         """返回当前账户持仓列表。"""
         ...

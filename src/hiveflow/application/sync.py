@@ -15,6 +15,13 @@ from hiveflow.domain.positions import Position
 from hiveflow.infrastructure.okx.okx_provider import OkxProvider
 
 
+def _position_market_value_usdt(position: object) -> float:
+    """兼容 Position 与旧 OkxPosition 的市值字段。"""
+    if hasattr(position, "market_value"):
+        return float(getattr(position, "market_value"))
+    return float(getattr(position, "market_value_usdt"))
+
+
 @dataclass(frozen=True)
 class SyncResult:
     synced_at: datetime
@@ -58,18 +65,25 @@ def sync_from_okx(
             okx_candles.extend(provider.fetch_candles(inst_id, days=days))
 
     # 2. 全部成功后单事务写入
-    total_value = sum(p.market_value_usdt for p in okx_positions)
+    total_value = sum(_position_market_value_usdt(p) for p in okx_positions)
     now = datetime.now(tz=timezone.utc)
 
     with get_session(app_settings) as session:
         # 持仓：全量替换
         session.exec(delete(Position))
         for p in okx_positions:
-            weight = p.market_value_usdt / total_value if total_value > 0 else 0.0
-            session.add(Position(
-                symbol=p.symbol, quantity=p.quantity,
-                market_value=p.market_value_usdt, weight=weight,
-            ))
+            market_value_usdt = _position_market_value_usdt(p)
+            weight = market_value_usdt / total_value if total_value > 0 else 0.0
+            session.add(
+                Position(
+                    symbol=p.symbol,
+                    quantity=p.quantity,
+                    market_value=market_value_usdt,
+                    weight=weight,
+                    market=getattr(p, "market", "crypto"),
+                    currency=getattr(p, "currency", "USDT"),
+                )
+            )
 
         # 当前价格：以今天 UTC 零点为时间戳写入 MarketBar（upsert）
         today = now.replace(hour=0, minute=0, second=0, microsecond=0)

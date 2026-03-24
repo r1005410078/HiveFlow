@@ -20,9 +20,11 @@ class Settings(BaseSettings):
     okx_trade_passphrase: str | None = None
 
     # A 股行情数据源（env: HIVEFLOW_CN_MARKET_DATA_SOURCE）
-    cn_market_data_source: str = "akshare"  # "akshare" | "tushare"
+    cn_market_data_source: str = "akshare"  # "akshare" | "tushare" | "tencent"
     # Tushare token（env: HIVEFLOW_TUSHARE_TOKEN，cn_market_data_source=tushare 时必填）
     tushare_token: str = ""
+    # 货币折算回退汇率（env: HIVEFLOW_CNY_USDT_RATE，FxRateProvider 失败时使用）
+    cny_usdt_rate: float = 7.25
 
     model_config = SettingsConfigDict(
         env_prefix="HIVEFLOW_",

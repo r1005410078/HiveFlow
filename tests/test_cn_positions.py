@@ -112,9 +112,9 @@ def test_import_cn_positions_valid_csv(tmp_path: Path) -> None:
 
     csv_file = _write_csv(
         tmp_path / "cn.csv",
-        "symbol,quantity,avg_cost,market_value\n"
-        "000001.SZ,1000,12.50,13200\n"
-        "600000.SH,500,8.80,4600\n",
+        "代码,数量,市值\n"
+        "000001.SZ,1000,13200\n"
+        "600000.SH,500,4600\n",
     )
 
     result = import_cn_positions_from_csv(str(csv_file), settings=settings)
@@ -140,10 +140,10 @@ def test_import_cn_positions_duplicate_overwrite(tmp_path: Path) -> None:
     settings = Settings(database_url=db_url)
     create_all_tables(settings)
 
-    csv1 = _write_csv(tmp_path / "cn1.csv", "symbol,quantity,avg_cost,market_value\n000001.SZ,1000,12.50,13200\n")
+    csv1 = _write_csv(tmp_path / "cn1.csv", "代码,数量,市值\n000001.SZ,1000,13200\n")
     import_cn_positions_from_csv(str(csv1), settings=settings)
 
-    csv2 = _write_csv(tmp_path / "cn2.csv", "symbol,quantity,avg_cost,market_value\n000001.SZ,2000,11.00,22000\n")
+    csv2 = _write_csv(tmp_path / "cn2.csv", "代码,数量,市值\n000001.SZ,2000,22000\n")
     import_cn_positions_from_csv(str(csv2), settings=settings)
 
     with get_session(settings) as session:
@@ -164,7 +164,7 @@ def test_import_cn_positions_crypto_symbol_rejected(tmp_path: Path) -> None:
 
     csv_file = _write_csv(
         tmp_path / "bad.csv",
-        "symbol,quantity,avg_cost,market_value\nBTC,0.5,50000,25000\n",
+        "代码,数量,市值\nBTC,0.5,25000\n",
     )
 
     with pytest.raises(ValueError, match="非 A 股 symbol"):
@@ -183,8 +183,8 @@ def test_import_cn_positions_market_mismatch_rejected(tmp_path: Path) -> None:
 
     csv_file = _write_csv(
         tmp_path / "mismatch.csv",
-        "symbol,quantity,avg_cost,market_value,market\n"
-        "000001.SZ,1000,12.50,13200,crypto\n",  # market 列与 symbol 不符
+        "代码,数量,市值,市场\n"
+        "000001.SZ,1000,13200,crypto\n",  # market 列与 symbol 不符
     )
 
     with pytest.raises(ValueError, match="market 字段不一致"):

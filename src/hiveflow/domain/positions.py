@@ -24,3 +24,10 @@ class Position(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utc_now)
     # 市场标识：crypto / cn_a_share。
     market: str = "crypto"
+    # 计价货币：USDT / CNY。
+    currency: str = "USDT"
+
+    @property
+    def market_value_usdt(self) -> float:
+        """兼容旧字段名（历史代码使用 market_value_usdt）。"""
+        return float(self.market_value)
