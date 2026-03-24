@@ -1086,13 +1086,22 @@ def signal_cn_stock_command(
         }, ensure_ascii=False))
         return
     def _fmt(v: object) -> str:
-        return "N/A" if v is None else str(v)
-    typer.echo(f"symbol        : {entity.symbol}")
-    typer.echo(f"date          : {entity.date}")
-    typer.echo(f"pe_ratio      : {_fmt(entity.pe_ratio)}")
-    typer.echo(f"pb_ratio      : {_fmt(entity.pb_ratio)}")
-    typer.echo(f"limit_up_hit  : {_fmt(entity.limit_up_hit)}")
-    typer.echo(f"limit_down_hit: {_fmt(entity.limit_down_hit)}")
+        return "[dim]N/A[/dim]" if v is None else str(v)
+    def _bool_fmt(v: object) -> str:
+        if v is None:
+            return "[dim]N/A[/dim]"
+        return "[red]是[/red]" if v else "[green]否[/green]"
+    table = Table(box=box.SIMPLE, show_header=True, header_style="bold")
+    table.add_column("指标", style="bold cyan", min_width=16)
+    table.add_column("数值", min_width=12)
+    table.add_column("说明", style="dim")
+    table.add_row("股票代码", entity.symbol, "")
+    table.add_row("日期", entity.date, "")
+    table.add_row("市盈率 (PE TTM)", _fmt(entity.pe_ratio), "越低越便宜，<10 属低估")
+    table.add_row("市净率 (PB)", _fmt(entity.pb_ratio), "<1 表示破净")
+    table.add_row("触及涨停", _bool_fmt(entity.limit_up_hit), "主板非ST ±10%")
+    table.add_row("触及跌停", _bool_fmt(entity.limit_down_hit), "主板非ST ±10%")
+    console.print(table)
 
 
 @signal_app.command("cn-market")
@@ -1111,12 +1120,21 @@ def signal_cn_market_command(
         }, ensure_ascii=False))
         return
     def _fmt(v: object) -> str:
-        return "N/A" if v is None else str(v)
-    typer.echo(f"date               : {entity.date}")
-    typer.echo(f"northbound_net_flow: {_fmt(entity.northbound_net_flow)}")
-    typer.echo(f"margin_balance     : {_fmt(entity.margin_balance)}")
-    typer.echo(f"limit_up_count     : {_fmt(entity.limit_up_count)}")
-    typer.echo(f"limit_down_count   : {_fmt(entity.limit_down_count)}")
+        return "[dim]N/A[/dim]" if v is None else str(v)
+    table = Table(box=box.SIMPLE, show_header=True, header_style="bold")
+    table.add_column("指标", style="bold cyan", min_width=18)
+    table.add_column("数值", min_width=12)
+    table.add_column("说明", style="dim")
+    table.add_row("日期", entity.date, "")
+    nf = entity.northbound_net_flow
+    nf_str = f"{nf:+.1f} 亿元" if nf is not None else "[dim]N/A[/dim]"
+    table.add_row("北向资金净流入", nf_str, "正=净买入，负=净卖出")
+    mb = entity.margin_balance
+    mb_str = f"{mb:,.0f} 亿元" if mb is not None else "[dim]N/A[/dim]"
+    table.add_row("融资余额（沪深）", mb_str, "余额越高情绪越积极")
+    table.add_row("全市场涨停家数", _fmt(entity.limit_up_count), "极端情绪参考")
+    table.add_row("全市场跌停家数", _fmt(entity.limit_down_count), "极端情绪参考")
+    console.print(table)
 
 
 @signal_app.command("snapshot")

@@ -1705,14 +1705,13 @@ def test_cli_cn_stock_text_output(tmp_path, monkeypatch) -> None:
         result = CliRunner().invoke(app, ["signal", "cn-stock", "000001.SZ"])
     assert result.exit_code == 0, result.stdout
     out = result.stdout
-    assert "symbol" in out
     assert "000001.SZ" in out
-    assert "pe_ratio" in out
     assert "8.32" in out
-    assert "pb_ratio" in out
     assert "0.76" in out
-    assert "limit_up_hit" in out
-    assert "limit_down_hit" in out
+    assert "市盈率" in out
+    assert "市净率" in out
+    assert "触及涨停" in out
+    assert "触及跌停" in out
     mock_fn.assert_called_once_with("000001.SZ")
 
 
@@ -1764,16 +1763,15 @@ def test_cli_cn_market_text_output(tmp_path, monkeypatch) -> None:
         result = CliRunner().invoke(app, ["signal", "cn-market"])
     assert result.exit_code == 0, result.stdout
     out = result.stdout
-    assert "date" in out
     assert "2026-03-24" in out
-    assert "northbound_net_flow" in out
-    assert "32.5" in out
-    assert "margin_balance" in out
-    assert "14832.6" in out
-    assert "limit_up_count" in out
+    assert "32.5" in out or "+32.5" in out
+    assert "14,833" in out or "14832" in out
     assert "43" in out
-    assert "limit_down_count" in out
     assert "12" in out
+    assert "北向资金" in out
+    assert "融资余额" in out
+    assert "涨停家数" in out
+    assert "跌停家数" in out
 
 
 def test_cli_cn_market_text_output_none_as_na(tmp_path, monkeypatch) -> None:
