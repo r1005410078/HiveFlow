@@ -12,6 +12,7 @@ from hiveflow.domain.portfolio_snapshots import PortfolioSnapshot  # noqa: F401
 from hiveflow.domain.system_logs import SystemLog  # noqa: F401
 from hiveflow.domain.signal_snapshots import SignalSnapshot  # noqa: F401
 from hiveflow.domain.style_backtest_results import StyleBacktestResult  # noqa: F401
+from hiveflow.domain.cn_signals import CNMarketSignal, CNStockSignal  # noqa: F401
 # StrategyRun: SQLModel.metadata.create_all 在首次运行时自动建表，无需迁移分支
 
 

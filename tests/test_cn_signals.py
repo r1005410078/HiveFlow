@@ -28,3 +28,23 @@ def test_cn_market_signal_defaults() -> None:
     assert sig.margin_balance is None
     assert sig.limit_up_count is None
     assert sig.limit_down_count is None
+
+
+def test_cn_signal_tables_created(tmp_path) -> None:
+    """create_all_tables 后两张新表存在。"""
+    import sqlite3
+    from hiveflow.config import Settings
+    from hiveflow.db import create_all_tables
+
+    db_url = f"sqlite:///{tmp_path / 'hiveflow.db'}"
+    settings = Settings(database_url=db_url)
+    create_all_tables(settings)
+
+    conn = sqlite3.connect(str(tmp_path / "hiveflow.db"))
+    tables = {row[0] for row in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'"
+    ).fetchall()}
+    conn.close()
+
+    assert "cnstocksignal" in tables
+    assert "cnmarketsignal" in tables
