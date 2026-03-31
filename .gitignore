@@ -37,3 +37,4 @@ config/target-templates.history.json
 
 # AI/editor local config
 .claude/
+cli/target
