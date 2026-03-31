@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "文档目标：定义 CLI 输出机器校验合同。适用对象：CLI 开发、测试、CI 维护与审计系统接入方。",
+  "$id": "https://hiveflow.local/schemas/cli-output.schema.json",
+  "title": "HiveFlow CLI Output Envelope",
+  "description": "Unified JSON envelope for HiveFlow CLI commands used by Skills.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "command",
+    "run_id",
+    "status",
+    "generated_at",
+    "source",
+    "advice_only",
+    "decision_weight",
+    "data",
+    "warnings",
+    "errors"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "description": "Envelope schema version using semver."
+    },
+    "command": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Fully qualified CLI command name, e.g. hf signal snapshot."
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Execution correlation id for audit tracing."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["ok", "warning", "error"],
+      "description": "Command execution status."
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Output generation time in ISO-8601."
+    },
+    "source": {
+      "type": "string",
+      "enum": ["system", "news_system", "web_search"],
+      "description": "Data source class for decision-tree semantics."
+    },
+    "advice_only": {
+      "type": "boolean",
+      "description": "Whether output is advisory only and must not affect executable branch."
+    },
+    "decision_weight": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Decision-tree numeric weight. web_search should use 0."
+    },
+    "data": {
+      "type": ["object", "array", "string", "number", "boolean", "null"],
+      "description": "Primary payload."
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/messageItem"
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/errorItem"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "source": { "const": "web_search" }
+        }
+      },
+      "then": {
+        "properties": {
+          "advice_only": { "const": true },
+          "decision_weight": { "const": 0 }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source": { "enum": ["system", "news_system"] }
+        }
+      },
+      "then": {
+        "properties": {
+          "advice_only": { "const": false },
+          "decision_weight": { "const": 1 }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "messageItem": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message"],
+          "properties": {
+            "code": { "type": "string", "minLength": 1 },
+            "message": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    },
+    "errorItem": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message"],
+          "properties": {
+            "code": { "type": "string", "minLength": 1 },
+            "message": { "type": "string", "minLength": 1 },
+            "details": {}
+          }
+        }
+      ]
+    }
+  }
+}

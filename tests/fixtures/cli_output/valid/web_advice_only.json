@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0.0",
+  "command": "hf market web-brief",
+  "run_id": "run_valid_web_001",
+  "status": "ok",
+  "generated_at": "2026-04-01T09:02:00+08:00",
+  "source": "web_search",
+  "advice_only": true,
+  "decision_weight": 0,
+  "data": {
+    "query": "macro event"
+  },
+  "warnings": ["UNVERIFIED_SOURCE"],
+  "errors": []
+}

@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0.0",
+  "command": "hf signal snapshot",
+  "run_id": "run_invalid_missing_001",
+  "status": "ok",
+  "generated_at": "2026-04-01T09:00:00+08:00",
+  "source": "system",
+  "advice_only": false,
+  "decision_weight": 1,
+  "warnings": [],
+  "errors": []
+}

@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0.0",
+  "command": "hf data news-snapshot",
+  "run_id": "run_valid_news_001",
+  "status": "warning",
+  "generated_at": "2026-04-01T09:01:00+08:00",
+  "source": "news_system",
+  "advice_only": false,
+  "decision_weight": 1,
+  "data": {
+    "headline": "政策会议释放稳增长信号"
+  },
+  "warnings": [
+    {
+      "code": "PARTIAL_COVERAGE",
+      "message": "only partial source coverage"
+    }
+  ],
+  "errors": []
+}
