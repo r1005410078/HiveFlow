@@ -118,6 +118,8 @@ scripts/validate_cli_output_fixtures.sh
 make validate-cli-output
 ```
 
+CI 已接入：`.github/workflows/validate-cli-output.yml`
+
 或使用 `jq` 做最小检查：
 
 ```bash
