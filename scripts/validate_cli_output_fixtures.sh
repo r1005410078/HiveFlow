@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 VALIDATOR="$ROOT_DIR/scripts/validate_cli_output.sh"
-FIXTURE_ROOT="$ROOT_DIR/tests/fixtures/cli_output"
+FIXTURE_ROOT="$ROOT_DIR/quant/tests/fixtures/cli_output"
 
 if [[ ! -x "$VALIDATOR" ]]; then
   echo "[ERROR] Validator not found or not executable: $VALIDATOR" >&2

@@ -2,7 +2,7 @@ name: validate-cli-output
 
 on:
   push:
-    branches: ["master"]
+    branches: ["main", "master"]
   pull_request:
 
 jobs:
@@ -11,6 +11,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
 
       - name: Setup jq
         run: sudo apt-get update && sudo apt-get install -y jq

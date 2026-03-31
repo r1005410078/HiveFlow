@@ -1,0 +1,34 @@
+name: core-tests
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+
+jobs:
+  python-and-rust:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Run Python tests
+        run: cd quant && uv run python -m pytest -q
+
+      - name: Run Ruff
+        run: cd quant && uv run ruff check .
+
+      - name: Validate CLI output fixtures
+        run: ./scripts/validate_cli_output_fixtures.sh
+
+      - name: Run Rust tests
+        run: cd cli && cargo test

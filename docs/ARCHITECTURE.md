@@ -9,6 +9,12 @@
 
 ## 1. 架构总览
 
+当前运行形态：
+
+- `quant` 是部署到服务器上的 Python HTTP 服务端。
+- `cli` 是安装在本机的 Rust 客户端，通过 HTTP 调用 `quant`。
+- 本地不再通过 `python -m hiveflow.cli ...` 直接驱动量化主流程。
+
 ```text
 外部数据源（行情/财报/公告/新闻/交易所元数据）
   ↓
@@ -235,6 +241,35 @@ L7 回测/验证层（贯穿 L0~L6）
 - AI 不参与：数据落地、风控硬拦截、实时下单决策。
 - 原则：**AI 辅助设计，规则驱动执行**。
 - 落地细则：参见 `AI_SKILLS_INTEGRATION.md`（Skills + CLI 解耦方案）。
+
+## 8.1 客户端与服务端边界
+
+- `quant` 通过 HTTP 暴露量化编排能力，MVP 主接口为 `POST /api/v1/pipeline/daily`。
+- `cli` 负责命令解析、配置加载、错误码映射和 HTTP 请求发送。
+- `cli` 默认从 `~/.hiveflow/config.toml` 读取服务端地址和超时配置。
+
+最小配置示例：
+
+```toml
+server_url = "http://127.0.0.1:8000"
+timeout_ms = 10000
+retry = 1
+```
+
+## 8.2 Quick Start / Runtime Prerequisites
+
+运行前提：
+
+- 配置文件路径：`~/.hiveflow/config.toml`
+- 先启动 `quant` 服务，再运行本机 `cli`
+
+最小配置：
+
+```toml
+server_url = "http://127.0.0.1:8000"
+timeout_ms = 10000
+retry = 1
+```
 
 ---
 
