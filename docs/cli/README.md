@@ -30,7 +30,7 @@ HiveFlow 是一个本地运行的投资工具系统。它负责输出确定性�
 
 若用户的问题跨阶段，可以使用总控 Skill：`hiveflow-portfolio-advisor`。
 
-Skill 触发条件与路由关系详见：[docs/skills/README.md](/Users/rongts/strat-flow/docs/skills/README.md)
+Skill 触发条件与路由关系详见：[docs/skills/README.md](../skills/README.md)
 
 ## 你想做什么？
 
@@ -73,12 +73,18 @@ uv run hiveflow bootstrap
 在项目根目录创建 `.env` 文件，写入你的 OKX API 凭证：
 
 ```
+# 读取权限（持仓同步 / 行情 / 余额查询）
 HIVEFLOW_OKX_API_KEY=你的key
 HIVEFLOW_OKX_API_SECRET=你的secret
 HIVEFLOW_OKX_API_PASSPHRASE=你的passphrase
+
+# 交易权限（仅 trade execute 下单时需要，可与上面相同也可独立）
+HIVEFLOW_OKX_TRADE_API_KEY=你的trade_key
+HIVEFLOW_OKX_TRADE_API_SECRET=你的trade_secret
+HIVEFLOW_OKX_TRADE_PASSPHRASE=你的trade_passphrase
 ```
 
-> OKX API Key 在 OKX 官网 → 个人中心 → API 管理 中创建。创建时权限选"读取"+"交易"，如需执行调仓则需开启交易权限。
+> OKX API Key 在 OKX 官网 → 个人中心 → API 管理 中创建。**读取 Key** 权限勾选"读取"即可；**交易 Key** 需额外勾选"交易"权限。两者可以是同一个 Key，也可以分开管理。
 
 ---
 
@@ -102,7 +108,7 @@ uv run hiveflow init-demo
 uv run hiveflow doctor
 ```
 
-看到所有检查项显示"正常"后继续。
+检查输出中若看到 `[warn] A 股数据依赖 (akshare)`，不影响演示流程，忽略即可（A 股功能可选，需要时执行 `uv pip install 'hiveflow[cn]'`）。其余检查项正常后即可继续。
 
 **第 3 步：查看整体状态**
 
@@ -121,15 +127,13 @@ uv run hiveflow positions drift
 输出示例：
 
 ```
-持仓偏离分析
-
-  标的    实际权重   目标权重   偏差    等级     建议
-  BTC     0.65      0.50      +0.15   high    减仓
-  ETH     0.20      0.30      -0.10   medium  加仓
-  USDT    0.15      0.20      -0.05   low     观察
+  标的   实际权重   目标权重      偏离   等级   建议
+  BTC      50.00%     45.00%    +5.00%   中     卖出
+  ETH      30.00%     45.00%   -15.00%   高     买入
+  USDT     20.00%     10.00%   +10.00%   高     卖出
 ```
 
-偏差等级说明：`low` 观察即可，`medium` 考虑调整，`high` 建议尽快操作。
+偏差等级说明：`低` 观察即可，`中` 考虑调整，`高` 建议尽快操作。
 
 **第 5 步：获取调仓建议**
 
@@ -140,17 +144,15 @@ uv run hiveflow rebalance preview
 输出示例：
 
 ```
-调仓建议
+策略=进攻突破策略，类型=进攻型，维度=趋势|动量
 
-  策略：进攻突破策略（进攻型 · 趋势|动量）
-
-  标的    当前权重   目标权重   建议     风险水位
-  BTC     0.65      0.50      sell     medium
-  ETH     0.20      0.30      buy      low
-  USDT    0.15      0.20      buy      low
+  标的      偏差   动作   优先级   风险水位
+  BTC     +5.00%   卖出   中       58.00%
+  ETH    -15.00%   持有   高       81.00%
+  USDT   +10.00%   卖出   高       10.00%
 ```
 
-> 当某个标的风险水位为 `high` 时，`buy` 建议会自动变为 `hold`（风险门控）。
+> 当某个标的风险水位过高时，买入动作会自动变为"持有"（风险门控）。例如 ETH 偏离 -15% 本应买入，但因风险水位 81% 被门控为"持有"。
 
 **A 股持仓导入（Agent 友好 JSON）**
 
@@ -178,13 +180,20 @@ uv run hiveflow positions import-cn --file ./cn_positions.csv --output json
 
 **前提：** 已完成准备工作第 3 步（OKX 已连接）。
 
-**首次使用（只需一次）：先补历史数据**
+> **注意：** `context daily` 依赖本地 signal 快照历史。没有足够历史数据时会返回 `E_SIGNAL_REQUIRED_MISSING` 错误。**首次务必先完成下面的"先补历史数据"步骤**，之后 signal 快照才能正常计算。
+
+**首次使用（只需一次）：先补历史数据并生成信号快照**
 
 ```bash
-uv run hiveflow sync --days 30
+# 1. 同步至少 90 天历史行情（signal 计算最少需要 40 个数据点）
+uv run hiveflow sync --days 90
+
+# 2. 生成信号快照（必须在 context daily 之前至少执行一次）
+uv run hiveflow signal snapshot --symbol BTC --output json
+uv run hiveflow style backtest-rank --output json
 ```
 
-`check`/`signal` 依赖最近历史价格计算指标，首次建议至少同步 30 天。
+`check`/`signal` 依赖最近历史价格计算指标，首次建议同步 90 天（30 天数据点不足以满足所有信号计算）。
 
 **日常流程（建议 4 步）**
 
@@ -192,7 +201,7 @@ uv run hiveflow sync --days 30
 uv run hiveflow sync
 uv run hiveflow context daily --output json
 uv run hiveflow positions list --output json
-# 跨市场总览（新增）
+# 跨市场总览
 uv run hiveflow portfolio summary --output json
 ```
 
@@ -203,7 +212,7 @@ uv run hiveflow portfolio summary --output json
 - `市值(CNY)`
 - `占比（全局）`
 
-并在表格底部显示总资产合计与本次折算汇率来源（`akshare` 或 `config_fallback`）。
+各市场分组各有小计行。汇率来源（`akshare` 或 `config_fallback`）与跨市场总览见 `portfolio summary`。
 
 `positions drift` 会**忽略市值 <= 0.01 USDT** 的极小仓位，避免噪声币影响判断。
 
@@ -360,12 +369,14 @@ uv run hiveflow perf setup-cron              # 实际安装
 uv run hiveflow market-data template
 ```
 
-在当前目录生成 `prices.csv`，按模板格式填入历史价格数据（每行一条日线记录），然后导入：
+在当前目录生成 `prices.csv`，按模板格式填入历史价格数据（**每个品种至少 60 行**，建议使用日线数据覆盖 3 个月以上），然后导入：
 
 ```bash
 uv run hiveflow market-data import --file ./prices.csv
 uv run hiveflow market-data summary    # 确认导入成功
 ```
+
+> 模板文件仅含 2 行示例数据，不够用于策略计算。需要自行填充真实历史价格，或使用 `sync --days 90` 通过 OKX 拉取。
 
 **第 2 步：查看内置策略列表**
 
@@ -373,7 +384,7 @@ uv run hiveflow market-data summary    # 确认导入成功
 uv run hiveflow quant list
 ```
 
-系统内置 8 种策略：EqualWeight（等权重）、Momentum（动量）、MeanReversion（均值回归）、MovingAverageCross（均线交叉）、BollingerBand（布林带）、RiskParity（风险平价）、MaxSharpe（最大夏普）、MinVariance（最小方差）。
+系统内置 8 种策略，命令中使用**全名**（含 `Strategy` 后缀）：`EqualWeightStrategy`、`MomentumStrategy`、`MeanReversionStrategy`、`MovingAverageCrossStrategy`、`BollingerBandStrategy`、`RiskParityStrategy`、`MaxSharpeStrategy`、`MinVarianceStrategy`。
 
 **第 3 步：快速看一个策略当前权重**
 
@@ -381,12 +392,12 @@ uv run hiveflow quant list
 uv run hiveflow quant run --strategy MomentumStrategy
 ```
 
-这个命令按当前数据点计算一次权重，输出建议配比，但**不含历史回测**。用来快速理解策略当前偏好。
+这个命令按当前数据点计算一次权重，输出建议配比，但**不含历史回测**。用来快速理解策略当前偏好。**需要至少 60 条行情数据**，数据不足会报错提示。
 
 **第 4 步：运行历史回测**
 
 ```bash
-uv run hiveflow backtest quant-run --strategy Momentum --rebalance-days 30
+uv run hiveflow backtest quant-run --strategy MomentumStrategy --rebalance-days 30
 ```
 
 > 与第 3 步的区别：这里模拟的是**历史上每 30 天重新计算权重并调仓**的完整过程，输出包含权益曲线（资产随时间的涨跌），可以看出策略的历史真实表现。
@@ -422,8 +433,8 @@ uv run hiveflow backtest show 3    # 替换 3 为你的回测 ID
 跑几个不同策略后，对比它们：
 
 ```bash
-uv run hiveflow backtest quant-run --strategy EqualWeight --rebalance-days 30
-uv run hiveflow backtest quant-run --strategy RiskParity --rebalance-days 30
+uv run hiveflow backtest quant-run --strategy EqualWeightStrategy --rebalance-days 30
+uv run hiveflow backtest quant-run --strategy RiskParityStrategy --rebalance-days 30
 uv run hiveflow backtest compare 1 2 3    # 替换为你的回测 ID 列表
 ```
 
@@ -477,7 +488,7 @@ uv run hiveflow rebalance preview --output json
 uv run hiveflow trade execute --orders '[{"symbol":"ETH","action":"buy","usdt":500}]'
 ```
 
-> 不推荐跳过预览和确认，直接执行交易。
+> `trade execute` 使用独立的交易 Key（`HIVEFLOW_OKX_TRADE_API_KEY` 等），需在 `.env` 中单独配置（见准备工作第 3 步）。不推荐跳过预览和确认，直接执行交易。
 
 ---
 
@@ -563,6 +574,10 @@ uv run hiveflow quant blend create --help
 | 数据库为空 / 无数据 | 执行 `uv run hiveflow init-demo` 生成演示数据 |
 | OKX API 连接失败 | 检查 `.env` 三个 key 是否填写正确；确认 OKX 后台 API 已启用且未设置 IP 白名单限制 |
 | 回测结果为空 | 确认已用 `market-data import` 导入行情数据 |
+| `E_SIGNAL_REQUIRED_MISSING` | 先执行 `signal snapshot --symbol <品种>` 和 `style backtest-rank` 生成历史快照，再运行 `context daily` |
+| `行情数据不足（需要 60 行）` | 当前行情数据太少；需要每个品种至少 60 条数据，建议用 `sync --days 90` 拉取足够历史 |
+| `未知策略：Momentum` | 策略名需要加 `Strategy` 后缀，正确写法：`MomentumStrategy` |
+| `未配置 OKX TRADE API Key` | `trade execute` 需要独立的交易 Key，在 `.env` 中补充 `HIVEFLOW_OKX_TRADE_API_KEY` 等三项 |
 
 **获取 JSON 输出**（给脚本或 AI 消费）
 
