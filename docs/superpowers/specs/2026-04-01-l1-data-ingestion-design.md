@@ -180,9 +180,133 @@ data["data_manifest_id"] = result.manifest_id
 
 ---
 
-## 11. 不在本次范围内
+## 11. CLI 设计
+
+### 两条命令，职责分离
+
+| 命令 | 类型 | 触发方 | 说明 |
+|------|------|--------|------|
+| `hf data ingest --as-of YYYY-MM-DD` | 写操作 | 用户 / cron | 触发 L1 数据拉取与落盘，**不在 AI 白名单** |
+| `hf data snapshot --as-of YYYY-MM-DD` | 读操作 | 用户 / AI Skill | 查询指定日期的 DataManifest，**AI 可调用** |
+
+### Rust CLI 改动
+
+**`cli/src/cmd/data.rs`** — 补充 `Ingest` subcommand（现有 `Snapshot` 为占位，同步实现）：
+
+```rust
+pub enum DataSubcommand {
+    Ingest(IngestArgs),    // 新增
+    Snapshot(SnapshotArgs), // 现有占位 → 实现
+}
+
+pub struct IngestArgs {
+    #[arg(long)]
+    pub as_of: String,
+}
+
+pub struct SnapshotArgs {
+    #[arg(long)]
+    pub as_of: String,
+}
+```
+
+**新增文件：**
+- `cli/src/application/handlers/data_ingest.rs` — 调用 `http_client::post_data_ingest()`
+- `cli/src/application/handlers/data_snapshot.rs` — 调用 `http_client::get_data_snapshot()`
+
+**`cli/src/infrastructure/http_client.rs`** — 新增两个函数：
+- `post_data_ingest(server_url, as_of, timeout_ms) → Result<Value, AppError>`  
+  调用 `POST /api/v1/data/ingest`
+- `get_data_snapshot(server_url, as_of, timeout_ms) → Result<Value, AppError>`  
+  调用 `GET /api/v1/data/snapshot?as_of=YYYY-MM-DD`
+
+**`cli/src/application/dispatch.rs`** — 将 `Commands::Data(_)` 的占位替换为实际分发。
+
+### Python HTTP 端点
+
+**新增/修改 `quant/src/interfaces/http/`：**
+
+- 新增 `routes_data.py`，注册两个路由：
+  - `POST /api/v1/data/ingest` — 调用 `IngestUseCase`，返回 manifest_id + symbols_count
+  - `GET /api/v1/data/snapshot` — 查询 DataManifest by as_of，返回 manifest 或 404
+- `app.py` 注册新 router
+
+### CLI 输出 schema（两个命令均遵循现有 schema）
+
+`hf data ingest` 成功响应示例：
+```json
+{
+  "schema_version": "1.0.0",
+  "command": "hf data ingest",
+  "run_id": "run_20260401_abc123",
+  "status": "ok",
+  "generated_at": "2026-04-01T10:00:00Z",
+  "source": "system",
+  "advice_only": false,
+  "decision_weight": 1,
+  "data": {
+    "as_of": "2026-04-01",
+    "manifest_id": "dm_20260401_xyz456",
+    "symbols_count": 2,
+    "data_source": "akshare",
+    "fallback_used": true
+  },
+  "warnings": [],
+  "errors": []
+}
+```
+
+`hf data snapshot` 响应结构相同，`data` 中为 manifest 字段。
+
+### 测试扩展
+
+| 文件 | 类型 | 覆盖点 |
+|------|------|--------|
+| `cli/tests/http_data_ingest.rs` | Rust unit | mock server，验证 ingest 请求/响应映射 |
+| `cli/tests/http_data_snapshot.rs` | Rust unit | mock server，验证 snapshot 请求/响应映射 |
+| `quant/tests/contract/test_data_ingest_output.py` | Contract | 校验响应符合 CLI_OUTPUT_SCHEMA.json |
+| `quant/tests/integration/test_http_data_endpoint.py` | Integration | FastAPI TestClient，验证两个端点正常响应 |
+
+---
+
+## 12. AI Skills 集成
+
+### 设计原则
+
+- `hf data ingest`：**不在 AI 白名单**。数据写入是运营操作，必须由人或 cron 触发，AI 不得触发数据落盘。
+- `hf data snapshot`：**加入 AI 白名单**。只读查询，AI 可用来检查数据可用性，作为后续分析的前置验证步骤。
+
+### 白名单更新
+
+在 `docs/AI_SKILLS_INTEGRATION.md` 的可调用命令列表中新增：
+
+```
+hf data snapshot --as-of <date>
+```
+
+### Skill 使用场景
+
+AI Skill 在执行任何依赖行情数据的分析（`hf signal snapshot`、`hf factor health` 等）之前，先调用 `hf data snapshot` 验证数据就绪：
+
+```
+步骤一：hf data snapshot --as-of 2026-04-01
+  → 检查 status 是否 ok，data.manifest_id 是否存在
+  → 若数据缺失：Skill 输出 "数据未就绪，请先运行 hf data ingest"，终止分析
+  → 若数据就绪：继续后续 Skill 步骤
+```
+
+### Skill 调用输出约束
+
+`hf data snapshot` 输出遵循 `CLI_OUTPUT_SCHEMA.json`：
+- `source: system`，`advice_only: false`，`decision_weight: 1`
+- AI 可将 `manifest_id` 作为下游命令的 `--data-manifest` 参数，确保数据版本对齐
+
+---
+
+## 13. 不在本次范围内
 
 - 腾讯数跟 adapter 实现
 - L0 Universe 动态过滤标的列表
 - L2 及以上层接入
 - 实时/分钟频行情
+- `hf data ingest` 加入 AI 白名单（明确排除）
