@@ -82,7 +82,15 @@ make validate-cli-output                       # 批量校验所有 fixtures
 make validate-cli-output-one FILE=path/to.json # 校验单个文件
 ./scripts/validate_cli_output.sh <file.json>   # 直接调脚本
 
+# ── 数据库（TimescaleDB via Docker）─────────────────────
+make db-init-env                               # 生成 .env.db（首次必须执行）
+make db-up                                     # 启动 TimescaleDB
+make db-down                                   # 停止
+make db-psql                                   # 进入 psql
+make db-reset-db-volume                        # 清除数据卷（破坏性）
+
 # ── 服务端与端到端联调 ───────────────────────────────────
+# 前置：make db-init-env && make db-up
 # 首次本地联调需先准备 ~/.hiveflow/config.toml：
 #   server_url = "http://127.0.0.1:8000"
 #   timeout_ms = 10000
@@ -90,6 +98,12 @@ make validate-cli-output-one FILE=path/to.json # 校验单个文件
 make run-server                                # 启动 Python HTTP 服务端
 make run-server-dev                            # 带热重载启动（uvicorn --reload）
 make run-pipeline AS_OF=2026-04-01            # 运行日频 pipeline（需服务端已启动）
+
+# ── CLI data query 输出模式 ─────────────────────────────
+# --output json|table|chart|tui（默认 json）
+cargo run -- data query --days 7 --output table
+cargo run -- data query --days 30 --symbols 600519.SH --output tui
+# TUI 键位：↑↓/jk 切换标的，←→/hl 移动光标，a/d 平移，+/- 缩放，0 重置，q 退出
 ```
 
 ## CLI 输出契约
@@ -127,17 +141,28 @@ make run-pipeline AS_OF=2026-04-01            # 运行日频 pipeline（需服�
 - `domain/` — 领域模型与规则，禁止依赖 `application`、`interfaces` 或任何框架
 - `application/` — 用例编排，可依赖 `domain`，禁止依赖 FastAPI/HTTP 框架
 - `interfaces/` — 协议与适配层（HTTP/IO），路由函数只做 DTO 解析、调用 application service、返回响应 DTO
+- `hiveflow/` — 公开 API 层（`contracts/` 跨层共享契约类型，`cli/entrypoint.py` 为 Python 侧 CLI 入口）
 
 架构边界测试位于 `quant/tests/architecture/`，新增层或跨层依赖时必须同步更新。
 
+### Python 测试分层（`quant/tests/`）
+
+- `unit/` — 纯单元测试，无外部依赖
+- `integration/` — 需要运行中的 HTTP 服务端（`make run-server`）
+- `contract/` — 校验 CLI JSON 输出 schema 契约（`test_python_cli_contract.py`）
+- `architecture/` — 层间依赖边界静态检查
+
+运行单一套件：`cd quant && uv run pytest tests/unit -q`
+
 ### Rust CLI（`cli/src/`）
 
-四层结构，依赖约束：`cmd → application → domain`，`application → infrastructure`，禁止 `cmd → infrastructure` 和 `domain → 任何外层`：
+五层结构，依赖约束：`cmd → application → domain`，`application → infrastructure`，禁止 `cmd → infrastructure` 和 `domain → 任何外层`：
 
 - `cmd/` — 命令定义与参数解析（clap），不写业务流程
 - `application/` — 命令编排与流程控制
 - `domain/` — 命令语义模型，禁止引入外部 IO/网络依赖
 - `infrastructure/` — HTTP 客户端、配置读取、外部 IO
+- `contracts/` — CLI 输出类型（`cli_output.rs`）与错误码（`error_codes.rs`），跨层共享
 
 架构边界测试位于 `cli/tests/architecture_rules.rs`，新增模块时必须同步更新。
 
