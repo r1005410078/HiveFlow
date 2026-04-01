@@ -186,58 +186,74 @@ data["data_manifest_id"] = result.manifest_id
 
 | 命令 | 类型 | 触发方 | 说明 |
 |------|------|--------|------|
-| `hf data ingest --as-of YYYY-MM-DD` | 写操作 | 用户 / cron | 触发 L1 数据拉取与落盘，**不在 AI 白名单** |
-| `hf data snapshot --as-of YYYY-MM-DD` | 读操作 | 用户 / AI Skill | 查询指定日期的 DataManifest，**AI 可调用** |
+| `hf data sync --days N` | 写操作 | 用户 / cron | 同步最近 N 天行情，**不在 AI 白名单** |
+| `hf data status --as-of YYYY-MM-DD` | 读操作 | 用户 / AI Skill | 查询指定日期的数据就绪状态，**AI 可调用** |
+
+`--days` 典型值：`30`（月度补数）、`90`（季度回补）、`360`（年度初始化）。
 
 ### Rust CLI 改动
 
-**`cli/src/cmd/data.rs`** — 补充 `Ingest` subcommand（现有 `Snapshot` 为占位，同步实现）：
+**`cli/src/cmd/data.rs`** — 将现有 `Snapshot` 占位替换为 `Sync` + `Status`：
 
 ```rust
 pub enum DataSubcommand {
-    Ingest(IngestArgs),    // 新增
-    Snapshot(SnapshotArgs), // 现有占位 → 实现
+    Sync(SyncArgs),
+    Status(StatusArgs),
 }
 
-pub struct IngestArgs {
+pub struct SyncArgs {
     #[arg(long)]
-    pub as_of: String,
+    pub days: u32,              // 同步最近 N 天
 }
 
-pub struct SnapshotArgs {
+pub struct StatusArgs {
     #[arg(long)]
-    pub as_of: String,
+    pub as_of: String,          // 查询指定日期的数据就绪状态
 }
 ```
 
 **新增文件：**
-- `cli/src/application/handlers/data_ingest.rs` — 调用 `http_client::post_data_ingest()`
-- `cli/src/application/handlers/data_snapshot.rs` — 调用 `http_client::get_data_snapshot()`
+- `cli/src/application/handlers/data_sync.rs` — 调用 `http_client::post_data_sync()`
+- `cli/src/application/handlers/data_status.rs` — 调用 `http_client::get_data_status()`
 
 **`cli/src/infrastructure/http_client.rs`** — 新增两个函数：
-- `post_data_ingest(server_url, as_of, timeout_ms) → Result<Value, AppError>`  
-  调用 `POST /api/v1/data/ingest`
-- `get_data_snapshot(server_url, as_of, timeout_ms) → Result<Value, AppError>`  
-  调用 `GET /api/v1/data/snapshot?as_of=YYYY-MM-DD`
+- `post_data_sync(server_url, days, timeout_ms) → Result<Value, AppError>`  
+  调用 `POST /api/v1/data/sync`
+- `get_data_status(server_url, as_of, timeout_ms) → Result<Value, AppError>`  
+  调用 `GET /api/v1/data/status?as_of=YYYY-MM-DD`
 
 **`cli/src/application/dispatch.rs`** — 将 `Commands::Data(_)` 的占位替换为实际分发。
 
-### Python HTTP 端点
+### Python HTTP 端点与 Use Case 扩展
 
-**新增/修改 `quant/src/interfaces/http/`：**
+**新增 `quant/src/interfaces/http/routes_data.py`，注册两个路由：**
+- `POST /api/v1/data/sync` — body: `{"days": 90}`，调用 `SyncUseCase`  
+  返回：synced_dates 列表、manifest_ids、total_symbols_count
+- `GET /api/v1/data/status?as_of=YYYY-MM-DD` — 查询 DataManifest by as_of  
+  返回：manifest 字段或 `status: "not_found"`
 
-- 新增 `routes_data.py`，注册两个路由：
-  - `POST /api/v1/data/ingest` — 调用 `IngestUseCase`，返回 manifest_id + symbols_count
-  - `GET /api/v1/data/snapshot` — 查询 DataManifest by as_of，返回 manifest 或 404
-- `app.py` 注册新 router
+**`app.py`** 注册新 router。
 
-### CLI 输出 schema（两个命令均遵循现有 schema）
+**`SyncUseCase`**（新增，在 `hiveflow/market_data/application/`）：
+```
+输入：days: int
 
-`hf data ingest` 成功响应示例：
+流程：
+  1. 计算日期列表：过去 N 个交易日（简单版：过去 N 个自然日，跳过周末）
+  2. 对每个 date 调用 IngestUseCase.run(symbols, date, root)
+  3. 汇总结果：成功落盘日期、跳过日期（已有 manifest）、失败日期
+  4. 返回 SyncResult(synced_dates, skipped_dates, failed_dates, manifest_ids)
+```
+
+幂等性：若某日期已有 manifest，跳过重新拉取（`skipped_dates` 记录），避免重复覆盖。
+
+### CLI 输出 schema
+
+`hf data sync --days 30` 成功响应示例：
 ```json
 {
   "schema_version": "1.0.0",
-  "command": "hf data ingest",
+  "command": "hf data sync",
   "run_id": "run_20260401_abc123",
   "status": "ok",
   "generated_at": "2026-04-01T10:00:00Z",
@@ -245,27 +261,28 @@ pub struct SnapshotArgs {
   "advice_only": false,
   "decision_weight": 1,
   "data": {
-    "as_of": "2026-04-01",
-    "manifest_id": "dm_20260401_xyz456",
-    "symbols_count": 2,
-    "data_source": "akshare",
-    "fallback_used": true
+    "days_requested": 30,
+    "synced_count": 22,
+    "skipped_count": 0,
+    "failed_count": 0,
+    "synced_dates": ["2026-04-01", "..."],
+    "manifest_ids": ["dm_20260401_xyz456", "..."]
   },
   "warnings": [],
   "errors": []
 }
 ```
 
-`hf data snapshot` 响应结构相同，`data` 中为 manifest 字段。
+`hf data status --as-of YYYY-MM-DD` 响应中 `data` 为单日 manifest 字段（manifest_id、data_source、fallback_used、symbols_count、data_hash）。
 
 ### 测试扩展
 
 | 文件 | 类型 | 覆盖点 |
 |------|------|--------|
-| `cli/tests/http_data_ingest.rs` | Rust unit | mock server，验证 ingest 请求/响应映射 |
-| `cli/tests/http_data_snapshot.rs` | Rust unit | mock server，验证 snapshot 请求/响应映射 |
-| `quant/tests/contract/test_data_ingest_output.py` | Contract | 校验响应符合 CLI_OUTPUT_SCHEMA.json |
-| `quant/tests/integration/test_http_data_endpoint.py` | Integration | FastAPI TestClient，验证两个端点正常响应 |
+| `cli/tests/http_data_sync.rs` | Rust unit | mock server，验证 sync 请求/响应映射 |
+| `cli/tests/http_data_status.rs` | Rust unit | mock server，验证 status 请求/响应映射 |
+| `quant/tests/contract/test_data_sync_output.py` | Contract | 校验响应符合 CLI_OUTPUT_SCHEMA.json |
+| `quant/tests/integration/test_http_data_endpoint.py` | Integration | FastAPI TestClient，验证两个端点 + 幂等性（重复 sync 同一日期） |
 
 ---
 
@@ -273,33 +290,28 @@ pub struct SnapshotArgs {
 
 ### 设计原则
 
-- `hf data ingest`：**不在 AI 白名单**。数据写入是运营操作，必须由人或 cron 触发，AI 不得触发数据落盘。
-- `hf data snapshot`：**加入 AI 白名单**。只读查询，AI 可用来检查数据可用性，作为后续分析的前置验证步骤。
+- `hf data sync`：**不在 AI 白名单**。数据写入是运营操作，必须由人或 cron 触发，AI 不得触发数据落盘。
+- `hf data status`：**加入 AI 白名单**。只读查询，AI 用来验证数据就绪后再执行分析。
 
 ### 白名单更新
 
 在 `docs/AI_SKILLS_INTEGRATION.md` 的可调用命令列表中新增：
 
 ```
-hf data snapshot --as-of <date>
+hf data status --as-of <date>
 ```
 
 ### Skill 使用场景
 
-AI Skill 在执行任何依赖行情数据的分析（`hf signal snapshot`、`hf factor health` 等）之前，先调用 `hf data snapshot` 验证数据就绪：
+AI Skill 在执行任何依赖行情数据的分析（`hf signal snapshot`、`hf factor health` 等）之前，先调用 `hf data status` 验证数据就绪：
 
 ```
-步骤一：hf data snapshot --as-of 2026-04-01
-  → 检查 status 是否 ok，data.manifest_id 是否存在
-  → 若数据缺失：Skill 输出 "数据未就绪，请先运行 hf data ingest"，终止分析
-  → 若数据就绪：继续后续 Skill 步骤
+步骤一：hf data status --as-of 2026-04-01
+  → status=ok 且 data.manifest_id 存在 → 继续
+  → status=not_found → Skill 输出 "数据未就绪，请先运行 hf data sync --days 30"，终止
 ```
 
-### Skill 调用输出约束
-
-`hf data snapshot` 输出遵循 `CLI_OUTPUT_SCHEMA.json`：
-- `source: system`，`advice_only: false`，`decision_weight: 1`
-- AI 可将 `manifest_id` 作为下游命令的 `--data-manifest` 参数，确保数据版本对齐
+AI 可将 `manifest_id` 作为下游命令的 `--data-manifest` 参数，确保数据版本对齐（G1 可追溯）。
 
 ---
 
@@ -307,6 +319,7 @@ AI Skill 在执行任何依赖行情数据的分析（`hf signal snapshot`、`hf
 
 - 腾讯数跟 adapter 实现
 - L0 Universe 动态过滤标的列表
+- 交易日历（当前 sync 跳过周末，不做完整交易日历）
 - L2 及以上层接入
 - 实时/分钟频行情
-- `hf data ingest` 加入 AI 白名单（明确排除）
+- `hf data sync` 加入 AI 白名单（明确排除）
