@@ -3,12 +3,19 @@ use serde_json::{json, Value};
 
 use crate::error::AppError;
 
+fn build_client(server_url: &str, timeout_ms: u64) -> Result<Client, AppError> {
+    let mut builder = Client::builder().timeout(std::time::Duration::from_millis(timeout_ms));
+    let lower = server_url.to_ascii_lowercase();
+    if lower.contains("127.0.0.1") || lower.contains("localhost") {
+        // Local quant service should bypass system proxies to avoid accidental 502 from proxy gateways.
+        builder = builder.no_proxy();
+    }
+    builder.build().map_err(AppError::HttpClient)
+}
+
 pub fn post_daily(server_url: &str, as_of: &str, timeout_ms: u64) -> Result<Value, AppError> {
     let url = format!("{}/api/v1/pipeline/daily", server_url.trim_end_matches('/'));
-    let client = Client::builder()
-        .timeout(std::time::Duration::from_millis(timeout_ms))
-        .build()
-        .map_err(AppError::HttpClient)?;
+    let client = build_client(server_url, timeout_ms)?;
 
     let response = client
         .post(url)
@@ -37,10 +44,7 @@ pub fn post_data_sync(
     timeout_ms: u64,
 ) -> Result<Value, AppError> {
     let url = format!("{}/v1/market-data/sync", server_url.trim_end_matches('/'));
-    let client = Client::builder()
-        .timeout(std::time::Duration::from_millis(timeout_ms))
-        .build()
-        .map_err(AppError::HttpClient)?;
+    let client = build_client(server_url, timeout_ms)?;
 
     let response = client
         .post(url)
@@ -73,10 +77,7 @@ pub fn get_data_sync_runs(
     timeout_ms: u64,
 ) -> Result<Value, AppError> {
     let url = format!("{}/v1/market-data/sync-runs", server_url.trim_end_matches('/'));
-    let client = Client::builder()
-        .timeout(std::time::Duration::from_millis(timeout_ms))
-        .build()
-        .map_err(AppError::HttpClient)?;
+    let client = build_client(server_url, timeout_ms)?;
 
     let mut request = client.get(url).query(&[("days", days.to_string())]);
     if let Some(tf) = timeframe {

@@ -53,20 +53,24 @@ L0 标的池 → L1 数据 → L2 因子 → L3 信号工程
 ## 常用命令
 
 ```bash
-# ── Python Quant Core（uv 管理）──────────────────────────
-uv sync
-uv sync --extra dev      # 含测试依赖
+# ── 全量 CI 门禁（test + lint + architecture-check + validate-cli-output + rust-test）──
+make check
 
-uv run python -m pytest -q
-uv run python -m pytest tests/test_cli.py -q   # 单个文件
-uv run python -m pytest -k rebalance -q        # 按关键词过滤
+# ── Python Quant Core（uv 管理，需在 quant/ 下执行）────────
+make sync                                      # 等价于 cd quant && uv sync
+make test                                      # 等价于 cd quant && uv run python -m pytest -q
+make lint                                      # 等价于 cd quant && uv run ruff check .
+make architecture-check                        # Python + Rust 架构边界测试
 
-uv run ruff check .
+# 也可直接进 quant/ 单独跑：
+cd quant && uv sync --extra dev               # 含测试依赖
+cd quant && uv run python -m pytest tests/test_cli.py -q   # 单个文件
+cd quant && uv run python -m pytest -k rebalance -q        # 按关键词过滤
 
 # ── Rust CLI（cli/ 目录）─────────────────────────────────
-make build-cli                                 # dev 构建
-make build-cli-release                         # release 构建
-make test-cli                                  # 运行 Rust 测试
+make rust-test                                 # 运行 Rust 测试
+cd cli && cargo build                          # dev 构建
+cd cli && cargo build --release                # release 构建
 
 # 直接运行（dev 构建后）
 ./cli/target/debug/hf --help
@@ -77,6 +81,15 @@ make test-cli                                  # 运行 Rust 测试
 make validate-cli-output                       # 批量校验所有 fixtures
 make validate-cli-output-one FILE=path/to.json # 校验单个文件
 ./scripts/validate_cli_output.sh <file.json>   # 直接调脚本
+
+# ── 服务端与端到端联调 ───────────────────────────────────
+# 首次本地联调需先准备 ~/.hiveflow/config.toml：
+#   server_url = "http://127.0.0.1:8000"
+#   timeout_ms = 10000
+#   retry = 1
+make run-server                                # 启动 Python HTTP 服务端
+make run-server-dev                            # 带热重载启动（uvicorn --reload）
+make run-pipeline AS_OF=2026-04-01            # 运行日频 pipeline（需服务端已启动）
 ```
 
 ## CLI 输出契约
@@ -104,6 +117,29 @@ make validate-cli-output-one FILE=path/to.json # 校验单个文件
 - `web_search`：`advice_only=true`，`decision_weight=0`
 
 变更输出字段必须按序：①更新 `CLI_OUTPUT_SCHEMA.json` → ②更新 `CLI_OUTPUT_EXAMPLES.md` → ③通过 `make validate-cli-output`。
+
+## 源码分层结构
+
+### Python（`quant/src/`）
+
+三层结构，依赖方向只允许 `interfaces → application → domain`：
+
+- `domain/` — 领域模型与规则，禁止依赖 `application`、`interfaces` 或任何框架
+- `application/` — 用例编排，可依赖 `domain`，禁止依赖 FastAPI/HTTP 框架
+- `interfaces/` — 协议与适配层（HTTP/IO），路由函数只做 DTO 解析、调用 application service、返回响应 DTO
+
+架构边界测试位于 `quant/tests/architecture/`，新增层或跨层依赖时必须同步更新。
+
+### Rust CLI（`cli/src/`）
+
+四层结构，依赖约束：`cmd → application → domain`，`application → infrastructure`，禁止 `cmd → infrastructure` 和 `domain → 任何外层`：
+
+- `cmd/` — 命令定义与参数解析（clap），不写业务流程
+- `application/` — 命令编排与流程控制
+- `domain/` — 命令语义模型，禁止引入外部 IO/网络依赖
+- `infrastructure/` — HTTP 客户端、配置读取、外部 IO
+
+架构边界测试位于 `cli/tests/architecture_rules.rs`，新增模块时必须同步更新。
 
 ## 开发规范
 

@@ -1,0 +1,583 @@
+use std::collections::BTreeMap;
+use std::time::Duration;
+
+use crossterm::{
+    event::{self, Event, KeyCode},
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+};
+use ratatui::{
+    backend::CrosstermBackend,
+    layout::{Constraint, Direction, Layout},
+    style::{Color, Modifier, Style},
+    symbols,
+    text::{Line, Span},
+    widgets::{Axis, Block, Borders, Chart, Dataset, List, ListItem, ListState, Paragraph},
+    Terminal,
+};
+use serde_json::Value;
+
+#[derive(Debug, Clone)]
+struct SymbolSeries {
+    symbol: String,
+    points: Vec<(String, f64)>,
+}
+
+#[derive(Debug, Clone)]
+struct ChartViewState {
+    cursor: usize,
+    window_start: usize,
+    window_len: usize,
+}
+
+impl ChartViewState {
+    fn new(total: usize) -> Self {
+        let default_window = total.clamp(40, 300);
+        let window_start = total.saturating_sub(default_window);
+        let cursor = total.saturating_sub(1);
+        Self {
+            cursor,
+            window_start,
+            window_len: default_window.max(1),
+        }
+    }
+
+    fn normalize(&mut self, total: usize) {
+        if total == 0 {
+            self.cursor = 0;
+            self.window_start = 0;
+            self.window_len = 1;
+            return;
+        }
+        self.window_len = self.window_len.clamp(1, total);
+        self.cursor = self.cursor.min(total - 1);
+        let max_start = total - self.window_len;
+        self.window_start = self.window_start.min(max_start);
+        let end = self.window_start + self.window_len - 1;
+        if self.cursor < self.window_start {
+            self.window_start = self.cursor;
+        } else if self.cursor > end {
+            self.window_start = self.cursor.saturating_sub(self.window_len - 1);
+        }
+    }
+
+    fn cursor_left(&mut self, total: usize) {
+        self.cursor = self.cursor.saturating_sub(1);
+        self.normalize(total);
+    }
+
+    fn cursor_right(&mut self, total: usize) {
+        self.cursor = (self.cursor + 1).min(total.saturating_sub(1));
+        self.normalize(total);
+    }
+
+    fn pan_left(&mut self, total: usize) {
+        self.window_start = self.window_start.saturating_sub(15);
+        self.normalize(total);
+    }
+
+    fn pan_right(&mut self, total: usize) {
+        self.window_start = (self.window_start + 15).min(total.saturating_sub(1));
+        self.normalize(total);
+    }
+
+    fn zoom_in(&mut self, total: usize) {
+        if self.window_len > 24 {
+            self.window_len = (self.window_len / 2).max(24);
+            self.normalize(total);
+        }
+    }
+
+    fn zoom_out(&mut self, total: usize) {
+        self.window_len = (self.window_len.saturating_mul(2)).min(total.max(1));
+        self.normalize(total);
+    }
+}
+
+#[derive(Debug, Clone)]
+struct TuiState {
+    selected_symbol_idx: usize,
+    chart_view: ChartViewState,
+    show_benchmark: bool,
+}
+
+impl TuiState {
+    fn new(
+        symbols: &[SymbolSeries],
+        preferred_symbol: Option<&str>,
+        benchmark_enabled: bool,
+    ) -> Self {
+        let selected_symbol_idx = preferred_symbol
+            .and_then(|preferred| symbols.iter().position(|s| s.symbol == preferred))
+            .unwrap_or(0);
+        let points_len = symbols
+            .get(selected_symbol_idx)
+            .map(|s| s.points.len())
+            .unwrap_or(0);
+        Self {
+            selected_symbol_idx,
+            chart_view: ChartViewState::new(points_len),
+            show_benchmark: benchmark_enabled,
+        }
+    }
+
+    fn selected_series<'a>(&self, symbols: &'a [SymbolSeries]) -> Option<&'a SymbolSeries> {
+        symbols.get(self.selected_symbol_idx)
+    }
+
+    fn move_symbol_up(&mut self, symbols: &[SymbolSeries]) {
+        if symbols.is_empty() {
+            return;
+        }
+        self.selected_symbol_idx = self.selected_symbol_idx.saturating_sub(1);
+        self.reset_chart(symbols);
+    }
+
+    fn move_symbol_down(&mut self, symbols: &[SymbolSeries]) {
+        if symbols.is_empty() {
+            return;
+        }
+        self.selected_symbol_idx =
+            (self.selected_symbol_idx + 1).min(symbols.len().saturating_sub(1));
+        self.reset_chart(symbols);
+    }
+
+    fn reset_chart(&mut self, symbols: &[SymbolSeries]) {
+        let points_len = self.selected_series(symbols).map(|s| s.points.len()).unwrap_or(0);
+        self.chart_view = ChartViewState::new(points_len);
+        self.chart_view.normalize(points_len);
+    }
+}
+
+fn run_tui_loop(
+    terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
+    symbols: &[SymbolSeries],
+    preferred_symbol: Option<&str>,
+    benchmark_symbol: Option<&str>,
+) -> Result<(), String> {
+    let mut state = TuiState::new(symbols, preferred_symbol, benchmark_symbol.is_some());
+
+    loop {
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                let rows = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([
+                        Constraint::Min(10),
+                        Constraint::Length(2),
+                    ])
+                    .split(area);
+
+                if symbols.is_empty() {
+                    let empty = Paragraph::new("没有可绘制数据，请先执行 data sync。")
+                        .style(Style::default().fg(Color::Gray));
+                    frame.render_widget(empty, rows[0]);
+                    let hint = Paragraph::new("q/Esc/Enter 退出").style(Style::default().fg(Color::DarkGray));
+                    frame.render_widget(hint, rows[1]);
+                    return;
+                }
+
+                let cols = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints([Constraint::Percentage(28), Constraint::Percentage(72)])
+                    .split(rows[0]);
+
+                let items: Vec<ListItem> = symbols
+                    .iter()
+                    .map(|s| {
+                        let latest = s.points.last().map(|(_, p)| *p).unwrap_or(0.0);
+                        ListItem::new(Line::from(vec![
+                            Span::styled(
+                                format!("{:<10}", s.symbol),
+                                Style::default().fg(Color::DarkGray),
+                            ),
+                            Span::styled(
+                                format!("  {:>10.2}", latest),
+                                Style::default().fg(Color::DarkGray),
+                            ),
+                        ]))
+                    })
+                    .collect();
+                let mut list_state = ListState::default();
+                list_state.select(Some(state.selected_symbol_idx));
+                let list = List::new(items)
+                    .block(
+                        Block::default()
+                            .borders(Borders::NONE)
+                            .title("Stocks")
+                            .title_style(Style::default().fg(Color::Gray)),
+                    )
+                    .highlight_style(
+                        Style::default()
+                            .fg(Color::LightYellow)
+                            .add_modifier(Modifier::BOLD),
+                    )
+                    .highlight_symbol(">> ");
+                frame.render_stateful_widget(list, cols[0], &mut list_state);
+
+                if let Some(series) = state.selected_series(symbols) {
+                    let points = &series.points;
+                    let total = points.len();
+                    let window_end = (state.chart_view.window_start + state.chart_view.window_len).min(total);
+                    let visible = &points[state.chart_view.window_start..window_end];
+                    let samples: Vec<(f64, f64)> = visible
+                        .iter()
+                        .enumerate()
+                        .map(|(idx, (_, price))| (idx as f64, *price))
+                        .collect();
+                    let mut comparison_title: Option<String> = None;
+                    let benchmark_samples = if state.show_benchmark {
+                        benchmark_symbol
+                        .and_then(|bm| {
+                            if bm == series.symbol {
+                                None
+                            } else {
+                                symbols.iter().find(|s| s.symbol == bm)
+                            }
+                        })
+                        .and_then(|bm_series| {
+                            build_aligned_indexed_samples(
+                                visible,
+                                &bm_series.points,
+                                bm_series.symbol.as_str(),
+                            )
+                        })
+                    } else {
+                        None
+                    };
+
+                    let (plot_samples, plot_benchmark_samples) = if let Some((stock_idx, bench_idx, bm)) =
+                        benchmark_samples
+                    {
+                        comparison_title = Some(format!("Trend - {} vs {}", series.symbol, bm));
+                        (stock_idx, Some(bench_idx))
+                    } else {
+                        (samples.clone(), None)
+                    };
+                    let cursor_visible = state
+                        .chart_view
+                        .cursor
+                        .saturating_sub(state.chart_view.window_start)
+                        .min(plot_samples.len().saturating_sub(1));
+                    let cursor_x = cursor_visible as f64;
+                    let cursor_y = plot_samples.get(cursor_visible).map(|(_, p)| *p).unwrap_or(0.0);
+                    let cursor_points = vec![(cursor_x, cursor_y)];
+                    let (y_min, y_max) = compute_y_range_from_samples(
+                        &plot_samples,
+                        plot_benchmark_samples.as_deref(),
+                    );
+                    let x_end = if plot_samples.len() >= 2 {
+                        (plot_samples.len() - 1) as f64
+                    } else {
+                        1.0
+                    };
+                    let x_end_idx = if plot_samples.len() >= 2 {
+                        plot_samples.len() - 1
+                    } else {
+                        1
+                    };
+                    let x_labels: Vec<Span<'static>> = if cursor_visible == 0 || cursor_visible == x_end_idx {
+                        vec![
+                            Span::raw("0".to_string()),
+                            Span::raw(format!("{}", x_end_idx)),
+                        ]
+                    } else {
+                        vec![
+                            Span::raw("0".to_string()),
+                            Span::raw(format!("{}", cursor_visible)),
+                            Span::raw(format!("{}", x_end_idx)),
+                        ]
+                    };
+                    let y_labels: Vec<Span<'static>> = if (cursor_y - y_min).abs() < f64::EPSILON
+                        || (cursor_y - y_max).abs() < f64::EPSILON
+                    {
+                        vec![
+                            Span::raw(format!("{:.2}", y_min)),
+                            Span::raw(format!("{:.2}", y_max)),
+                        ]
+                    } else {
+                        vec![
+                            Span::raw(format!("{:.2}", y_min)),
+                            Span::raw(format!("{:.2}", cursor_y)),
+                            Span::raw(format!("{:.2}", y_max)),
+                        ]
+                    };
+
+                    let mut datasets: Vec<Dataset> = Vec::new();
+                    datasets.push(
+                        Dataset::default()
+                            .name("Close")
+                            .marker(symbols::Marker::Braille)
+                            .style(Style::default().fg(Color::White))
+                            .graph_type(ratatui::widgets::GraphType::Line)
+                            .data(&plot_samples),
+                    );
+                    if let Some(bench) = plot_benchmark_samples.as_deref() {
+                        datasets.push(
+                            Dataset::default()
+                                .name("Benchmark")
+                                .marker(symbols::Marker::Braille)
+                                .style(Style::default().fg(Color::Rgb(170, 150, 60)))
+                                .graph_type(ratatui::widgets::GraphType::Line)
+                                .data(bench),
+                        );
+                    }
+                    datasets.push(
+                        Dataset::default()
+                            .name("Cursor")
+                            .marker(symbols::Marker::Dot)
+                            .style(Style::default().fg(Color::Green))
+                            .graph_type(ratatui::widgets::GraphType::Scatter)
+                            .data(&cursor_points),
+                    );
+
+                    let chart = Chart::new(datasets)
+                        .block(
+                            Block::default()
+                                .borders(Borders::NONE)
+                                .title(
+                                    comparison_title
+                                        .unwrap_or_else(|| format!("Trend - {}", series.symbol)),
+                                )
+                                .title_style(Style::default().fg(Color::Gray)),
+                        )
+                        .x_axis(
+                            Axis::default()
+                                .title("")
+                                .style(Style::default().fg(Color::DarkGray))
+                                .bounds([0.0, x_end])
+                                .labels(x_labels),
+                        )
+                        .y_axis(
+                            Axis::default()
+                                .title("")
+                                .style(Style::default().fg(Color::DarkGray))
+                                .bounds([y_min, y_max])
+                                .labels(y_labels),
+                        );
+                    frame.render_widget(chart, cols[1]);
+                    let (cursor_ts, cursor_price) = series
+                        .points
+                        .get(state.chart_view.cursor)
+                        .map(|(t, p)| (t.as_str(), *p))
+                        .unwrap_or(("-", 0.0));
+                    let hint = Paragraph::new(format!(
+                        "Stock: ↑/↓  Cursor: ←/→  Pan: a/d  Zoom: +/-  Toggle benchmark: b  Reset: 0  Exit: q/Esc/Enter  |  {} {:.2}  [{}..{}]{}",
+                        cursor_ts,
+                        cursor_price,
+                        state.chart_view.window_start,
+                        window_end.saturating_sub(1),
+                        if plot_benchmark_samples.is_some() {
+                            "  |  Benchmark normalized to 100"
+                        } else {
+                            ""
+                        }
+                    ))
+                    .style(Style::default().fg(Color::DarkGray));
+                    frame.render_widget(hint, rows[1]);
+                }
+            })
+            .map_err(|e| format!("draw tui failed: {e}"))?;
+
+        if event::poll(Duration::from_millis(200)).map_err(|e| format!("poll event failed: {e}"))?
+        {
+            if let Event::Key(key) = event::read().map_err(|e| format!("read event failed: {e}"))?
+            {
+                if key.code == KeyCode::Char('q')
+                    || key.code == KeyCode::Esc
+                    || key.code == KeyCode::Enter
+                {
+                    break;
+                }
+
+                let selected_points_len = state
+                    .selected_series(symbols)
+                    .map(|s| s.points.len())
+                    .unwrap_or(0);
+                match key.code {
+                    KeyCode::Up | KeyCode::Char('k') => state.move_symbol_up(symbols),
+                    KeyCode::Down | KeyCode::Char('j') => state.move_symbol_down(symbols),
+                    KeyCode::Left | KeyCode::Char('h') => {
+                        state.chart_view.cursor_left(selected_points_len)
+                    }
+                    KeyCode::Right | KeyCode::Char('l') => {
+                        state.chart_view.cursor_right(selected_points_len)
+                    }
+                    KeyCode::Char('a') => state.chart_view.pan_left(selected_points_len),
+                    KeyCode::Char('d') => state.chart_view.pan_right(selected_points_len),
+                    KeyCode::Char('+') | KeyCode::Char('=') => {
+                        state.chart_view.zoom_in(selected_points_len)
+                    }
+                    KeyCode::Char('-') | KeyCode::Char('_') => {
+                        state.chart_view.zoom_out(selected_points_len)
+                    }
+                    KeyCode::Char('b') => {
+                        if benchmark_symbol.is_some() {
+                            state.show_benchmark = !state.show_benchmark;
+                        }
+                    }
+                    KeyCode::Char('0') => state.chart_view = ChartViewState::new(selected_points_len),
+                    _ => {}
+                }
+                state.chart_view.normalize(selected_points_len);
+            }
+        }
+    }
+    Ok(())
+}
+
+pub fn render_sync_runs_tui(
+    payload: &Value,
+    preferred_symbol: Option<&str>,
+    benchmark_symbol: Option<&str>,
+) -> Result<(), String> {
+    let symbols = build_symbol_series(payload);
+    enable_raw_mode().map_err(|e| format!("enable raw mode failed: {e}"))?;
+    let mut stdout = std::io::stdout();
+    execute!(stdout, EnterAlternateScreen).map_err(|e| format!("enter alt screen failed: {e}"))?;
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend).map_err(|e| format!("create terminal failed: {e}"))?;
+
+    let run_res = run_tui_loop(&mut terminal, &symbols, preferred_symbol, benchmark_symbol);
+
+    let _ = disable_raw_mode();
+    let _ = execute!(terminal.backend_mut(), LeaveAlternateScreen);
+    let _ = terminal.show_cursor();
+    run_res
+}
+
+fn build_symbol_series(payload: &Value) -> Vec<SymbolSeries> {
+    let mut by_symbol: BTreeMap<String, Vec<(String, f64)>> = BTreeMap::new();
+    if let Some(items) = payload.get("items").and_then(Value::as_array) {
+        for item in items {
+            let symbol = item
+                .get("symbol")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            let ts = item
+                .get("bar_time")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let close = item.get("close").and_then(Value::as_f64).unwrap_or(0.0);
+            if symbol.is_empty() || ts.is_empty() {
+                continue;
+            }
+            by_symbol.entry(symbol).or_default().push((ts, close));
+        }
+    }
+    by_symbol
+        .into_iter()
+        .map(|(symbol, mut points)| {
+            points.sort_by(|a, b| a.0.cmp(&b.0));
+            SymbolSeries { symbol, points }
+        })
+        .collect()
+}
+
+fn compute_y_range_from_samples(
+    primary: &[(f64, f64)],
+    secondary: Option<&[(f64, f64)]>,
+) -> (f64, f64) {
+    if primary.is_empty() {
+        return (0.0, 1.0);
+    }
+    let mut min = primary.iter().map(|(_, v)| *v).fold(f64::INFINITY, f64::min);
+    let mut max = primary
+        .iter()
+        .map(|(_, v)| *v)
+        .fold(f64::NEG_INFINITY, f64::max);
+    if let Some(other) = secondary {
+        min = min.min(other.iter().map(|(_, v)| *v).fold(f64::INFINITY, f64::min));
+        max = max.max(other.iter().map(|(_, v)| *v).fold(f64::NEG_INFINITY, f64::max));
+    }
+    let span = (max - min).max(1e-6);
+    (min - span * 0.08, max + span * 0.08)
+}
+
+fn build_aligned_indexed_samples(
+    stock_visible: &[(String, f64)],
+    benchmark_points: &[(String, f64)],
+    benchmark_symbol: &str,
+) -> Option<(Vec<(f64, f64)>, Vec<(f64, f64)>, String)> {
+    let bench_map: BTreeMap<&str, f64> = benchmark_points
+        .iter()
+        .map(|(ts, p)| (ts.as_str(), *p))
+        .collect();
+    let mut stock_raw: Vec<f64> = Vec::new();
+    let mut bench_raw: Vec<f64> = Vec::new();
+    for (ts, sp) in stock_visible {
+        if let Some(bp) = bench_map.get(ts.as_str()) {
+            stock_raw.push(*sp);
+            bench_raw.push(*bp);
+        }
+    }
+    if stock_raw.len() < 2 || bench_raw.len() < 2 {
+        return None;
+    }
+    let s0 = stock_raw[0];
+    let b0 = bench_raw[0];
+    if s0 == 0.0 || b0 == 0.0 {
+        return None;
+    }
+    let stock_idx: Vec<(f64, f64)> = stock_raw
+        .iter()
+        .enumerate()
+        .map(|(i, v)| (i as f64, v / s0 * 100.0))
+        .collect();
+    let bench_idx: Vec<(f64, f64)> = bench_raw
+        .iter()
+        .enumerate()
+        .map(|(i, v)| (i as f64, v / b0 * 100.0))
+        .collect();
+    Some((stock_idx, bench_idx, benchmark_symbol.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{build_symbol_series, ChartViewState, TuiState};
+    use serde_json::json;
+
+    #[test]
+    fn build_symbol_series_groups_and_sorts() {
+        let payload = json!({
+            "items": [
+                {"symbol":"600519.SH","bar_time":"2026-04-02T09:32:00+08:00","close":1451.0},
+                {"symbol":"000001.SZ","bar_time":"2026-04-02T09:31:00+08:00","close":12.1},
+                {"symbol":"600519.SH","bar_time":"2026-04-02T09:31:00+08:00","close":1450.0}
+            ]
+        });
+        let series = build_symbol_series(&payload);
+        assert_eq!(series.len(), 2);
+        assert_eq!(series[1].symbol, "600519.SH");
+        assert_eq!(series[1].points[0].0, "2026-04-02T09:31:00+08:00");
+    }
+
+    #[test]
+    fn tui_state_prefers_given_symbol() {
+        let payload = json!({
+            "items": [
+                {"symbol":"000001.SZ","bar_time":"2026-04-02T09:31:00+08:00","close":12.1},
+                {"symbol":"600519.SH","bar_time":"2026-04-02T09:31:00+08:00","close":1450.0}
+            ]
+        });
+        let series = build_symbol_series(&payload);
+        let state = TuiState::new(&series, Some("600519.SH"), true);
+        assert_eq!(state.selected_symbol_idx, 1);
+    }
+
+    #[test]
+    fn chart_view_keeps_cursor_in_bounds() {
+        let mut view = ChartViewState {
+            cursor: 99,
+            window_start: 0,
+            window_len: 20,
+        };
+        view.normalize(100);
+        assert!(view.cursor >= view.window_start);
+        assert!(view.cursor < view.window_start + view.window_len);
+    }
+}

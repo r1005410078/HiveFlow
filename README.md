@@ -3,6 +3,7 @@
 项目文档入口：
 
 - [docs/DOCUMENTATION_INDEX.md](docs/DOCUMENTATION_INDEX.md)
+- [GETTING_STARTED.md](GETTING_STARTED.md)
 
 ## 目录结构
 

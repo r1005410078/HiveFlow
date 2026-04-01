@@ -11,6 +11,10 @@ thiserror = "2"
 toml = "0.8"
 dirs = "5"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+comfy-table = "7"
+textplots = "0.8"
+ratatui = "0.29"
+crossterm = "0.29"
 
 [dev-dependencies]
 mockito = "1"

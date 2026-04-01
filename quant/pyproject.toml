@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "HiveFlow Quant Core"
 requires-python = ">=3.11"
 dependencies = [
+    "akshare>=1.15.0",
     "fastapi>=0.115.0",
     "httpx>=0.28.0",
     "pandas>=2.2.0",

@@ -14,6 +14,7 @@ fn parse_csv(input: Option<&str>) -> Option<Vec<String>> {
 
 pub fn handle(args: DataSyncArgs) -> Result<(), AppError> {
     let cfg = load_default_config()?;
+    let timeout_ms = args.timeout_ms.unwrap_or(cfg.timeout_ms);
     let symbols = parse_csv(args.symbols.as_deref());
     let out = post_data_sync(
         &cfg.server_url,
@@ -23,9 +24,8 @@ pub fn handle(args: DataSyncArgs) -> Result<(), AppError> {
         symbols.as_deref(),
         args.universe.as_deref(),
         args.request_id.as_deref(),
-        cfg.timeout_ms,
+        timeout_ms,
     )?;
     print!("{out}");
     Ok(())
 }
-

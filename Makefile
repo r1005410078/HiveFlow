@@ -81,10 +81,20 @@ db-reset-db-volume:
 	$(COMPOSE) down -v
 
 run-server:
-	cd quant && HF_HOST=$${HF_HOST:-0.0.0.0} HF_PORT=$${HF_PORT:-8000} uv run python bin/server.py
+	@if [ -f ".env.db" ]; then \
+		set -a; . ./.env.db; set +a; \
+		cd quant && HTTP_PROXY= HTTPS_PROXY= ALL_PROXY= http_proxy= https_proxy= all_proxy= HF_DB_HOST=$${HF_DB_HOST:-127.0.0.1} HF_DB_PORT=$${HF_DB_PORT:-5432} HF_HOST=$${HF_HOST:-0.0.0.0} HF_PORT=$${HF_PORT:-8000} uv run python bin/server.py; \
+	else \
+		cd quant && HTTP_PROXY= HTTPS_PROXY= ALL_PROXY= http_proxy= https_proxy= all_proxy= HF_HOST=$${HF_HOST:-0.0.0.0} HF_PORT=$${HF_PORT:-8000} uv run python bin/server.py; \
+	fi
 
 run-server-dev:
-	cd quant && HF_HOST=$${HF_HOST:-0.0.0.0} HF_PORT=$${HF_PORT:-8000} uv run uvicorn interfaces.http.app:create_app --factory --reload --host "$${HF_HOST}" --port "$${HF_PORT}"
+	@if [ -f ".env.db" ]; then \
+		set -a; . ./.env.db; set +a; \
+		cd quant && HTTP_PROXY= HTTPS_PROXY= ALL_PROXY= http_proxy= https_proxy= all_proxy= HF_DB_HOST=$${HF_DB_HOST:-127.0.0.1} HF_DB_PORT=$${HF_DB_PORT:-5432} HF_HOST=$${HF_HOST:-0.0.0.0} HF_PORT=$${HF_PORT:-8000} uv run uvicorn interfaces.http.app:create_app --factory --reload --host "$${HF_HOST}" --port "$${HF_PORT}"; \
+	else \
+		cd quant && HTTP_PROXY= HTTPS_PROXY= ALL_PROXY= http_proxy= https_proxy= all_proxy= HF_HOST=$${HF_HOST:-0.0.0.0} HF_PORT=$${HF_PORT:-8000} uv run uvicorn interfaces.http.app:create_app --factory --reload --host "$${HF_HOST}" --port "$${HF_PORT}"; \
+	fi
 
 run-pipeline:
 	@if [ -z "$(AS_OF)" ]; then \

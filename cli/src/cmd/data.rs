@@ -18,7 +18,7 @@ pub struct DataSyncArgs {
     pub days: i32,
     #[arg(long)]
     pub end_date: String,
-    #[arg(long, default_value = "1d")]
+    #[arg(long, default_value = "1m")]
     pub timeframe: String,
     #[arg(long)]
     pub symbols: Option<String>,
@@ -26,14 +26,16 @@ pub struct DataSyncArgs {
     pub universe: Option<String>,
     #[arg(long)]
     pub request_id: Option<String>,
+    #[arg(long)]
+    pub timeout_ms: Option<u64>,
 }
 
 #[derive(Debug, Args)]
 pub struct DataQueryArgs {
     #[arg(long)]
     pub days: i32,
-    #[arg(long)]
-    pub timeframe: Option<String>,
+    #[arg(long, default_value = "1m")]
+    pub timeframe: String,
     #[arg(long)]
     pub symbols: Option<String>,
     #[arg(long)]
@@ -42,4 +44,8 @@ pub struct DataQueryArgs {
     pub output: String,
     #[arg(long, default_value_t = false)]
     pub verbose: bool,
+    #[arg(long, default_value_t = false)]
+    pub no_benchmark: bool,
+    #[arg(long)]
+    pub timeout_ms: Option<u64>,
 }

@@ -41,6 +41,29 @@ class TimescaleBarStore:
             cur.close()
         return len(rows)
 
+    def insert_sync_run(self, payload: dict) -> None:
+        sql = """
+        insert into sync_runs (
+          run_id, request_id, status, days, end_date, timeframe,
+          symbols_hash, effective_symbols_count, error_code, error_message, finished_at
+        ) values (
+          %(run_id)s, %(request_id)s, %(status)s, %(days)s, %(end_date)s, %(timeframe)s,
+          %(symbols_hash)s, %(effective_symbols_count)s, %(error_code)s, %(error_message)s, now()
+        )
+        on conflict (run_id)
+        do update set
+          status = excluded.status,
+          error_code = excluded.error_code,
+          error_message = excluded.error_message,
+          finished_at = now()
+        """
+        cur = self._conn.cursor()
+        try:
+            cur.execute(sql, payload)
+            self._conn.commit()
+        finally:
+            cur.close()
+
     def list_sync_runs(
         self,
         days: int,
@@ -48,26 +71,34 @@ class TimescaleBarStore:
         symbols: list[str] | None = None,
         status: str | None = None,
     ) -> list[dict]:
-        # MVP: query sync_runs only; symbols filtering is reserved for later join optimization.
+        # Data-query returns market bars for recent window (time + price first).
+        if status and status != "success":
+            return []
         query = """
-        select run_id::text as run_id,
-               end_date::text as date,
-               status,
+        select bar_time::text as bar_time,
+               symbol,
                timeframe,
-               effective_symbols_count as symbols_count
-        from sync_runs
-        where end_date >= current_date - (%s::int - 1)
+               open,
+               high,
+               low,
+               close,
+               volume,
+               amount,
+               data_source
+        from bars
+        where bar_time >= (current_date - (%s::int - 1))::timestamptz
         """
         params: list[object] = [days]
         if timeframe:
             query += " and timeframe = %s"
             params.append(timeframe)
-        if status:
-            query += " and status = %s"
-            params.append(status)
         if symbols:
-            _ = symbols
-        query += " order by end_date desc, started_at desc"
+            query += " and symbol = any(%s)"
+            params.append(symbols)
+        query += """
+        order by bar_time desc, symbol asc
+        limit 5000
+        """
 
         cur = self._conn.cursor()
         try:
@@ -77,13 +108,19 @@ class TimescaleBarStore:
             cur.close()
         return [
             {
-                "run_id": row[0],
-                "date": row[1],
-                "status": row[2],
-                "timeframe": row[3],
-                "symbols_count": row[4],
+                "run_id": f"bar_{row[1]}_{row[0]}",
+                "bar_time": row[0],
+                "symbol": row[1],
+                "status": "success",
+                "timeframe": row[2],
+                "open": row[3],
+                "high": row[4],
+                "low": row[5],
+                "close": row[6],
+                "volume": row[7],
+                "amount": row[8],
+                "data_source": row[9],
                 "manifest_id": "",
             }
             for row in rows
         ]
-

@@ -11,14 +11,20 @@ fn data_query_table_renders_six_columns() {
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(
-            r#"{"items":[{"run_id":"run_1234567890abcdef","date":"2026-04-01","status":"success","timeframe":"1d","symbols_count":2,"manifest_id":"mf_1234567890abcdef"}]}"#,
+            r#"{"items":[{"bar_time":"2026-04-01T15:00:00+08:00","symbol":"600519.SH","status":"success","timeframe":"1d","open":1450.0,"high":1468.0,"low":1442.0,"close":1459.44,"volume":29125.0,"amount":4256185472.0,"data_source":"tencent","manifest_id":""}]}"#,
         )
         .create();
 
     let out = get_data_sync_runs(&server.url(), 5, None, None, None, 1000).expect("query ok");
     let table = render_sync_runs_table(&out, false);
 
-    assert!(table.contains("date | status | timeframe | symbols_count | run_id | manifest_id"));
-    assert!(table.contains("2026-04-01 | success | 1d | 2"));
+    assert!(table.contains("Market Data"));
+    assert!(table.contains("bar_time"));
+    assert!(table.contains("symbol"));
+    assert!(table.contains("timeframe"));
+    assert!(table.contains("close"));
+    // comfy-table should render UTF-8 borders.
+    assert!(table.contains("│") || table.contains("╭"));
+    assert!(table.contains("2026-04-01"));
+    assert!(table.contains("600519.SH"));
 }
-

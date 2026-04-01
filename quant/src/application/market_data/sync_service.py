@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from pathlib import Path
 import re
@@ -72,6 +72,12 @@ class SyncService:
         payload = ",".join(sorted(symbols)).encode("utf-8")
         return sha256(payload).hexdigest()
 
+    @staticmethod
+    def _as_of_window(end_date: str, days: int) -> list[str]:
+        end = datetime.strptime(end_date, "%Y-%m-%d").date()
+        start = end - timedelta(days=days - 1)
+        return [(start + timedelta(days=i)).isoformat() for i in range(days)]
+
     def _resolve_effective_symbols(
         self,
         symbols: list[str] | None,
@@ -103,11 +109,45 @@ class SyncService:
         request_id: str | None = None,
     ) -> dict:
         validate_timeframe(timeframe)
-        del request_id
         effective_symbols, selection_mode = self._resolve_effective_symbols(symbols, universe)
-        run_id = f"run_{uuid4().hex[:12]}"
+        as_of_dates = self._as_of_window(end_date=end_date, days=days)
+        total_written_rows = 0
+        has_any_rows = False
+        last_provider_error: RuntimeError | None = None
+        for as_of in as_of_dates:
+            try:
+                rows = self.quote_repo.fetch(symbols=effective_symbols, as_of=as_of, timeframe=timeframe)
+            except RuntimeError as exc:
+                last_provider_error = exc
+                continue
+            if not rows:
+                continue
+            has_any_rows = True
+            total_written_rows += self.bar_store.upsert_bars(rows)
+
+        if not has_any_rows:
+            if last_provider_error is not None:
+                raise RuntimeError(str(last_provider_error)) from last_provider_error
+            raise ValueError("no market data fetched for requested scope")
+        run_id = str(uuid4())
         manifest_id = f"mf_{uuid4().hex[:10]}"
         now = datetime.now(timezone.utc).isoformat()
+        sync_run_payload = {
+            "run_id": run_id,
+            "request_id": request_id,
+            "status": "success",
+            "days": days,
+            "end_date": end_date,
+            "timeframe": timeframe,
+            "symbols_hash": self._symbols_hash(effective_symbols),
+            "effective_symbols_count": len(effective_symbols),
+            "error_code": None,
+            "error_message": None,
+        }
+        insert_sync_run = getattr(self.bar_store, "insert_sync_run", None)
+        if callable(insert_sync_run):
+            insert_sync_run(sync_run_payload)
+
         return {
             "status": "success",
             "run_id": run_id,
@@ -116,7 +156,8 @@ class SyncService:
             "end_date": end_date,
             "effective_symbols_count": len(effective_symbols),
             "selection_mode": selection_mode,
-            "symbols_hash": self._symbols_hash(effective_symbols),
+            "symbols_hash": sync_run_payload["symbols_hash"],
+            "written_rows": total_written_rows,
             "manifest_ids": [manifest_id],
             "generated_at": now,
         }

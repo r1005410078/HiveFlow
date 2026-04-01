@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from fastapi import HTTPException
+
 from application.daily_run_service import run_daily
 from application.market_data.query_service import QueryService
 from application.market_data.sync_service import SyncService
+from interfaces.adapters.market_data.akshare_quote_adapter import AkshareQuoteAdapter
 from interfaces.adapters.market_data.db_connection import has_db_config, open_db_connection_from_env
+from interfaces.adapters.market_data.tencent_quote_adapter import TencentQuoteAdapter
 from interfaces.adapters.market_data.timescale_bar_store import TimescaleBarStore
 
 
@@ -24,19 +28,62 @@ class _NoopQuoteRepo:
         return []
 
 
+class _FallbackQuoteRepo:
+    def __init__(self, primary, secondary):
+        self._primary = primary
+        self._secondary = secondary
+
+    def fetch(self, symbols, as_of, timeframe):
+        primary_error = None
+        try:
+            rows = self._primary.fetch(symbols=symbols, as_of=as_of, timeframe=timeframe)
+            if rows:
+                return rows
+        except Exception as exc:  # noqa: BLE001 - source-specific failures should degrade.
+            primary_error = exc
+
+        try:
+            rows = self._secondary.fetch(symbols=symbols, as_of=as_of, timeframe=timeframe)
+            if rows:
+                return rows
+        except Exception as secondary_exc:  # noqa: BLE001 - source-specific failures should degrade.
+            if primary_error is not None:
+                raise RuntimeError(
+                    f"both market data sources failed: primary={primary_error}; secondary={secondary_exc}"
+                ) from secondary_exc
+            raise RuntimeError(
+                f"secondary market data source failed after primary returned empty: {secondary_exc}"
+            ) from secondary_exc
+
+        if primary_error is not None:
+            raise RuntimeError(
+                f"primary market data source failed and secondary returned empty: {primary_error}"
+            ) from primary_error
+
+        return []
+
+
 class _InMemoryBarStore:
     def upsert_bars(self, rows):
         return len(rows)
 
     def list_sync_runs(self, days, timeframe=None, symbols=None, status=None):
         del status
+        symbol = (symbols or ["600519.SH"])[0]
         return [
             {
-                "run_id": "run_demo_001",
-                "date": "2026-04-01",
+                "run_id": "bar_demo_001",
+                "bar_time": "2026-04-01T15:00:00+08:00",
+                "symbol": symbol,
                 "status": "success",
                 "timeframe": timeframe or "1d",
-                "symbols_count": len(symbols or []),
+                "open": 1450.0,
+                "high": 1468.0,
+                "low": 1442.0,
+                "close": 1459.44,
+                "volume": 29125.0,
+                "amount": 4256185472.0,
+                "data_source": "demo",
                 "manifest_id": "mf_demo_001",
                 "days": days,
             }
@@ -45,12 +92,46 @@ class _InMemoryBarStore:
 
 def _build_bar_store():
     if has_db_config():
-        return TimescaleBarStore(open_db_connection_from_env())
+        try:
+            return TimescaleBarStore(open_db_connection_from_env())
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "MARKET_DATA_DB_UNAVAILABLE",
+                    "message": "database is unavailable for market-data sync",
+                    "reason": str(exc),
+                },
+            ) from exc
     return _InMemoryBarStore()
 
 
+def _build_quote_repo():
+    if has_db_config():
+        try:
+            primary = TencentQuoteAdapter()
+        except Exception:
+            try:
+                return AkshareQuoteAdapter()
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail={
+                        "code": "MARKET_DATA_SOURCE_UNAVAILABLE",
+                        "message": "tencent/akshare market data sources are unavailable",
+                        "reason": str(exc),
+                    },
+                ) from exc
+        try:
+            secondary = AkshareQuoteAdapter()
+        except Exception:
+            return primary
+        return _FallbackQuoteRepo(primary=primary, secondary=secondary)
+    return _NoopQuoteRepo()
+
+
 def get_market_data_sync_service() -> MarketDataSyncService:
-    service = SyncService(quote_repo=_NoopQuoteRepo(), bar_store=_build_bar_store())
+    service = SyncService(quote_repo=_build_quote_repo(), bar_store=_build_bar_store())
     return service.sync
 
 
