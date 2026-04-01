@@ -118,6 +118,7 @@ cargo run -- data query --days 30 --symbols 600519.SH --output chart
 
 说明：
 - 图表输出包含两部分：`Compact Trend`（高可读单行趋势）和 `Close Price`（textplots 折线图）。
+- `chart` 模式要求 `--symbols` 只传一个股票。
 
 TUI 输出（全屏趋势图，更清晰）：
 
@@ -131,9 +132,11 @@ cargo run -- data query --days 30 --output tui
   - `← / →`（或 `h / l`）移动图表光标，查看每个时点价格
   - `a / d` 平移可视窗口
   - `+ / -` 缩放窗口
+  - `b` 开关大盘对比线（默认开启）
   - `0` 重置视图
   - `q / Esc / Enter` 退出
   - 可选传 `--symbols` 来限制股票范围，或指定默认选中股票（取第一个）
+- 默认大盘基准为 `000300.SH`（沪深300）。
 
 查询时同样可临时覆盖超时：
 
@@ -149,6 +152,12 @@ cargo run -- data query --days 30 --output table --timeout-ms 120000
 - `--timeout-ms` 可覆盖 `~/.hiveflow/config.toml` 中的 `timeout_ms`
 - `--timeframe` 默认是 `1m`（分钟级），可显式传 `1d` 切换日频
 - `symbols` 参数使用逗号分隔（如 `600519.SH,000001.SZ`）
+
+如果 TUI 看不到大盘线，通常是大盘数据尚未同步。可先执行：
+
+```bash
+cargo run -- data sync --days 5 --end-date 2026-04-01 --timeframe 1m --symbols 000300.SH
+```
 
 ## 9. 项目校验
 

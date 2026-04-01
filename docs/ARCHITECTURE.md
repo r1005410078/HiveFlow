@@ -258,6 +258,13 @@ retry = 1
 
 ## 8.2 Quick Start / Runtime Prerequisites
 
+当前 CLI 数据查询形态（与运行实现对齐）：
+
+- `hf data query --output` 支持 `json|table|chart|tui`。
+- `chart` 模式要求单标的 `--symbols`（如 `600519.SH`）。
+- `tui` 模式支持左侧选股与键盘交互（`↑/↓` 切换、`←/→` 光标、`a/d` 平移、`+/-` 缩放、`0` 重置、`b` 开关大盘对比）。
+- `chart/tui` 默认大盘基准为 `000300.SH`，可通过 `--no-benchmark` 关闭。
+
 运行前提：
 
 - 配置文件路径：`~/.hiveflow/config.toml`

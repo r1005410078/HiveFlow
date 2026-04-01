@@ -135,8 +135,9 @@ db/
 **Rust CLI 行为**：
 1. 解析命令行参数（clap）。
 2. 通过 HTTP 客户端请求 quant 服务端（`POST /v1/market-data/sync`、`GET /v1/market-data/sync-runs` 等）。
-3. 解析响应并校验 CLI 输出契约（`CLI_OUTPUT_SCHEMA.json`）。
-4. 异常时将 HTTP/业务错误映射为标准错误码并包装输出。
+3. 按输出模式渲染响应（`json|table|chart|tui`）；`chart/tui` 默认可叠加大盘基准（`000300.SH`），可用 `--no-benchmark` 关闭。
+4. 解析响应并校验 CLI 输出契约（`CLI_OUTPUT_SCHEMA.json`）。
+5. 异常时将 HTTP/业务错误映射为标准错误码并包装输出。
 
 **备选方案（未采纳）及排除原因**：
 

@@ -247,7 +247,7 @@ class QuoteRepository(ABC):
 - `hf data sync` 参数：
   - `--days`：同步最近 N 天（`N>=1`）
   - `--end-date`：结束日期，格式 `YYYY-MM-DD`，默认今天
-  - `--timeframe`：`1d` 或 `1m`，默认 `1d`
+  - `--timeframe`：`1d` 或 `1m`，默认 `1m`
   - `--symbols`：逗号分隔股票列表（可选）
   - `--universe`：股票池标识（可选，如 `csi300`, `zz500`, `all_a`）
 - `hf data query` 参数：
@@ -255,41 +255,28 @@ class QuoteRepository(ABC):
   - `--timeframe`：可选过滤
   - `--symbols`：可选过滤
   - `--status`：可选过滤（`success` / `failed`）
-  - `--output`：输出模式（`table` / `json` / `chart`）
+  - `--output`：输出模式（`table` / `json` / `chart` / `tui`）
+  - `--no-benchmark`：关闭大盘对比线（`chart/tui` 生效）
   - `--verbose`：表格模式追加展示诊断列（仅 `--output table` 生效）
-- 模式参数（两条命令通用）：
-  - `--interactive`：进入交互式参数填写（面向人工）
-  - `--non-interactive`：强制非交互模式（面向 AI/自动化）
+当前实现未启用 `--interactive/--non-interactive` 参数。CLI 采用显式参数驱动：
 
-交互模式规则：
-
-1. 显式 `--interactive` 时，按向导逐项提问并生成最终参数。
-2. 显式 `--non-interactive` 时，参数缺失直接报错，不进入交互。
-3. 都不传时采用自动模式：
-   - 在 TTY 场景且关键参数缺失：进入交互模式
-   - 非 TTY 场景：按非交互处理并报错
-4. 参数优先级：命令行显式参数 > 交互输入 > CLI 配置默认值
-
-交互提问顺序（`hf data sync`）：
-
-1. `days`
-2. `end_date`
-3. `timeframe`
-4. `symbols` 或 `universe`（二选一）
-5. 最终确认（展示摘要后确认执行）
-
-`hf data query` 输出模式默认规则：
-
-1. 显式传 `--output` 时按显式值输出
-2. 未显式传时：
-   - TTY + 人工使用场景：默认 `table`
-   - `--non-interactive` 或自动化场景：默认 `json`
+1. 参数优先级：命令行显式参数 > 配置默认值。
+2. `hf data query` 默认输出为 `json`（未显式传 `--output` 时）。
+3. 人工查看建议显式使用 `--output table` 或 `--output tui`。
 
 `hf data query --output chart` 约束：
 
 1. 仅面向人工阅读，不作为 AI 消费格式。
 2. 终端不支持图形字符时，自动降级为 `table` 并提示 warning。
-3. 图表仅展示聚合趋势，不替代明细（需要明细请使用 `table/json`）。
+3. 当前实现要求 `--symbols` 仅传 1 个标的（单标的图）。
+4. 图表不替代明细（需要明细请使用 `table/json`）。
+
+`hf data query --output tui` 约束：
+
+1. 面向人工交互查看，不作为 AI 消费格式。
+2. 未传 `--symbols` 时，展示查询结果中的股票列表并可交互切换。
+3. 传 `--symbols` 时，可作为默认选中标的或范围过滤。
+4. 默认带大盘对比（`000300.SH`）；可用 `--no-benchmark` 或交互键 `b` 关闭。
 
 ### 11.3 HTTP 映射
 
@@ -335,7 +322,6 @@ class QuoteRepository(ABC):
 ### 11.5 AI 可调用契约
 
 - 参数稳定：优先使用 `days/end_date/timeframe/symbols/universe`
-- AI 调用必须使用 `--non-interactive`（或等价 API 调用，不触发交互）
 - AI 调用 `hf data query` 必须使用 `--output json`
 - 响应稳定：字段固定，不因调用方变化
 - 幂等支持：`sync` 请求支持 `request_id`（重复提交返回同一任务结果）
@@ -353,18 +339,22 @@ class QuoteRepository(ABC):
   - `effective_symbols_count`
   - `manifest_ids`
 - `query --output json` 成功响应至少包含：
-  - `items[]`（每项包含 `run_id/date/status/timeframe/symbols_count/manifest_id`）
-- `query --output table` 默认输出精简 6 列（给人读）：
-  - `date | status | timeframe | symbols_count | run_id | manifest_id`
-- `query --output table --verbose` 追加列：
-  - `error_code | error_message | started_at | finished_at`
-- 表格宽度策略（窄终端）：
-  - 优先截断 `run_id` 与 `manifest_id`（保留前 8 + 后 6）
+  - `items[]`（行情查询形态下每项包含 `bar_time/symbol/timeframe/open/high/low/close/volume`）
+- `query --output table`（行情查询形态）默认列：
+  - `bar_time | symbol | timeframe | close`
+- `query --output table --verbose`：
+  - 在明细行后追加诊断行（`open/high/low/volume/data_source`）
 - `query --output chart` 默认图表：
-  - 近 N 天每日同步成功/失败数量趋势（双序列）
-  - 近 N 天 `effective_symbols_count` 趋势（单序列）
+  - 单标的价格趋势（textplots）
+  - 显示 `Change` 摘要与 `Compact Trend`
 - `query --output chart` 降级规则：
   - 若终端不支持图形字符，降级到 `table` 并输出 warning 文本
+- `query --output tui` 交互键：
+  - `↑/↓` 切换股票
+  - `←/→` 移动光标
+  - `a/d` 平移、`+/-` 缩放、`0` 重置
+  - `b` 开关大盘对比
+  - `q/Esc/Enter` 退出
 
 ### 11.7 验证用例（闭环）
 
@@ -374,15 +364,16 @@ class QuoteRepository(ABC):
    - `hf data query --days 5 --timeframe 1d --output table`
    - `hf data query --days 5 --timeframe 1d --output table --verbose`
    - `hf data query --days 5 --timeframe 1d --output chart`
-   - `hf data query --days 5 --timeframe 1d --output json --non-interactive`
-   - `hf data sync --interactive`（人工交互路径）
+   - `hf data query --days 5 --timeframe 1d --output json`
+   - `hf data query --days 5 --timeframe 1d --output tui`
 3. 断言：
-   - 两条命令 CLI 返回 `0`
+   - 相关命令 CLI 返回 `0`
    - 服务端落盘存在最近 5 天分区
    - manifest 写入成功并包含 `timeframe/bar_count`
-   - `query table` 默认输出精简 6 列
-   - `query table --verbose` 输出诊断扩展列
-   - `query chart` 输出趋势图；不支持图形字符时自动降级到 `table`
+   - `query table` 输出 `bar_time/symbol/timeframe/close` 核心列
+   - `query table --verbose` 输出诊断扩展信息
+   - `query chart` 输出单标的趋势图；不支持图形字符时自动降级到 `table`
+   - `query tui` 可交互切换股票与开关大盘对比（`b`）
    - `query json` 输出可被机器解析并可查询到对应 `run_id`
 
 ---
