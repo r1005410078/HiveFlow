@@ -63,3 +63,26 @@ retry = 1
 cd quant && uv run python bin/server.py
 make run-pipeline AS_OF=2026-04-01
 ```
+
+## 本地数据库（PostgreSQL + Timescale）
+
+已提供 Docker Compose 基建文件，可一键启动本地 TimescaleDB。
+
+```bash
+make db-init-env
+make db-up
+```
+
+常用命令：
+
+```bash
+make db-logs
+make db-psql
+make db-down
+```
+
+说明：
+
+- 首次启动会自动执行 `quant/db/migrations/0001_l1_timescale.sql`
+- 数据持久化在 Docker volume `timescale_data`
+- 重置数据库（会清空数据）：`make db-reset-db-volume`

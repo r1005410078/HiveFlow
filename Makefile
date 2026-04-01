@@ -1,6 +1,7 @@
 RUST_CLI_DIR := cli
+COMPOSE := docker compose
 
-.PHONY: help sync test lint architecture-check rust-test validate-cli-output validate-cli-output-one check run-pipeline run-server run-server-dev
+.PHONY: help sync test lint architecture-check rust-test validate-cli-output validate-cli-output-one check run-pipeline run-server run-server-dev db-up db-down db-logs db-psql db-reset-db-volume db-init-env
 
 help:
 	@echo "Available targets:"
@@ -15,6 +16,12 @@ help:
 	@echo "  make run-server                     # Run quant HTTP server"
 	@echo "  make run-server-dev                 # Run quant HTTP server with auto-reload"
 	@echo "  make run-pipeline AS_OF=YYYY-MM-DD  # Run daily pipeline command"
+	@echo "  make db-init-env                    # Create .env.db from template"
+	@echo "  make db-up                          # Start TimescaleDB with Docker"
+	@echo "  make db-down                        # Stop TimescaleDB"
+	@echo "  make db-logs                        # Tail TimescaleDB logs"
+	@echo "  make db-psql                        # Open psql in TimescaleDB container"
+	@echo "  make db-reset-db-volume             # Drop DB data volume (destructive)"
 
 sync:
 	cd quant && uv sync
@@ -43,6 +50,35 @@ validate-cli-output-one:
 	./scripts/validate_cli_output.sh "$(FILE)"
 
 check: test lint architecture-check validate-cli-output rust-test
+
+db-init-env:
+	@if [ -f ".env.db" ]; then \
+		echo ".env.db already exists"; \
+	else \
+		cp .env.db.example .env.db; \
+		echo "Created .env.db from template"; \
+	fi
+
+db-up:
+	@if [ ! -f ".env.db" ]; then \
+		echo "Missing .env.db, creating from template..."; \
+		cp .env.db.example .env.db; \
+	fi
+	$(COMPOSE) up -d timescaledb
+	@echo "TimescaleDB is starting. Check readiness with: make db-logs"
+
+db-down:
+	$(COMPOSE) down
+
+db-logs:
+	$(COMPOSE) logs -f timescaledb
+
+db-psql:
+	$(COMPOSE) exec timescaledb psql -U "$${POSTGRES_USER:-hiveflow}" -d "$${POSTGRES_DB:-hiveflow}"
+
+db-reset-db-volume:
+	@echo "WARNING: This will remove Timescale data volume permanently."
+	$(COMPOSE) down -v
 
 run-server:
 	cd quant && HF_HOST=$${HF_HOST:-0.0.0.0} HF_PORT=$${HF_PORT:-8000} uv run python bin/server.py

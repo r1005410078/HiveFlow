@@ -1,0 +1,20 @@
+services:
+  timescaledb:
+    image: timescale/timescaledb:2.17.2-pg16
+    container_name: hiveflow-timescaledb
+    restart: unless-stopped
+    env_file:
+      - .env.db
+    ports:
+      - "${HF_DB_PORT:-5432}:5432"
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+      - ./quant/db/migrations/0001_l1_timescale.sql:/docker-entrypoint-initdb.d/0001_l1_timescale.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hiveflow} -d ${POSTGRES_DB:-hiveflow}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  timescale_data:
