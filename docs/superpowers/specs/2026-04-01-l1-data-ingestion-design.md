@@ -150,25 +150,70 @@ Schema 预留扩展：L2/L3 需要时可直接追加 `turnover_rate`、`total_mv
 
 ---
 
-## 9. 接入 daily_run_service
+## 9. Symbols 来源设计
 
-`application/daily_run_service.run_daily()` 增加 L1 调用：
+### 并集策略
+
+```
+最终 symbols = 沪深300成分股 ∪ 中证500成分股 ∪ watchlist.toml 中的自选股
+```
+
+未来补全持仓管理后，持仓股由系统自动并入，无需手动维护到 watchlist。
+
+### watchlist.toml 格式
+
+位于 `~/.hiveflow/watchlist.toml`，用户手动维护关注股与持仓股：
+
+```toml
+[universe]
+indices = ["CSI300", "CSI500"]   # 指数成分股，默认开启
+
+[watchlist]
+symbols = ["002415.SZ", "300750.SZ"]   # 关注股
+
+[holdings]
+symbols = ["600519.SH", "000858.SZ"]   # 持仓股（后续由持仓管理模块自动填充，不再手动维护）
+```
+
+若文件不存在，降级为仅使用 `indices` 默认值（CSI300 + CSI500）。
+
+### SymbolsResolver
+
+新增 `hiveflow/market_data/application/symbols_resolver.py`：
+
+```
+输入：watchlist_path: Path
+
+流程：
+  1. 读取 watchlist.toml（文件不存在则用默认 indices）
+  2. akshare 拉取各指数最新成分股列表
+  3. 与 watchlist + holdings 取并集，去重
+  4. 返回 list[str]（标准化格式 XXXXXX.SH/SZ）
+```
+
+### 接入 daily_run_service
 
 ```python
+resolver = SymbolsResolver(watchlist_path=Path.home() / ".hiveflow/watchlist.toml")
+symbols = resolver.resolve()
+
 repo = AkshareQuoteAdapter(is_fallback=True)
-manifest_repo = NdjsonManifestRepository(root)
-manifest_svc = ManifestService(manifest_repo)
+manifest_svc = ManifestService(NdjsonManifestRepository(root))
 use_case = IngestUseCase(repo, manifest_svc)
 
-result = use_case.run(symbols=["000001.SZ", "600519.SH"], as_of=as_of, root=root)
+result = use_case.run(symbols=symbols, as_of=as_of, root=root)
 data["data_manifest_id"] = result.manifest_id
 ```
 
-`symbols` 第一版硬编码少量测试标的，待 L0 Universe 层接入后替换为动态列表。
+---
+
+## 10. 接入 SyncUseCase
+
+`SyncUseCase` 同样通过 `SymbolsResolver` 获取 symbols，不接受外部传入 symbols 列表（由系统统一管理来源）。
 
 ---
 
-## 10. 测试策略
+## 11. 测试策略
 
 | 文件 | 类型 | 覆盖点 |
 |------|------|--------|
@@ -177,6 +222,8 @@ data["data_manifest_id"] = result.manifest_id
 | `tests/integration/test_l1_ingest_integration.py` | Integration | tmp_path + mock adapter，端到端验证 Parquet 文件与 manifest NDJSON 均写出 |
 
 现有 `test_ingest_use_case.py`（只测 `persist_quotes`）改为测新的 `IngestUseCase`。
+
+新增 `tests/unit/market_data/test_symbols_resolver.py`：mock akshare 成分股接口 + 各种 watchlist.toml 场景（文件存在/不存在/含 holdings）。
 
 ---
 
@@ -366,3 +413,5 @@ AI 可将 `manifest_ids` 作为下游命令的 `--data-manifest` 参数，确保
 - 完整交易日历（当前跳过周末，不识别 A 股节假日）
 - L2 及以上层接入
 - 实时/分钟频行情
+- 个人持仓管理模块（后续任务，完成后持仓股由系统自动并入 symbols，watchlist.toml 的 `[holdings]` 段将废弃）
+- 关注股管理 UI / CLI（后续任务，当前通过手动编辑 watchlist.toml 维护）
