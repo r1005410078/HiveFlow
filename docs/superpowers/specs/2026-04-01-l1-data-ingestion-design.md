@@ -186,51 +186,60 @@ data["data_manifest_id"] = result.manifest_id
 
 | 命令 | 类型 | 触发方 | 说明 |
 |------|------|--------|------|
-| `hf data sync --days N` | 写操作 | 用户 / cron | 同步最近 N 天行情，**不在 AI 白名单** |
-| `hf data status --as-of YYYY-MM-DD` | 读操作 | 用户 / AI Skill | 查询指定日期的数据就绪状态，**AI 可调用** |
+| `hf data sync --days N` | 写操作 | 用户 / cron / AI Skill | 同步最近 N 天行情，**AI 可调用** |
+| `hf data history [--days N \| --from F --to T]` | 读操作 | 用户 / AI Skill | 查询历史数据覆盖情况，**AI 可调用** |
 
-`--days` 典型值：`30`（月度补数）、`90`（季度回补）、`360`（年度初始化）。
+`sync --days` 典型值：`30`（月度补数）、`90`（季度回补）、`360`（年度初始化）。
 
 ### Rust CLI 改动
 
-**`cli/src/cmd/data.rs`** — 将现有 `Snapshot` 占位替换为 `Sync` + `Status`：
+**`cli/src/cmd/data.rs`** — 将现有 `Snapshot` 占位替换为 `Sync` + `History`：
 
 ```rust
 pub enum DataSubcommand {
     Sync(SyncArgs),
-    Status(StatusArgs),
+    History(HistoryArgs),
 }
 
 pub struct SyncArgs {
     #[arg(long)]
-    pub days: u32,              // 同步最近 N 天
+    pub days: u32,
 }
 
-pub struct StatusArgs {
-    #[arg(long)]
-    pub as_of: String,          // 查询指定日期的数据就绪状态
+pub struct HistoryArgs {
+    /// 查询最近 N 天（与 --from/--to 互斥）
+    #[arg(long, conflicts_with_all = ["from", "to"])]
+    pub days: Option<u32>,
+
+    /// 起始日期（与 --days 互斥）
+    #[arg(long, requires = "to")]
+    pub from: Option<String>,
+
+    /// 截止日期（与 --days 互斥）
+    #[arg(long, requires = "from")]
+    pub to: Option<String>,
 }
 ```
 
 **新增文件：**
 - `cli/src/application/handlers/data_sync.rs` — 调用 `http_client::post_data_sync()`
-- `cli/src/application/handlers/data_status.rs` — 调用 `http_client::get_data_status()`
+- `cli/src/application/handlers/data_history.rs` — 调用 `http_client::get_data_history()`
 
 **`cli/src/infrastructure/http_client.rs`** — 新增两个函数：
 - `post_data_sync(server_url, days, timeout_ms) → Result<Value, AppError>`  
   调用 `POST /api/v1/data/sync`
-- `get_data_status(server_url, as_of, timeout_ms) → Result<Value, AppError>`  
-  调用 `GET /api/v1/data/status?as_of=YYYY-MM-DD`
+- `get_data_history(server_url, from, to, timeout_ms) → Result<Value, AppError>`  
+  调用 `GET /api/v1/data/history?from=YYYY-MM-DD&to=YYYY-MM-DD`  
+  （handler 负责将 `--days N` 转换为 `from = today - N, to = today`）
 
 **`cli/src/application/dispatch.rs`** — 将 `Commands::Data(_)` 的占位替换为实际分发。
 
 ### Python HTTP 端点与 Use Case 扩展
 
 **新增 `quant/src/interfaces/http/routes_data.py`，注册两个路由：**
-- `POST /api/v1/data/sync` — body: `{"days": 90}`，调用 `SyncUseCase`  
-  返回：synced_dates 列表、manifest_ids、total_symbols_count
-- `GET /api/v1/data/status?as_of=YYYY-MM-DD` — 查询 DataManifest by as_of  
-  返回：manifest 字段或 `status: "not_found"`
+- `POST /api/v1/data/sync` — body: `{"days": 90}`，调用 `SyncUseCase`
+- `GET /api/v1/data/history?from=YYYY-MM-DD&to=YYYY-MM-DD` — 调用 `HistoryQueryUseCase`  
+  返回：日期范围内每天的 manifest 摘要列表（含缺口标记）
 
 **`app.py`** 注册新 router。
 
@@ -239,13 +248,26 @@ pub struct StatusArgs {
 输入：days: int
 
 流程：
-  1. 计算日期列表：过去 N 个交易日（简单版：过去 N 个自然日，跳过周末）
+  1. 计算日期列表：过去 N 个自然日，跳过周末
   2. 对每个 date 调用 IngestUseCase.run(symbols, date, root)
-  3. 汇总结果：成功落盘日期、跳过日期（已有 manifest）、失败日期
+  3. 汇总：synced_dates、skipped_dates（已有 manifest）、failed_dates
   4. 返回 SyncResult(synced_dates, skipped_dates, failed_dates, manifest_ids)
 ```
 
-幂等性：若某日期已有 manifest，跳过重新拉取（`skipped_dates` 记录），避免重复覆盖。
+幂等性：若某日期已有 manifest，跳过重新拉取（`skipped_dates` 记录）。
+
+**`HistoryQueryUseCase`**（新增，在 `hiveflow/market_data/application/`）：
+```
+输入：from_date: str, to_date: str
+
+流程：
+  1. 枚举 [from, to] 日期范围内的自然日（跳过周末）
+  2. 对每个 date 查询 manifest_repo.find_by_as_of(date)
+  3. 返回 HistoryResult：
+     - records: list of {date, manifest_id, data_source, symbols_count, has_data}
+     - coverage_rate: 有数据日期 / 总交易日数
+     - gaps: 缺数据的日期列表
+```
 
 ### CLI 输出 schema
 
@@ -273,45 +295,67 @@ pub struct StatusArgs {
 }
 ```
 
-`hf data status --as-of YYYY-MM-DD` 响应中 `data` 为单日 manifest 字段（manifest_id、data_source、fallback_used、symbols_count、data_hash）。
+`hf data history` 响应示例：
+```json
+{
+  "data": {
+    "from": "2026-03-01",
+    "to": "2026-04-01",
+    "coverage_rate": 0.95,
+    "gaps": ["2026-03-15"],
+    "records": [
+      {"date": "2026-04-01", "has_data": true, "manifest_id": "dm_20260401_xyz", "data_source": "akshare", "symbols_count": 2},
+      {"date": "2026-03-15", "has_data": false, "manifest_id": null, "data_source": null, "symbols_count": 0}
+    ]
+  }
+}
+```
 
 ### 测试扩展
 
 | 文件 | 类型 | 覆盖点 |
 |------|------|--------|
 | `cli/tests/http_data_sync.rs` | Rust unit | mock server，验证 sync 请求/响应映射 |
-| `cli/tests/http_data_status.rs` | Rust unit | mock server，验证 status 请求/响应映射 |
+| `cli/tests/http_data_history.rs` | Rust unit | mock server，验证 history `--days` 与 `--from/--to` 两种参数转换 |
 | `quant/tests/contract/test_data_sync_output.py` | Contract | 校验响应符合 CLI_OUTPUT_SCHEMA.json |
-| `quant/tests/integration/test_http_data_endpoint.py` | Integration | FastAPI TestClient，验证两个端点 + 幂等性（重复 sync 同一日期） |
+| `quant/tests/integration/test_http_data_endpoint.py` | Integration | FastAPI TestClient，验证两个端点 + 幂等性（重复 sync 同一日期）+ history 缺口标记 |
 
 ---
 
 ## 12. AI Skills 集成
 
-### 设计原则
-
-- `hf data sync`：**不在 AI 白名单**。数据写入是运营操作，必须由人或 cron 触发，AI 不得触发数据落盘。
-- `hf data status`：**加入 AI 白名单**。只读查询，AI 用来验证数据就绪后再执行分析。
-
 ### 白名单更新
 
-在 `docs/AI_SKILLS_INTEGRATION.md` 的可调用命令列表中新增：
+两条命令均加入 AI 白名单（在 `docs/AI_SKILLS_INTEGRATION.md` 可调用命令列表中新增）：
 
 ```
-hf data status --as-of <date>
+hf data sync --days <N>
+hf data history --days <N>
+hf data history --from <date> --to <date>
 ```
 
 ### Skill 使用场景
 
-AI Skill 在执行任何依赖行情数据的分析（`hf signal snapshot`、`hf factor health` 等）之前，先调用 `hf data status` 验证数据就绪：
+**场景一：数据补全**  
+AI 发现分析所需日期无数据时，可主动调用 `hf data sync` 补数：
 
 ```
-步骤一：hf data status --as-of 2026-04-01
-  → status=ok 且 data.manifest_id 存在 → 继续
-  → status=not_found → Skill 输出 "数据未就绪，请先运行 hf data sync --days 30"，终止
+hf data history --days 7
+  → 发现 gaps: ["2026-03-30", "2026-03-31"]
+  → hf data sync --days 7   （触发补数）
+  → hf data history --days 7 （验证缺口已填补）
 ```
 
-AI 可将 `manifest_id` 作为下游命令的 `--data-manifest` 参数，确保数据版本对齐（G1 可追溯）。
+**场景二：分析前数据就绪验证**  
+执行 `hf signal snapshot` 等分析前，先确认数据覆盖率：
+
+```
+hf data history --from 2026-01-01 --to 2026-04-01
+  → coverage_rate < 0.9 → Skill 告警"数据覆盖率不足，分析结果可能有偏"
+  → coverage_rate >= 0.9 → 继续分析，将 manifest_ids 传入下游命令
+```
+
+AI 可将 `manifest_ids` 作为下游命令的 `--data-manifest` 参数，确保数据版本对齐（G1 可追溯）。
 
 ---
 
@@ -319,7 +363,6 @@ AI 可将 `manifest_id` 作为下游命令的 `--data-manifest` 参数，确保�
 
 - 腾讯数跟 adapter 实现
 - L0 Universe 动态过滤标的列表
-- 交易日历（当前 sync 跳过周末，不做完整交易日历）
+- 完整交易日历（当前跳过周末，不识别 A 股节假日）
 - L2 及以上层接入
 - 实时/分钟频行情
-- `hf data sync` 加入 AI 白名单（明确排除）
