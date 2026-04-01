@@ -1,0 +1,7 @@
+version: 1
+updated_at: "2026-04-01T09:30:00+08:00"
+positions:
+  - symbol: "600036.SH"
+    qty: 1000
+  - symbol: "510300.SH"
+    qty: 2000

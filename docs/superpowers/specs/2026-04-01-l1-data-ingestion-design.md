@@ -1,6 +1,6 @@
 # L1 数据接入设计
 
-> 状态：已确认
+> 状态：待评审
 > 日期：2026-04-01
 > 适用对象：L1 数据层实现、G1 数据治理集成
 
@@ -8,410 +8,518 @@
 
 ## 1. 目标
 
-将 `hiveflow/market_data/` 从最小化骨架升级为可运行的 L1 数据层：
+本设计仅覆盖 **L1 ingestion 核心能力**：
 
-- 通过 akshare 拉取 A 股日频行情，落盘为 Parquet
-- 每次数据拉取写入 G1 DataManifest（可追溯数据来源、版本、hash）
-- 通过 Port/Adapter 模式隔离数据源，未来接入腾讯数跟只需新增 adapter
+范围边界说明：
+
+- 本文档目标是完成 **L1** 设计与实现约束
+- 对 **L0** 仅定义“最小调用契约”（CLI/AI 如何触发 L1）
+- 不覆盖完整 L0 客户端架构与交互系统设计
+
+- 从 akshare 拉取 A 股 K 线行情（多粒度）
+- 落盘为 Parquet（按 `timeframe/as_of` 分区）
+- 使用 `PostgreSQL + Timescale` 作为查询与增量索引层
+- 写入 DataManifest（可追溯数据来源、版本、hash）
+- 提供面向 CLI/AI 的数据同步与最近 N 天查询能力
+- 通过 Port/Adapter 模式隔离数据源，后续可平滑接入腾讯数跟
+
+粒度策略：
+
+- 设计层面：统一支持多粒度（`timeframe` 为必选入参）
+- MVP 强制支持：`1d`（日线）与 `1m`（1 分钟）
+- 其他粒度（如 `5m/15m/60m`）后续按同一契约扩展
+
+本设计 **不包含** AI 白名单策略本身；但接口参数与返回结构需满足 AI 可稳定调用。
 
 ---
 
-## 2. 目录结构
+## 2. 分层与目录（对齐当前三层架构）
 
-```
-quant/src/hiveflow/market_data/
-├── domain/
-│   ├── quote.py                    # 已有：Quote dataclass
-│   └── quote_repository.py         # 新增：QuoteRepository abstract port
-├── application/
-│   └── ingest_use_case.py          # 改造：IngestUseCase 编排完整 L1 流程
-└── infrastructure/
-    ├── __init__.py
-    ├── akshare_quote_adapter.py    # 新增：akshare 实现 QuoteRepository port
-    └── parquet_quote_writer.py     # 新增：Parquet 落盘（提炼自现有 persist_quotes）
+```text
+quant/src/
+  domain/
+    market_data/
+      quote.py                    # Quote 领域对象
+      quote_repository.py         # QuoteRepository port
+  application/
+    market_data/
+      ingest_use_case.py          # IngestUseCase（编排）
+      ingest_result.py            # IngestResult DTO
+  interfaces/
+    adapters/
+      market_data/
+        akshare_quote_adapter.py  # 实现 QuoteRepository
+        parquet_quote_writer.py   # Parquet 落盘与 hash
+        timescale_bar_store.py    # Timescale 写入/查询/增量 checkpoint
+      governance/
+        manifest_repo_ndjson.py   # 已有能力可复用
 ```
 
-`hiveflow/governance/application/manifest_service.py` 已有，直接复用。
+约束：
+
+- `domain` 不依赖 `application/interfaces`
+- `application` 可依赖 `domain`
+- `interfaces/adapters` 实现外部 IO（akshare、文件系统、PostgreSQL/Timescale）
 
 ---
 
 ## 3. Port 定义
 
-**`domain/quote_repository.py`**
+**`domain/market_data/quote_repository.py`**
 
 ```python
 from abc import ABC, abstractmethod
 import pandas as pd
 
+
 class QuoteRepository(ABC):
     @abstractmethod
-    def fetch(self, symbols: list[str], as_of: str) -> pd.DataFrame:
+    def fetch(self, symbols: list[str], as_of: str, timeframe: str) -> pd.DataFrame:
         """
-        拉取指定标的在 as_of 日期的日频行情。
+        拉取指定 symbols 在 as_of 的指定粒度行情。
 
-        返回 DataFrame 必须包含最小列集：
-          symbol, date, open, high, low, close, volume, amount, adj_factor
+        返回 DataFrame 必须至少包含：
+        symbol, timeframe, bar_time, open, high, low, close, volume, amount, adj_factor
         """
 ```
-
-未来接入腾讯数跟：新增 `TencentQuoteAdapter(QuoteRepository)`，其余层不变。
 
 ---
 
-## 4. Application Use Case 编排
+## 4. Application 编排（IngestUseCase）
 
-**`application/ingest_use_case.py`**，重构为 `IngestUseCase` 类：
+**`application/market_data/ingest_use_case.py`**
 
-```
-输入：symbols: list[str], as_of: str, root: Path
+输入：`symbols: list[str]`, `as_of: str`, `timeframe: str`, `root: Path`
 
-编排流程：
-  1. repo.fetch(symbols, as_of)
-       → 失败时抛 DataFetchError（ErrorCode.DATA_FETCH_FAILED）
-  2. 字段校验
-       → 必须含最小列集，缺列抛 ValueError
-  3. 计算 data_hash
-       → SHA256(Parquet bytes)，支持 PIT 可追溯
-  4. parquet_writer.write(df, root, as_of)
-       → 落盘到 data/raw/as_of=YYYY-MM-DD/quotes.parquet
-  5. manifest_service.create_manifest(
-         as_of, data_source, fallback_used,
-         symbols_count=len(df["symbol"].unique()),
-         data_hash
-     )
-  6. 返回 IngestResult(manifest_id, symbols_count, parquet_path)
-```
+流程：
 
-**`IngestUseCase` 构造参数：**
+1. `repo.fetch(symbols, as_of, timeframe)`
+   - 异常映射为 `DATA_FETCH_FAILED`
+2. 校验 `timeframe`（当前允许：`1d`, `1m`）
+   - 非法值抛 `ValueError`（阻断）
+3. 校验最小列集
+   - 缺列抛 `ValueError`（阻断）
+4. `parquet_writer.write(df, root, as_of, timeframe)`
+   - 输出 `parquet_path`
+   - 输出 `data_hash`（SHA256）
+5. `manifest_service.create_manifest(...)`
+   - 写入 `manifest_id/run_id/as_of/timeframe/data_source/fallback_used/symbols_count/bar_count/data_hash`
+6. 返回 `IngestResult(manifest_id, symbols_count, bar_count, parquet_path, data_hash)`
+
+构造参数：
+
 - `repo: QuoteRepository`
+- `parquet_writer: ParquetQuoteWriter`
 - `manifest_service: ManifestService`
 
 ---
 
-## 5. Infrastructure
+## 5. Adapter 设计
 
-### AkshareQuoteAdapter
+### 5.1 AkshareQuoteAdapter
 
-- 实现 `QuoteRepository.fetch()`
-- 通过 `akshare` 拉取日频行情（`ak.stock_zh_a_hist`）
-- 构造参数 `is_fallback: bool`，传入 manifest 的 `fallback_used` 字段
-- 字段映射：akshare 原始列 → 最小列集（symbol/date/open/high/low/close/volume/amount/adj_factor）
-- 第一版 adj_factor 固定为 1.0（前复权价格直接使用）
+职责：实现 `QuoteRepository.fetch()`。
 
-### ParquetQuoteWriter
+要点：
 
-- 封装落盘逻辑（从现有 `persist_quotes` 提炼）
-- 路径规则：`{root}/data/raw/as_of={as_of}/quotes.parquet`
-- 返回写出的 Path，同时返回 SHA256 hash（用于 manifest）
+- 根据 `timeframe` 调用 akshare 对应接口（`1d`、`1m`）
+- 字段映射到最小列集（symbol/timeframe/bar_time/open/high/low/close/volume/amount/adj_factor）
+- 第一版 `adj_factor=1.0`
+- 支持 `data_source="akshare"` 与 `fallback_used` 标识
+
+### 5.2 ParquetQuoteWriter
+
+职责：落盘 + hash。
+
+路径规则：
+
+- `{root}/data/raw/timeframe={timeframe}/as_of={as_of}/quotes.parquet`
+
+返回：
+
+- `parquet_path: Path`
+- `data_hash: str`（SHA256 of parquet bytes）
+
+### 5.3 TimescaleBarStore（PostgreSQL + Timescale）
+
+职责：作为“查询与增量索引层”。
+
+要点：
+
+- 写入标准化 K 线到 Timescale hypertable（按 `bar_time` 分片）
+- 提供 `hf data query` 所需检索能力（按 `days/timeframe/symbol/status`）
+- 维护增量同步 checkpoint（每个 `symbol + timeframe` 的最近 `bar_time`）
+- 与 Parquet 层职责分离：Parquet 偏归档与回放，Timescale 偏在线查询与增量计算
 
 ---
 
-## 6. 字段 Schema
-
-最小列集（第一版）：
+## 6. 字段 Schema（最小列集）
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| symbol | str | 标的代码（如 000001.SZ） |
-| date | str | 交易日（YYYY-MM-DD） |
+| symbol | str | 标的代码（如 `000001.SZ`） |
+| timeframe | str | 粒度（`1d` / `1m`） |
+| bar_time | str | K 线时间（ISO8601，东八区） |
 | open | float | 开盘价 |
 | high | float | 最高价 |
 | low | float | 最低价 |
 | close | float | 收盘价（前复权） |
 | volume | float | 成交量 |
 | amount | float | 成交额 |
-| adj_factor | float | 复权因子（第一版固定 1.0） |
+| adj_factor | float | 复权因子（第一版固定 `1.0`） |
 
-Schema 预留扩展：L2/L3 需要时可直接追加 `turnover_rate`、`total_mv`、`float_mv` 等列，不破坏现有消费方。
+说明：
 
----
-
-## 7. G1 DataManifest 集成
-
-每次成功落盘后写入 DataManifest，字段：
-
-- `manifest_id`：唯一 ID（`dm_{as_of}_{uuid6}`）
-- `run_id`：本次运行 ID
-- `as_of`：数据日期
-- `data_source`：`"akshare"`（或 `"tencent"`）
-- `fallback_used`：`bool`，akshare 第一版设为 `True`（待腾讯数跟接入后可改为 `False`）
-- `symbols_count`：拉取标的数
-- `data_hash`：SHA256 of Parquet bytes
+- 当 `timeframe=1d`：`bar_time` 统一归一到当日收盘时刻
+- 当 `timeframe=1m`：`bar_time` 为分钟 K 线时间戳
 
 ---
 
-## 8. 错误处理
+## 7. DataManifest 集成
 
-| 场景 | 行为 |
+成功落盘后必须写入 manifest，字段对齐当前治理模型：
+
+- `manifest_id`
+- `run_id`
+- `as_of`
+- `timeframe`
+- `data_source`
+- `fallback_used`
+- `symbols_count`
+- `bar_count`
+- `data_hash`
+- `created_at`
+
+当前代码中的领域模型见：
+[manifest.py](/Users/rongts/HiveFlow/quant/src/hiveflow/governance/domain/manifest.py)
+
+---
+
+## 8. 错误处理策略
+
+| 场景 | 处理 |
 |------|------|
-| `repo.fetch()` 失败（网络/akshare 异常） | 抛 `DataFetchError`，由 `daily_run_service` 捕获，输出 `status: warning` |
-| 字段缺失 | 抛 `ValueError`，阻断流程 |
-| 落盘失败（磁盘/权限） | 让异常向上传播，由调用方处理 |
+| 数据源异常（网络/akshare） | 抛 `DATA_FETCH_FAILED` |
+| 返回空数据 | 抛业务异常并阻断 |
+| 字段缺失 | `ValueError` 阻断 |
+| 落盘失败（权限/磁盘） | 异常上抛 |
+| manifest 写入失败 | 异常上抛 |
 
 ---
 
-## 9. Symbols 来源设计
-
-### 并集策略
-
-```
-最终 symbols = 沪深300成分股 ∪ 中证500成分股 ∪ watchlist.toml 中的自选股
-```
-
-未来补全持仓管理后，持仓股由系统自动并入，无需手动维护到 watchlist。
-
-### watchlist.toml 格式
-
-位于 `~/.hiveflow/watchlist.toml`，用户手动维护关注股与持仓股：
-
-```toml
-[universe]
-indices = ["CSI300", "CSI500"]   # 指数成分股，默认开启
-
-[watchlist]
-symbols = ["002415.SZ", "300750.SZ"]   # 关注股
-
-[holdings]
-symbols = ["600519.SH", "000858.SZ"]   # 持仓股（后续由持仓管理模块自动填充，不再手动维护）
-```
-
-若文件不存在，降级为仅使用 `indices` 默认值（CSI300 + CSI500）。
-
-### SymbolsResolver
-
-新增 `hiveflow/market_data/application/symbols_resolver.py`：
-
-```
-输入：watchlist_path: Path
-
-流程：
-  1. 读取 watchlist.toml（文件不存在则用默认 indices）
-  2. akshare 拉取各指数最新成分股列表
-  3. 与 watchlist + holdings 取并集，去重
-  4. 返回 list[str]（标准化格式 XXXXXX.SH/SZ）
-```
-
-### 接入 daily_run_service
-
-```python
-resolver = SymbolsResolver(watchlist_path=Path.home() / ".hiveflow/watchlist.toml")
-symbols = resolver.resolve()
-
-repo = AkshareQuoteAdapter(is_fallback=True)
-manifest_svc = ManifestService(NdjsonManifestRepository(root))
-use_case = IngestUseCase(repo, manifest_svc)
-
-result = use_case.run(symbols=symbols, as_of=as_of, root=root)
-data["data_manifest_id"] = result.manifest_id
-```
-
----
-
-## 10. 接入 SyncUseCase
-
-`SyncUseCase` 同样通过 `SymbolsResolver` 获取 symbols，不接受外部传入 symbols 列表（由系统统一管理来源）。
-
----
-
-## 11. 测试策略
+## 9. 测试策略
 
 | 文件 | 类型 | 覆盖点 |
 |------|------|--------|
-| `tests/unit/market_data/test_ingest_use_case.py` | Unit | mock `QuoteRepository`，验证完整编排：落盘 + manifest 写入 + IngestResult |
-| `tests/unit/market_data/test_akshare_adapter.py` | Unit | monkeypatch akshare，验证字段映射与 DataFetchError 抛出 |
-| `tests/integration/test_l1_ingest_integration.py` | Integration | tmp_path + mock adapter，端到端验证 Parquet 文件与 manifest NDJSON 均写出 |
-
-现有 `test_ingest_use_case.py`（只测 `persist_quotes`）改为测新的 `IngestUseCase`。
-
-新增 `tests/unit/market_data/test_symbols_resolver.py`：mock akshare 成分股接口 + 各种 watchlist.toml 场景（文件存在/不存在/含 holdings）。
+| `quant/tests/unit/market_data/test_ingest_use_case.py` | Unit | mock repo/writer/manifest，验证 `1d/1m` 编排与错误映射 |
+| `quant/tests/unit/market_data/test_akshare_adapter.py` | Unit | mock akshare，验证 `timeframe` 路由、字段映射与异常处理 |
+| `quant/tests/unit/market_data/test_parquet_quote_writer.py` | Unit | 验证 `timeframe/as_of` 路径规则与 hash 生成 |
+| `quant/tests/integration/test_l1_ingest_integration.py` | Integration | tmp_path 端到端验证 `1d/1m` parquet + manifest 写出 |
 
 ---
 
-## 11. CLI 设计
+## 10. 非目标（本次不做）
 
-### 两条命令，职责分离
-
-| 命令 | 类型 | 触发方 | 说明 |
-|------|------|--------|------|
-| `hf data sync --days N` | 写操作 | 用户 / cron / AI Skill | 同步最近 N 天行情，**AI 可调用** |
-| `hf data history [--days N \| --from F --to T]` | 读操作 | 用户 / AI Skill | 查询历史数据覆盖情况，**AI 可调用** |
-
-`sync --days` 典型值：`30`（月度补数）、`90`（季度回补）、`360`（年度初始化）。
-
-### Rust CLI 改动
-
-**`cli/src/cmd/data.rs`** — 将现有 `Snapshot` 占位替换为 `Sync` + `History`：
-
-```rust
-pub enum DataSubcommand {
-    Sync(SyncArgs),
-    History(HistoryArgs),
-}
-
-pub struct SyncArgs {
-    #[arg(long)]
-    pub days: u32,
-}
-
-pub struct HistoryArgs {
-    /// 查询最近 N 天（与 --from/--to 互斥）
-    #[arg(long, conflicts_with_all = ["from", "to"])]
-    pub days: Option<u32>,
-
-    /// 起始日期（与 --days 互斥）
-    #[arg(long, requires = "to")]
-    pub from: Option<String>,
-
-    /// 截止日期（与 --days 互斥）
-    #[arg(long, requires = "from")]
-    pub to: Option<String>,
-}
-```
-
-**新增文件：**
-- `cli/src/application/handlers/data_sync.rs` — 调用 `http_client::post_data_sync()`
-- `cli/src/application/handlers/data_history.rs` — 调用 `http_client::get_data_history()`
-
-**`cli/src/infrastructure/http_client.rs`** — 新增两个函数：
-- `post_data_sync(server_url, days, timeout_ms) → Result<Value, AppError>`  
-  调用 `POST /api/v1/data/sync`
-- `get_data_history(server_url, from, to, timeout_ms) → Result<Value, AppError>`  
-  调用 `GET /api/v1/data/history?from=YYYY-MM-DD&to=YYYY-MM-DD`  
-  （handler 负责将 `--days N` 转换为 `from = today - N, to = today`）
-
-**`cli/src/application/dispatch.rs`** — 将 `Commands::Data(_)` 的占位替换为实际分发。
-
-### Python HTTP 端点与 Use Case 扩展
-
-**新增 `quant/src/interfaces/http/routes_data.py`，注册两个路由：**
-- `POST /api/v1/data/sync` — body: `{"days": 90}`，调用 `SyncUseCase`
-- `GET /api/v1/data/history?from=YYYY-MM-DD&to=YYYY-MM-DD` — 调用 `HistoryQueryUseCase`  
-  返回：日期范围内每天的 manifest 摘要列表（含缺口标记）
-
-**`app.py`** 注册新 router。
-
-**`SyncUseCase`**（新增，在 `hiveflow/market_data/application/`）：
-```
-输入：days: int
-
-流程：
-  1. 计算日期列表：过去 N 个自然日，跳过周末
-  2. 对每个 date 调用 IngestUseCase.run(symbols, date, root)
-  3. 汇总：synced_dates、skipped_dates（已有 manifest）、failed_dates
-  4. 返回 SyncResult(synced_dates, skipped_dates, failed_dates, manifest_ids)
-```
-
-幂等性：若某日期已有 manifest，跳过重新拉取（`skipped_dates` 记录）。
-
-**`HistoryQueryUseCase`**（新增，在 `hiveflow/market_data/application/`）：
-```
-输入：from_date: str, to_date: str
-
-流程：
-  1. 枚举 [from, to] 日期范围内的自然日（跳过周末）
-  2. 对每个 date 查询 manifest_repo.find_by_as_of(date)
-  3. 返回 HistoryResult：
-     - records: list of {date, manifest_id, data_source, symbols_count, has_data}
-     - coverage_rate: 有数据日期 / 总交易日数
-     - gaps: 缺数据的日期列表
-```
-
-### CLI 输出 schema
-
-`hf data sync --days 30` 成功响应示例：
-```json
-{
-  "schema_version": "1.0.0",
-  "command": "hf data sync",
-  "run_id": "run_20260401_abc123",
-  "status": "ok",
-  "generated_at": "2026-04-01T10:00:00Z",
-  "source": "system",
-  "advice_only": false,
-  "decision_weight": 1,
-  "data": {
-    "days_requested": 30,
-    "synced_count": 22,
-    "skipped_count": 0,
-    "failed_count": 0,
-    "synced_dates": ["2026-04-01", "..."],
-    "manifest_ids": ["dm_20260401_xyz456", "..."]
-  },
-  "warnings": [],
-  "errors": []
-}
-```
-
-`hf data history` 响应示例：
-```json
-{
-  "data": {
-    "from": "2026-03-01",
-    "to": "2026-04-01",
-    "coverage_rate": 0.95,
-    "gaps": ["2026-03-15"],
-    "records": [
-      {"date": "2026-04-01", "has_data": true, "manifest_id": "dm_20260401_xyz", "data_source": "akshare", "symbols_count": 2},
-      {"date": "2026-03-15", "has_data": false, "manifest_id": null, "data_source": null, "symbols_count": 0}
-    ]
-  }
-}
-```
-
-### 测试扩展
-
-| 文件 | 类型 | 覆盖点 |
-|------|------|--------|
-| `cli/tests/http_data_sync.rs` | Rust unit | mock server，验证 sync 请求/响应映射 |
-| `cli/tests/http_data_history.rs` | Rust unit | mock server，验证 history `--days` 与 `--from/--to` 两种参数转换 |
-| `quant/tests/contract/test_data_sync_output.py` | Contract | 校验响应符合 CLI_OUTPUT_SCHEMA.json |
-| `quant/tests/integration/test_http_data_endpoint.py` | Integration | FastAPI TestClient，验证两个端点 + 幂等性（重复 sync 同一日期）+ history 缺口标记 |
-
----
-
-## 12. AI Skills 集成
-
-### 白名单更新
-
-两条命令均加入 AI 白名单（在 `docs/AI_SKILLS_INTEGRATION.md` 可调用命令列表中新增）：
-
-```
-hf data sync --days <N>
-hf data history --days <N>
-hf data history --from <date> --to <date>
-```
-
-### Skill 使用场景
-
-**场景一：数据补全**  
-AI 发现分析所需日期无数据时，可主动调用 `hf data sync` 补数：
-
-```
-hf data history --days 7
-  → 发现 gaps: ["2026-03-30", "2026-03-31"]
-  → hf data sync --days 7   （触发补数）
-  → hf data history --days 7 （验证缺口已填补）
-```
-
-**场景二：分析前数据就绪验证**  
-执行 `hf signal snapshot` 等分析前，先确认数据覆盖率：
-
-```
-hf data history --from 2026-01-01 --to 2026-04-01
-  → coverage_rate < 0.9 → Skill 告警"数据覆盖率不足，分析结果可能有偏"
-  → coverage_rate >= 0.9 → 继续分析，将 manifest_ids 传入下游命令
-```
-
-AI 可将 `manifest_ids` 作为下游命令的 `--data-manifest` 参数，确保数据版本对齐（G1 可追溯）。
-
----
-
-## 13. 不在本次范围内
-
+- 完整 L0 客户端架构设计（命令体系、会话态、插件机制等）
+- AI 白名单与 Skill 流程改造
+- 复杂调度编排（cron/任务队列/分布式 worker）
+- 全量历史覆盖率与数据质量大盘
+- 完整交易日历（当前不处理节假日）
 - 腾讯数跟 adapter 实现
-- L0 Universe 动态过滤标的列表
-- 完整交易日历（当前跳过周末，不识别 A 股节假日）
-- L2 及以上层接入
-- 实时/分钟频行情
-- 个人持仓管理模块（后续任务，完成后持仓股由系统自动并入 symbols，watchlist.toml 的 `[holdings]` 段将废弃）
-- 关注股管理 UI / CLI（后续任务，当前通过手动编辑 watchlist.toml 维护）
+- ClickHouse 引入（当前明确不采用）
+- `5m/15m/60m` 等更多粒度（按相同契约后续扩展）
+
+---
+
+## 11. CLI 闭环命令（数据同步导向）
+
+目标：本机安装 `cli` 后，通过 HTTP 调用远端 `quant` 服务，完成一次“行情数据同步”闭环。
+
+### 11.1 命令清单（同步 + 查询）
+
+1. `hf data sync`
+   - 作用：同步最近 N 天行情到本地数据层（核心闭环命令）
+2. `hf data query`
+   - 作用：查询最近 N 天同步结果（面向运维与 AI 编排）
+
+### 11.2 参数约定
+
+- `hf data sync` 参数：
+  - `--days`：同步最近 N 天（`N>=1`）
+  - `--end-date`：结束日期，格式 `YYYY-MM-DD`，默认今天
+  - `--timeframe`：`1d` 或 `1m`，默认 `1d`
+  - `--symbols`：逗号分隔股票列表（可选）
+  - `--universe`：股票池标识（可选，如 `csi300`, `zz500`, `all_a`）
+- `hf data query` 参数：
+  - `--days`：查询最近 N 天执行结果
+  - `--timeframe`：可选过滤
+  - `--symbols`：可选过滤
+  - `--status`：可选过滤（`success` / `failed`）
+  - `--output`：输出模式（`table` / `json` / `chart`）
+  - `--verbose`：表格模式追加展示诊断列（仅 `--output table` 生效）
+- 模式参数（两条命令通用）：
+  - `--interactive`：进入交互式参数填写（面向人工）
+  - `--non-interactive`：强制非交互模式（面向 AI/自动化）
+
+交互模式规则：
+
+1. 显式 `--interactive` 时，按向导逐项提问并生成最终参数。
+2. 显式 `--non-interactive` 时，参数缺失直接报错，不进入交互。
+3. 都不传时采用自动模式：
+   - 在 TTY 场景且关键参数缺失：进入交互模式
+   - 非 TTY 场景：按非交互处理并报错
+4. 参数优先级：命令行显式参数 > 交互输入 > CLI 配置默认值
+
+交互提问顺序（`hf data sync`）：
+
+1. `days`
+2. `end_date`
+3. `timeframe`
+4. `symbols` 或 `universe`（二选一）
+5. 最终确认（展示摘要后确认执行）
+
+`hf data query` 输出模式默认规则：
+
+1. 显式传 `--output` 时按显式值输出
+2. 未显式传时：
+   - TTY + 人工使用场景：默认 `table`
+   - `--non-interactive` 或自动化场景：默认 `json`
+
+`hf data query --output chart` 约束：
+
+1. 仅面向人工阅读，不作为 AI 消费格式。
+2. 终端不支持图形字符时，自动降级为 `table` 并提示 warning。
+3. 图表仅展示聚合趋势，不替代明细（需要明细请使用 `table/json`）。
+
+### 11.3 HTTP 映射
+
+- `hf data sync` -> `POST /v1/market-data/sync`
+- `hf data query` -> `GET /v1/market-data/sync-runs`
+
+`POST /v1/market-data/sync` 请求体最小字段：
+
+- `days`
+- `end_date`
+- `timeframe`
+- `symbols`（可空）
+- `universe`（可空）
+
+`GET /v1/market-data/sync-runs` 查询参数：
+
+- `days`
+- `timeframe`（可空）
+- `symbols`（可空）
+- `status`（可空）
+
+### 11.4 同步股票范围（必须明确）
+
+优先级规则（从高到低）：
+
+1. 显式 `--symbols`
+2. `--universe` 指定股票池
+3. 服务端默认股票范围（配置项）
+
+服务端默认股票范围定义：
+
+- 必须包含：`watchlist_symbols`（关注股）+ `position_symbols`（持仓股）
+- 可选叠加：`default_universe`（如 `csi300`）
+- 去重后形成最终默认集合（并集）
+
+约束：
+
+- `symbols` 与 `universe` 同时传入时，以 `symbols` 为准并记录告警日志
+- 服务端返回中必须包含 `effective_symbols_count`
+- manifest 中必须记录 `universe` 或 `symbols_hash`（用于追溯）
+- `watchlist_symbols` 与 `position_symbols` 为独立配置项；基础文件契约见第 12 节
+
+### 11.5 AI 可调用契约
+
+- 参数稳定：优先使用 `days/end_date/timeframe/symbols/universe`
+- AI 调用必须使用 `--non-interactive`（或等价 API 调用，不触发交互）
+- AI 调用 `hf data query` 必须使用 `--output json`
+- 响应稳定：字段固定，不因调用方变化
+- 幂等支持：`sync` 请求支持 `request_id`（重复提交返回同一任务结果）
+- 错误机器可读：`error.code` 枚举化（如 `INVALID_ARGUMENT`, `DATA_FETCH_FAILED`）
+
+### 11.6 输出与退出码
+
+- 成功：退出码 `0`
+- 失败：输出标准错误 JSON，退出码非 `0`
+- `sync` 成功响应至少包含：
+  - `status`
+  - `run_id`
+  - `timeframe`
+  - `days`
+  - `effective_symbols_count`
+  - `manifest_ids`
+- `query --output json` 成功响应至少包含：
+  - `items[]`（每项包含 `run_id/date/status/timeframe/symbols_count/manifest_id`）
+- `query --output table` 默认输出精简 6 列（给人读）：
+  - `date | status | timeframe | symbols_count | run_id | manifest_id`
+- `query --output table --verbose` 追加列：
+  - `error_code | error_message | started_at | finished_at`
+- 表格宽度策略（窄终端）：
+  - 优先截断 `run_id` 与 `manifest_id`（保留前 8 + 后 6）
+- `query --output chart` 默认图表：
+  - 近 N 天每日同步成功/失败数量趋势（双序列）
+  - 近 N 天 `effective_symbols_count` 趋势（单序列）
+- `query --output chart` 降级规则：
+  - 若终端不支持图形字符，降级到 `table` 并输出 warning 文本
+
+### 11.7 验证用例（闭环）
+
+1. 启动 quant HTTP 服务。
+2. 执行：
+   - `hf data sync --days 5 --timeframe 1d --universe csi300`
+   - `hf data query --days 5 --timeframe 1d --output table`
+   - `hf data query --days 5 --timeframe 1d --output table --verbose`
+   - `hf data query --days 5 --timeframe 1d --output chart`
+   - `hf data query --days 5 --timeframe 1d --output json --non-interactive`
+   - `hf data sync --interactive`（人工交互路径）
+3. 断言：
+   - 两条命令 CLI 返回 `0`
+   - 服务端落盘存在最近 5 天分区
+   - manifest 写入成功并包含 `timeframe/bar_count`
+   - `query table` 默认输出精简 6 列
+   - `query table --verbose` 输出诊断扩展列
+   - `query chart` 输出趋势图；不支持图形字符时自动降级到 `table`
+   - `query json` 输出可被机器解析并可查询到对应 `run_id`
+
+---
+
+## 12. 关注股与持仓股配置文件定义（MVP）
+
+目的：为默认同步范围提供稳定、可审计的输入来源。
+
+### 12.1 文件位置
+
+- `quant/config/watchlist.yml`（关注股）
+- `quant/config/positions.yml`（持仓股）
+
+### 12.2 `watchlist.yml` 结构
+
+```yaml
+version: 1
+updated_at: "2026-04-01T09:30:00+08:00"
+symbols:
+  - "600519.SH"
+  - "000001.SZ"
+```
+
+字段约束：
+
+- `version`：必填，当前固定 `1`
+- `updated_at`：必填，ISO8601
+- `symbols`：必填，股票代码数组，允许空数组
+
+### 12.3 `positions.yml` 结构
+
+```yaml
+version: 1
+updated_at: "2026-04-01T09:30:00+08:00"
+positions:
+  - symbol: "600036.SH"
+    qty: 1000
+  - symbol: "510300.SH"
+    qty: 2000
+```
+
+字段约束：
+
+- `version`：必填，当前固定 `1`
+- `updated_at`：必填，ISO8601
+- `positions`：必填，持仓列表，允许空数组
+- `positions[].symbol`：必填，股票代码
+- `positions[].qty`：必填，`>0` 数值
+
+### 12.4 代码格式规范
+
+- 统一使用交易所后缀格式：`{6位代码}.{SH|SZ|BJ}`
+- 读取时去重并升序排序
+- 不合法代码直接报错 `INVALID_SYMBOL_FORMAT`
+
+### 12.5 默认集合生成规则
+
+1. 从 `watchlist.yml` 读取 `watchlist_symbols`
+2. 从 `positions.yml` 读取 `position_symbols = [p.symbol for p in positions]`
+3. 与 `default_universe`（若配置）做并集
+4. 去重 + 升序，得到 `default_effective_symbols`
+
+### 12.6 异常处理
+
+- 文件不存在：按空集合处理，并输出 warning
+- YAML 解析失败：阻断并返回 `INVALID_CONFIG_FILE`
+- 字段缺失或类型错误：阻断并返回 `INVALID_CONFIG_SCHEMA`
+
+---
+
+## 13. Timescale 最小表结构（MVP）
+
+目标：支持增量同步、最近 N 天查询、按条件过滤查询。
+
+### 13.1 `bars`（行情主表，hypertable）
+
+建议字段：
+
+- `symbol` `text` not null：股票代码（如 `600519.SH`）
+- `timeframe` `text` not null：K 线粒度（`1d` / `1m`）
+- `bar_time` `timestamptz` not null：K 线时间点（带时区）
+- `open` `double precision` not null：开盘价
+- `high` `double precision` not null：最高价
+- `low` `double precision` not null：最低价
+- `close` `double precision` not null：收盘价
+- `volume` `double precision` not null：成交量
+- `amount` `double precision` not null：成交额
+- `adj_factor` `double precision` not null default `1.0`：复权因子
+- `data_source` `text` not null：数据来源（如 `akshare`）
+- `ingested_at` `timestamptz` not null default `now()`：入库时间（系统写入时间）
+
+约束与索引：
+
+- 主键/唯一键：`(symbol, timeframe, bar_time)`
+- 索引：`(timeframe, bar_time desc)`、`(symbol, bar_time desc)`
+- Timescale hypertable 时间列：`bar_time`
+
+### 13.2 `sync_runs`（同步任务记录）
+
+建议字段：
+
+- `run_id` `uuid` primary key：同步任务唯一 ID
+- `request_id` `text` null：幂等请求 ID（可选）
+- `status` `text` not null (`running/success/failed`)：任务状态
+- `days` `int` not null：本次同步天数窗口
+- `end_date` `date` not null：同步窗口结束日期
+- `timeframe` `text` not null：同步粒度
+- `symbols_hash` `text` not null：本次有效股票集合哈希
+- `effective_symbols_count` `int` not null：本次实际同步股票数量
+- `started_at` `timestamptz` not null default `now()`：任务开始时间
+- `finished_at` `timestamptz` null：任务结束时间
+- `error_code` `text` null：失败错误码
+- `error_message` `text` null：失败错误详情
+
+约束与索引：
+
+- 唯一键：`(request_id)`（仅当 `request_id` 非空）
+- 索引：`(started_at desc)`、`(status, started_at desc)`、`(timeframe, started_at desc)`
+
+### 13.3 `sync_checkpoints`（增量游标）
+
+建议字段：
+
+- `symbol` `text` not null：股票代码
+- `timeframe` `text` not null：粒度
+- `last_bar_time` `timestamptz` not null：最近已同步到的 bar 时间
+- `updated_at` `timestamptz` not null default `now()`：checkpoint 更新时间
+- `last_run_id` `uuid` not null：最近一次更新该 checkpoint 的任务 ID
+
+约束与索引：
+
+- 主键：`(symbol, timeframe)`
+- 索引：`(timeframe, last_bar_time desc)`
+
+### 13.4 幂等与增量规则
+
+1. `sync` 请求若传入 `request_id`，先查 `sync_runs.request_id`，命中则直接返回已有结果。
+2. 增量拉取起点为 `sync_checkpoints.last_bar_time`（按 `symbol + timeframe`）。
+3. 写入 `bars` 使用 upsert，冲突键为 `(symbol, timeframe, bar_time)`。
+4. run 成功后批量更新 `sync_checkpoints` 与 `sync_runs.status=success`。

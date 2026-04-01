@@ -14,4 +14,6 @@ pub enum AppError {
     Upstream(u16, serde_json::Value),
     #[error("invalid json from python: {0}")]
     InvalidJson(serde_json::Error),
+    #[error("invalid args: {0}")]
+    InvalidArgs(String),
 }

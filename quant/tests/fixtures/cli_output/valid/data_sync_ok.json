@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0.0",
+  "command": "hf data sync",
+  "run_id": "run_valid_data_sync_001",
+  "status": "ok",
+  "generated_at": "2026-04-01T12:00:00+00:00",
+  "source": "system",
+  "advice_only": false,
+  "decision_weight": 1,
+  "data": {
+    "timeframe": "1d",
+    "days": 5,
+    "end_date": "2026-04-01",
+    "effective_symbols_count": 4,
+    "selection_mode": "default",
+    "symbols_hash": "2b8c5f5cbf5f65f17fd4fd0fc2b6a1a53f70f13a6c3ab2e0f5fcdb6f6d4b24f5",
+    "manifest_ids": [
+      "mf_bce12a9031"
+    ]
+  },
+  "warnings": [],
+  "errors": []
+}

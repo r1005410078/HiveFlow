@@ -136,3 +136,65 @@ jq . sample.json >/dev/null
 ```bash
 jq -e 'if .source=="web_search" then (.advice_only==true and .decision_weight==0) else true end' sample.json >/dev/null
 ```
+
+---
+
+## 5. hf data sync（JSON 示例）
+
+```json
+{
+  "schema_version": "1.0.0",
+  "command": "hf data sync",
+  "run_id": "run_8f3a2c9e1d77",
+  "status": "ok",
+  "generated_at": "2026-04-01T12:00:00+00:00",
+  "source": "system",
+  "advice_only": false,
+  "decision_weight": 1,
+  "data": {
+    "timeframe": "1d",
+    "days": 5,
+    "end_date": "2026-04-01",
+    "effective_symbols_count": 4,
+    "selection_mode": "default",
+    "symbols_hash": "2b8c5f5cbf5f65f17fd4fd0fc2b6a1a53f70f13a6c3ab2e0f5fcdb6f6d4b24f5",
+    "manifest_ids": [
+      "mf_bce12a9031"
+    ]
+  },
+  "warnings": [],
+  "errors": []
+}
+```
+
+---
+
+## 6. hf data query --output json（JSON 示例）
+
+```json
+{
+  "schema_version": "1.0.0",
+  "command": "hf data query",
+  "run_id": "run_7ec4f94ab221",
+  "status": "ok",
+  "generated_at": "2026-04-01T12:01:00+00:00",
+  "source": "system",
+  "advice_only": false,
+  "decision_weight": 1,
+  "data": {
+    "items": [
+      {
+        "run_id": "run_demo_001",
+        "date": "2026-04-01",
+        "status": "success",
+        "timeframe": "1d",
+        "symbols_count": 4,
+        "manifest_id": "mf_demo_001",
+        "days": 5
+      }
+    ]
+  },
+  "warnings": [],
+  "errors": []
+}
+```

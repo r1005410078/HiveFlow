@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0.0",
+  "command": "hf data query",
+  "run_id": "run_valid_data_query_001",
+  "status": "ok",
+  "generated_at": "2026-04-01T12:01:00+00:00",
+  "source": "system",
+  "advice_only": false,
+  "decision_weight": 1,
+  "data": {
+    "items": [
+      {
+        "run_id": "run_demo_001",
+        "date": "2026-04-01",
+        "status": "success",
+        "timeframe": "1d",
+        "symbols_count": 4,
+        "manifest_id": "mf_demo_001",
+        "days": 5
+      }
+    ]
+  },
+  "warnings": [],
+  "errors": []
+}
