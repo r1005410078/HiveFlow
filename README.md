@@ -26,9 +26,15 @@ make check
 ```bash
 make test
 make lint
+make architecture-check
 make validate-cli-output
 make rust-test
 ```
+
+## Agent 规范
+
+- 所有 Agent 修改代码前必须先阅读 [AGENTS.md](AGENTS.md)
+- 架构边界由 `make architecture-check` 与 CI 强制校验
 
 运行日频命令：
 

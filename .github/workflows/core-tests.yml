@@ -27,6 +27,9 @@ jobs:
       - name: Run Ruff
         run: cd quant && uv run ruff check .
 
+      - name: Run architecture checks
+        run: cd quant && uv run pytest tests/architecture -q
+
       - name: Validate CLI output fixtures
         run: ./scripts/validate_cli_output_fixtures.sh
 

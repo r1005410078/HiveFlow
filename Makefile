@@ -1,16 +1,19 @@
 RUST_CLI_DIR := cli
 
-.PHONY: help sync test lint rust-test validate-cli-output validate-cli-output-one check run-pipeline
+.PHONY: help sync test lint architecture-check rust-test validate-cli-output validate-cli-output-one check run-pipeline run-server run-server-dev
 
 help:
 	@echo "Available targets:"
 	@echo "  make sync                           # Sync Python deps"
 	@echo "  make test                           # Run Python tests"
 	@echo "  make lint                           # Run Ruff"
+	@echo "  make architecture-check             # Run architecture boundary tests"
 	@echo "  make rust-test                      # Run Rust CLI tests"
 	@echo "  make validate-cli-output            # Validate all CLI output fixtures"
 	@echo "  make validate-cli-output-one FILE=... # Validate one CLI output JSON"
 	@echo "  make check                          # test + lint + fixture validation + rust tests"
+	@echo "  make run-server                     # Run quant HTTP server"
+	@echo "  make run-server-dev                 # Run quant HTTP server with auto-reload"
 	@echo "  make run-pipeline AS_OF=YYYY-MM-DD  # Run daily pipeline command"
 
 sync:
@@ -21,6 +24,10 @@ test:
 
 lint:
 	cd quant && uv run ruff check .
+
+architecture-check:
+	cd quant && uv run pytest tests/architecture -q
+	cd cli && cargo test --test architecture_rules
 
 rust-test:
 	cd $(RUST_CLI_DIR) && cargo test
@@ -35,7 +42,13 @@ validate-cli-output-one:
 	fi
 	./scripts/validate_cli_output.sh "$(FILE)"
 
-check: test lint validate-cli-output rust-test
+check: test lint architecture-check validate-cli-output rust-test
+
+run-server:
+	cd quant && HF_HOST=$${HF_HOST:-0.0.0.0} HF_PORT=$${HF_PORT:-8000} uv run python bin/server.py
+
+run-server-dev:
+	cd quant && HF_HOST=$${HF_HOST:-0.0.0.0} HF_PORT=$${HF_PORT:-8000} uv run uvicorn interfaces.http.app:create_app --factory --reload --host "$${HF_HOST}" --port "$${HF_PORT}"
 
 run-pipeline:
 	@if [ -z "$(AS_OF)" ]; then \
