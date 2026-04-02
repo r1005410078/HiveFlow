@@ -27,6 +27,12 @@ fn as_f64(v: Option<&Value>) -> String {
         .unwrap_or_else(|| "".to_string())
 }
 
+fn as_bool(v: Option<&Value>) -> String {
+    v.and_then(Value::as_bool)
+        .map(|flag| (if flag { "是" } else { "否" }).to_string())
+        .unwrap_or_else(|| "".to_string())
+}
+
 fn first_top_candidate_symbol(item: Option<&Value>) -> String {
     item.and_then(|version| version.get("top_candidates"))
         .and_then(Value::as_array)
@@ -35,6 +41,49 @@ fn first_top_candidate_symbol(item: Option<&Value>) -> String {
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_string()
+}
+
+fn value_display(v: Option<&Value>) -> String {
+    match v {
+        Some(value) if value.is_string() => value.as_str().unwrap_or("").to_string(),
+        Some(value) if value.is_number() => {
+            if let Some(n) = value.as_f64() {
+                if (n.fract() - 0.0).abs() < f64::EPSILON {
+                    format!("{n:.0}")
+                } else {
+                    format!("{n:.4}")
+                }
+            } else {
+                "".to_string()
+            }
+        }
+        Some(value) if value.is_boolean() => as_bool(Some(value)),
+        Some(value) => value.to_string(),
+        None => "".to_string(),
+    }
+}
+
+fn render_matrix_row(item: &Value) -> (String, String) {
+    let dimension = as_str(item.get("dimension"));
+    let mut details = Vec::new();
+
+    if let Some(value) = item.get("value") {
+        let rendered = value_display(Some(value));
+        if !rendered.is_empty() {
+            details.push(rendered);
+        }
+    }
+
+    if details.is_empty() {
+        for (key, value) in item.as_object().into_iter().flat_map(|obj| obj.iter()) {
+            if key == "dimension" || key == "value" {
+                continue;
+            }
+            details.push(format!("{key}={}", value_display(Some(value))));
+        }
+    }
+
+    (dimension, details.join(" | "))
 }
 
 pub fn render_sync_runs_table(payload: &Value, verbose: bool) -> String {
@@ -342,10 +391,115 @@ pub fn render_factor_optimize_table(payload: &Value) -> Result<String, AppError>
             .and_then(|a| a.get("analysis_period"))
             .and_then(|p| p.get("end_date")),
     );
+    let correlation_threshold = as_f64(
+        payload
+            .get("data")
+            .and_then(|d| d.get("correlation_analysis"))
+            .and_then(|a| a.get("threshold")),
+    );
+    let alert_count = as_i64(
+        payload
+            .get("data")
+            .and_then(|d| d.get("correlation_analysis"))
+            .and_then(|a| a.get("alert_count")),
+    );
 
     summary.add_row(vec!["开始日期".to_string(), start_date]);
     summary.add_row(vec!["结束日期".to_string(), end_date]);
     summary.add_row(vec!["推荐方案".to_string(), recommended]);
+    if !correlation_threshold.is_empty() {
+        summary.add_row(vec!["相关性阈值".to_string(), correlation_threshold]);
+    }
+    if !alert_count.is_empty() {
+        summary.add_row(vec!["相关性告警数".to_string(), alert_count]);
+    }
+
+    let mut alerts = Table::new();
+    alerts
+        .load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec![
+            Cell::new("factor_a"),
+            Cell::new("factor_b"),
+            Cell::new("correlation"),
+            Cell::new("severity"),
+            Cell::new("suggestion"),
+        ]);
+
+    if let Some(items) = payload
+        .get("data")
+        .and_then(|d| d.get("correlation_analysis"))
+        .and_then(|a| a.get("alerts"))
+        .and_then(Value::as_array)
+    {
+        for item in items {
+            alerts.add_row(vec![
+                as_str(item.get("factor_a")),
+                as_str(item.get("factor_b")),
+                as_f64(item.get("correlation")),
+                as_str(item.get("severity")),
+                as_str(item.get("suggestion")),
+            ]);
+        }
+    }
+
+    let report = payload.get("data").and_then(|d| d.get("report"));
+    let mut report_summary = Table::new();
+    report_summary
+        .load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec![Cell::new("指标"), Cell::new("值")]);
+    report_summary.add_row(vec![
+        "推荐方案".to_string(),
+        as_str(report.and_then(|r| r.get("summary")).and_then(|s| s.get("recommended_scheme"))),
+    ]);
+    report_summary.add_row(vec![
+        "关键结论".to_string(),
+        report
+            .and_then(|r| r.get("summary"))
+            .and_then(|s| s.get("key_findings"))
+            .and_then(Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .map(|item| value_display(Some(item)))
+                    .collect::<Vec<_>>()
+                    .join("；")
+            })
+            .unwrap_or_else(|| "".to_string()),
+    ]);
+
+    let mut matrix = Table::new();
+    matrix
+        .load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec![Cell::new("维度"), Cell::new("值")]);
+    if let Some(items) = report
+        .and_then(|r| r.get("matrix_10d"))
+        .and_then(Value::as_array)
+    {
+        for item in items {
+            let (dimension, value) = render_matrix_row(item);
+            matrix.add_row(vec![dimension, value]);
+        }
+    }
+
+    let mut checklist = Table::new();
+    checklist
+        .load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec![Cell::new("检查项"), Cell::new("完成")]);
+    if let Some(items) = report
+        .and_then(|r| r.get("g3_checklist"))
+        .and_then(Value::as_array)
+    {
+        for item in items {
+            checklist.add_row(vec![
+                as_str(item.get("item")),
+                as_bool(item.get("checked")),
+            ]);
+        }
+    }
 
     let mut schemes = Table::new();
     schemes
@@ -376,10 +530,13 @@ pub fn render_factor_optimize_table(payload: &Value) -> Result<String, AppError>
                     .map(|(k, v)| format!("{k}={}", v.as_f64().unwrap_or(0.0)))
                     .collect::<Vec<_>>()
                     .join(",")
-            })
+        })
             .unwrap_or_else(|| "".to_string());
         schemes.add_row(vec![name, expected_sharpe, expected_drawdown, weights]);
     }
 
-    Ok(format!("因子优化建议\n{}\n方案明细\n{}\n", summary, schemes))
+    Ok(format!(
+        "因子优化建议\n{}\n相关性告警\n{}\n10维评估摘要\n{}\n{}\nG3 checklist\n{}\n方案明细\n{}\n",
+        summary, alerts, report_summary, matrix, checklist, schemes
+    ))
 }

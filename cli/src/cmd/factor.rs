@@ -20,6 +20,8 @@ pub struct FactorOptimizeArgs {
     pub end_date: String,
     #[arg(long)]
     pub factors: String,
+    #[arg(long)]
+    pub correlation_threshold: Option<f64>,
     #[arg(long, default_value = "json")]
     pub output: String,
 }
@@ -37,6 +39,7 @@ impl From<FactorOptimizeArgs> for FactorOptimizeRequest {
             start_date: args.start_date,
             end_date: args.end_date,
             factor_names,
+            correlation_threshold: args.correlation_threshold,
             output: args.output,
         }
     }

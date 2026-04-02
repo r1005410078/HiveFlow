@@ -73,6 +73,7 @@ pub fn post_factor_optimize(
     start_date: &str,
     end_date: &str,
     factor_names: &[String],
+    correlation_threshold: Option<f64>,
     timeout_ms: u64,
 ) -> Result<Value, AppError> {
     let url = format!(
@@ -81,14 +82,19 @@ pub fn post_factor_optimize(
     );
     let client = build_client(server_url, timeout_ms)?;
 
+    let mut body = json!({
+        "start_date": start_date,
+        "end_date": end_date,
+        "factor_names": factor_names,
+        "constraints": {},
+    });
+    if let Some(threshold) = correlation_threshold {
+        body["correlation_threshold"] = json!(threshold);
+    }
+
     let response = client
         .post(url)
-        .json(&json!({
-            "start_date": start_date,
-            "end_date": end_date,
-            "factor_names": factor_names,
-            "constraints": {},
-        }))
+        .json(&body)
         .send()
         .map_err(AppError::HttpClient)?;
 
