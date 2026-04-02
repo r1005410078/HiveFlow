@@ -174,6 +174,28 @@
     {
       "if": {
         "properties": {
+          "command": { "const": "hf factor optimize" }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": [
+              "factor_names",
+              "analysis",
+              "correlation_analysis",
+              "top_combinations",
+              "release_gate",
+              "recommendations"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
           "source": { "enum": ["system", "news_system"] }
         }
       },

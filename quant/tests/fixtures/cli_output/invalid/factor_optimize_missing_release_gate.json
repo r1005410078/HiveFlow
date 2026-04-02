@@ -1,0 +1,42 @@
+{
+  "schema_version": "1.0.0",
+  "command": "hf factor optimize",
+  "run_id": "run_invalid_factor_opt_001",
+  "status": "ok",
+  "generated_at": "2026-04-02T10:00:00+08:00",
+  "source": "web_search",
+  "advice_only": false,
+  "decision_weight": 1,
+  "data": {
+    "factor_names": [
+      "momentum_20",
+      "inv_volatility_20",
+      "turnover_rate"
+    ],
+    "analysis": {
+      "factor_health": [],
+      "coverage": {
+        "symbols": 30,
+        "bars": 2000
+      }
+    },
+    "correlation_analysis": {
+      "threshold": 0.7,
+      "alert_count": 0,
+      "alerts": []
+    },
+    "top_combinations": {
+      "search_space": {
+        "factor_pool_size": 3,
+        "combination_size_min": 2,
+        "combination_size_max": 3,
+        "candidate_count": 3
+      },
+      "ranking_profile": "balanced_v1",
+      "items": []
+    },
+    "recommendations": []
+  },
+  "warnings": [],
+  "errors": []
+}

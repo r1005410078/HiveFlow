@@ -1,0 +1,114 @@
+{
+  "schema_version": "1.0.0",
+  "command": "hf factor optimize",
+  "run_id": "run_valid_factor_opt_001",
+  "status": "ok",
+  "generated_at": "2026-04-02T10:00:00+08:00",
+  "source": "web_search",
+  "advice_only": true,
+  "decision_weight": 0,
+  "data": {
+    "factor_names": [
+      "momentum_20",
+      "inv_volatility_20",
+      "turnover_rate",
+      "max_drawdown_60",
+      "trend_stability_20",
+      "relative_strength_vs_index"
+    ],
+    "analysis": {
+      "factor_health": [
+        {
+          "factor_name": "momentum_20",
+          "coverage_rate": 0.98,
+          "health_score": 0.91
+        }
+      ],
+      "coverage": {
+        "symbols": 30,
+        "bars": 2000
+      }
+    },
+    "correlation_analysis": {
+      "threshold": 0.7,
+      "alert_count": 1,
+      "alerts": [
+        {
+          "pair": ["momentum_20", "trend_stability_20"],
+          "correlation": 0.82
+        }
+      ]
+    },
+    "top_combinations": {
+      "search_space": {
+        "factor_pool_size": 6,
+        "combination_size_min": 2,
+        "combination_size_max": 4,
+        "candidate_count": 15
+      },
+      "ranking_profile": "balanced_v1",
+      "items": [
+        {
+          "rank": 1,
+          "factors": ["momentum_20", "inv_volatility_20"],
+          "composite_score": 1.18,
+          "return_score": 1.22,
+          "risk_score": 0.96,
+          "redundancy_penalty": 0.00,
+          "alerts_inside": []
+        },
+        {
+          "rank": 2,
+          "factors": ["momentum_20", "turnover_rate"],
+          "composite_score": 1.11,
+          "return_score": 1.16,
+          "risk_score": 0.93,
+          "redundancy_penalty": 0.02,
+          "alerts_inside": ["near_duplicate_risk"]
+        },
+        {
+          "rank": 3,
+          "factors": ["inv_volatility_20", "max_drawdown_60"],
+          "composite_score": 1.08,
+          "return_score": 1.10,
+          "risk_score": 0.97,
+          "redundancy_penalty": 0.01,
+          "alerts_inside": []
+        },
+        {
+          "rank": 4,
+          "factors": ["trend_stability_20", "relative_strength_vs_index"],
+          "composite_score": 1.02,
+          "return_score": 1.05,
+          "risk_score": 0.94,
+          "redundancy_penalty": 0.02,
+          "alerts_inside": []
+        },
+        {
+          "rank": 5,
+          "factors": ["momentum_20", "relative_strength_vs_index"],
+          "composite_score": 0.99,
+          "return_score": 1.00,
+          "risk_score": 0.95,
+          "redundancy_penalty": 0.01,
+          "alerts_inside": []
+        }
+      ]
+    },
+    "release_gate": {
+      "status": "watch",
+      "blocking_reasons": [],
+      "watch_items": ["correlation_alert_count:1"]
+    },
+    "recommendations": [
+      {
+        "scheme": "balanced_v1",
+        "decision_weight": 0,
+        "advice_only": true,
+        "summary": "Top1 组合可作为审批前建议，但需先处理相关性告警"
+      }
+    ]
+  },
+  "warnings": [],
+  "errors": []
+}
