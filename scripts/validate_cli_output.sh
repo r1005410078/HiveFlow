@@ -58,4 +58,19 @@ jq -e '
   end
 ' "$FILE" >/dev/null
 
+# Command-specific semantics
+jq -e '
+  if .command == "hf factor optimize" then
+    (.data | type == "object") and
+    (.data | has("factor_names")) and
+    (.data | has("analysis")) and
+    (.data | has("correlation_analysis")) and
+    (.data | has("top_combinations")) and
+    (.data | has("release_gate")) and
+    (.data | has("recommendations"))
+  else
+    true
+  end
+' "$FILE" >/dev/null
+
 echo "[OK] $FILE passed HiveFlow CLI output validation."

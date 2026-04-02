@@ -5,8 +5,8 @@
   "status": "ok",
   "generated_at": "2026-04-02T10:00:00+08:00",
   "source": "web_search",
-  "advice_only": false,
-  "decision_weight": 1,
+  "advice_only": true,
+  "decision_weight": 0,
   "data": {
     "factor_names": [
       "momentum_20",
