@@ -1,4 +1,4 @@
-from typing import List
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -32,7 +32,7 @@ class FactorBreakdown(BaseModel):
     normalized_value: float
     percentile: float
     clipped: bool
-    anomaly_flags: List[str]
+    anomaly_flags: list[str]
     weight: float
     contribution: float
 
@@ -40,7 +40,7 @@ class FactorBreakdown(BaseModel):
 class L2ScoreBreakdownItem(BaseModel):
     symbol: str
     final_score: float
-    factors: List[FactorBreakdown]
+    factors: list[FactorBreakdown]
 
 
 class L2TopCandidate(BaseModel):
@@ -50,13 +50,13 @@ class L2TopCandidate(BaseModel):
 
 
 class L2Decision(BaseModel):
-    schema_version: str
+    schema_version: Literal["1.0"] = "1.0"
     generated_at: str
-    producer_version: str
-    score_version: str
+    producer_version: Literal["quant-l2"] = "quant-l2"
+    score_version: Literal["l2-score-v1"] = "l2-score-v1"
     universe_size: int
-    top_candidates: List[L2TopCandidate]
-    score_breakdown: List[L2ScoreBreakdownItem]
+    top_candidates: list[L2TopCandidate]
+    score_breakdown: list[L2ScoreBreakdownItem]
 
 
 class DailyRunData(BaseModel):

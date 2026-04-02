@@ -53,6 +53,26 @@ def _stub_daily_run_service(as_of: str) -> dict:
                                 "anomaly_flags": [],
                                 "weight": 0.5,
                                 "contribution": 0.5,
+                            },
+                            {
+                                "factor_name": "inv_volatility_20",
+                                "raw_value": 0.0,
+                                "normalized_value": 1.0,
+                                "percentile": 1.0,
+                                "clipped": False,
+                                "anomaly_flags": ["missing_factor:inv_volatility_20"],
+                                "weight": 0.3,
+                                "contribution": 0.3,
+                            },
+                            {
+                                "factor_name": "turnover_rate",
+                                "raw_value": 0.0,
+                                "normalized_value": 1.0,
+                                "percentile": 1.0,
+                                "clipped": False,
+                                "anomaly_flags": ["missing_factor:turnover_rate"],
+                                "weight": 0.2,
+                                "contribution": 0.2,
                             }
                         ],
                     }
