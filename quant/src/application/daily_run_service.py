@@ -29,7 +29,13 @@ def _build_factor_quality_warnings(l2_decision: dict) -> list[dict]:
     return warnings
 
 
-def run_daily(as_of: str, root, bar_store=None) -> dict:
+def run_daily(
+    as_of: str,
+    root,
+    bar_store=None,
+    score_version: str = "l2-score-v1.1",
+    top_n: int = 5,
+) -> dict:
     # root 预留给后续持久化与工作目录上下文使用。
     run_id = f"run_{as_of.replace('-', '')}_{str(uuid4())[:8]}"
     symbols = [
@@ -62,8 +68,8 @@ def run_daily(as_of: str, root, bar_store=None) -> dict:
             pass
     l2_decision = compute_l2_decision_from_snapshot(
         factor_snapshot=factor_snapshot,
-        top_n=5,
-        score_version="l2-score-v1.1",
+        top_n=top_n,
+        score_version=score_version,
     )
     warnings = _build_factor_quality_warnings(l2_decision)
     return ok_output(
