@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from interfaces.http.dependencies import (
+    MarketDataBarsQueryService,
     MarketDataQueryService,
     MarketDataSyncService,
+    get_market_data_bars_query_service,
     get_market_data_query_service,
     get_market_data_sync_service,
 )
@@ -46,8 +48,25 @@ def post_sync(
 def get_sync_runs(
     days: int = Query(ge=1),
     timeframe: str | None = None,
-    symbols: list[str] | None = Query(default=None),
     status: str | None = None,
     service: MarketDataQueryService = Depends(get_market_data_query_service),
 ) -> dict:
-    return service(days=days, timeframe=timeframe, symbols=symbols, status=status)
+    return service(days=days, timeframe=timeframe, status=status)
+
+
+@router.get("/bars")
+def get_bars(
+    symbols: list[str] | None = Query(default=None),
+    timeframe: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    limit: int | None = None,
+    service: MarketDataBarsQueryService = Depends(get_market_data_bars_query_service),
+) -> dict:
+    return service(
+        symbols=symbols,
+        timeframe=timeframe,
+        start_date=start_date,
+        end_date=end_date,
+        limit=limit,
+    )

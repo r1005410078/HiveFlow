@@ -5,6 +5,7 @@ from collections.abc import Callable
 from fastapi import HTTPException
 
 from application.daily_run_service import run_daily
+from application.market_data.bars_query_service import BarsQueryService
 from application.market_data.query_service import QueryService
 from application.market_data.sync_service import SyncService
 from interfaces.adapters.market_data.akshare_quote_adapter import AkshareQuoteAdapter
@@ -16,6 +17,7 @@ from interfaces.adapters.market_data.timescale_bar_store import TimescaleBarStor
 DailyRunService = Callable[[str], dict]
 MarketDataSyncService = Callable[..., dict]
 MarketDataQueryService = Callable[..., dict]
+MarketDataBarsQueryService = Callable[..., dict]
 
 
 def get_daily_run_service() -> DailyRunService:
@@ -67,25 +69,56 @@ class _InMemoryBarStore:
     def upsert_bars(self, rows):
         return len(rows)
 
-    def list_sync_runs(self, days, timeframe=None, symbols=None, status=None):
-        del status
+    def get_sync_run_by_request_id(self, request_id):
+        del request_id
+        return None
+
+    def get_checkpoints(self, symbols, timeframe):
+        del symbols, timeframe
+        return {}
+
+    def upsert_checkpoints(self, checkpoints):
+        del checkpoints
+        return None
+
+    def insert_sync_run(self, payload):
+        del payload
+        return None
+
+    def list_sync_runs(self, days, timeframe=None, status=None, request_id=None, limit=None):
+        del days, timeframe, status, request_id, limit
+        return [
+            {
+                "run_id": "run_demo_001",
+                "request_id": "req_demo_001",
+                "status": "success",
+                "days": 5,
+                "end_date": "2026-04-01",
+                "timeframe": "1d",
+                "effective_symbols_count": 1,
+                "started_at": "2026-04-01T09:30:00+08:00",
+                "finished_at": "2026-04-01T09:31:00+08:00",
+                "error_code": None,
+                "error_message": None,
+            }
+        ]
+
+    def list_bars(self, symbols=None, timeframe=None, start_date=None, end_date=None, limit=None):
+        del start_date, end_date, limit
         symbol = (symbols or ["600519.SH"])[0]
         return [
             {
-                "run_id": "bar_demo_001",
-                "bar_time": "2026-04-01T15:00:00+08:00",
                 "symbol": symbol,
-                "status": "success",
                 "timeframe": timeframe or "1d",
+                "bar_time": "2026-04-01T15:00:00+08:00",
                 "open": 1450.0,
                 "high": 1468.0,
                 "low": 1442.0,
                 "close": 1459.44,
                 "volume": 29125.0,
                 "amount": 4256185472.0,
+                "adj_factor": 1.0,
                 "data_source": "demo",
-                "manifest_id": "mf_demo_001",
-                "days": days,
             }
         ]
 
@@ -137,4 +170,9 @@ def get_market_data_sync_service() -> MarketDataSyncService:
 
 def get_market_data_query_service() -> MarketDataQueryService:
     service = QueryService(bar_store=_build_bar_store())
+    return service.query
+
+
+def get_market_data_bars_query_service() -> MarketDataBarsQueryService:
+    service = BarsQueryService(bar_store=_build_bar_store())
     return service.query

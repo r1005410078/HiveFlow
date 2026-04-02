@@ -1,23 +1,23 @@
 from __future__ import annotations
 
 
-class QueryService:
+class BarsQueryService:
     def __init__(self, bar_store):
         self.bar_store = bar_store
 
     def query(
         self,
-        days: int,
+        symbols: list[str] | None = None,
         timeframe: str | None = None,
-        status: str | None = None,
-        request_id: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
         limit: int | None = None,
     ) -> dict:
-        items = self.bar_store.list_sync_runs(
-            days=days,
+        items = self.bar_store.list_bars(
+            symbols=symbols,
             timeframe=timeframe,
-            status=status,
-            request_id=request_id,
+            start_date=start_date,
+            end_date=end_date,
             limit=limit,
         )
         return {"items": items}

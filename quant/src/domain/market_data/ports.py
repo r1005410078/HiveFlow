@@ -12,12 +12,34 @@ class BarStore(Protocol):
     def upsert_bars(self, rows: list[dict]) -> int:
         ...
 
+    def get_sync_run_by_request_id(self, request_id: str) -> dict | None:
+        ...
+
+    def get_checkpoints(self, symbols: list[str], timeframe: str) -> dict[str, str]:
+        ...
+
+    def upsert_checkpoints(self, checkpoints: list[dict]) -> None:
+        ...
+
+    def insert_sync_run(self, payload: dict) -> None:
+        ...
+
     def list_sync_runs(
         self,
         days: int,
         timeframe: str | None = None,
-        symbols: list[str] | None = None,
         status: str | None = None,
+        request_id: str | None = None,
+        limit: int | None = None,
     ) -> list[dict]:
         ...
 
+    def list_bars(
+        self,
+        symbols: list[str] | None = None,
+        timeframe: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        limit: int | None = None,
+    ) -> list[dict]:
+        ...
