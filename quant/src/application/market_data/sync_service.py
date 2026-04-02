@@ -78,6 +78,48 @@ class SyncService:
         start = end - timedelta(days=days - 1)
         return [(start + timedelta(days=i)).isoformat() for i in range(days)]
 
+    @staticmethod
+    def _parse_datetime(value: str) -> datetime:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+    def _checkpoint_start_date(self, last_bar_time: str, window_start: datetime.date) -> datetime.date:
+        checkpoint_date = self._parse_datetime(last_bar_time).date() + timedelta(days=1)
+        return max(window_start, checkpoint_date)
+
+    def _build_sync_summary(
+        self,
+        *,
+        request_id: str | None,
+        timeframe: str,
+        days: int,
+        end_date: str,
+        selection_mode: str,
+        effective_symbols_count: int,
+        symbols_hash: str,
+        written_rows: int,
+        manifest_ids: list[str],
+        generated_at: str,
+        run: dict | None = None,
+    ) -> dict:
+        run = run or {}
+        return {
+            "status": run.get("status", "success"),
+            "run_id": run.get("run_id", ""),
+            "request_id": run.get("request_id", request_id),
+            "timeframe": run.get("timeframe", timeframe),
+            "days": run.get("days", days),
+            "end_date": run.get("end_date", end_date),
+            "effective_symbols_count": run.get("effective_symbols_count", effective_symbols_count),
+            "selection_mode": run.get("selection_mode", selection_mode),
+            "symbols_hash": run.get("symbols_hash", symbols_hash),
+            "written_rows": run.get("written_rows", written_rows),
+            "manifest_ids": run.get("manifest_ids", manifest_ids),
+            "generated_at": run.get("generated_at")
+            or run.get("finished_at")
+            or run.get("started_at")
+            or generated_at,
+        }
+
     def _resolve_effective_symbols(
         self,
         symbols: list[str] | None,
@@ -109,14 +151,57 @@ class SyncService:
         request_id: str | None = None,
     ) -> dict:
         validate_timeframe(timeframe)
+
+        get_existing_run = getattr(self.bar_store, "get_sync_run_by_request_id", None)
+        if request_id and callable(get_existing_run):
+            existing_run = get_existing_run(request_id)
+            if existing_run and existing_run.get("status") == "success":
+                return self._build_sync_summary(
+                    request_id=request_id,
+                    timeframe=timeframe,
+                    days=days,
+                    end_date=end_date,
+                    selection_mode=existing_run.get("selection_mode", ""),
+                    effective_symbols_count=existing_run.get("effective_symbols_count", 0),
+                    symbols_hash=existing_run.get("symbols_hash", ""),
+                    written_rows=existing_run.get("written_rows", 0),
+                    manifest_ids=existing_run.get("manifest_ids", []),
+                    generated_at="",
+                    run=existing_run,
+                )
+
         effective_symbols, selection_mode = self._resolve_effective_symbols(symbols, universe)
+        if not effective_symbols:
+            raise ValueError("no market data fetched for requested scope")
         as_of_dates = self._as_of_window(end_date=end_date, days=days)
+        window_start = datetime.strptime(as_of_dates[0], "%Y-%m-%d").date()
+        checkpoint_starts: dict[str, datetime.date] = {symbol: window_start for symbol in effective_symbols}
+        get_checkpoints = getattr(self.bar_store, "get_checkpoints", None)
+        if callable(get_checkpoints):
+            try:
+                checkpoint_map = get_checkpoints(effective_symbols, timeframe) or {}
+            except Exception:
+                checkpoint_map = {}
+            for symbol, last_bar_time in checkpoint_map.items():
+                if symbol in checkpoint_starts and last_bar_time:
+                    try:
+                        checkpoint_starts[symbol] = self._checkpoint_start_date(last_bar_time, window_start)
+                    except ValueError:
+                        continue
+
         total_written_rows = 0
         has_any_rows = False
+        made_fetch_call = False
         last_provider_error: RuntimeError | None = None
+        latest_bar_times: dict[str, datetime] = {}
         for as_of in as_of_dates:
+            as_of_date = datetime.strptime(as_of, "%Y-%m-%d").date()
+            fetch_symbols = [symbol for symbol in effective_symbols if as_of_date >= checkpoint_starts[symbol]]
+            if not fetch_symbols:
+                continue
+            made_fetch_call = True
             try:
-                rows = self.quote_repo.fetch(symbols=effective_symbols, as_of=as_of, timeframe=timeframe)
+                rows = self.quote_repo.fetch(symbols=fetch_symbols, as_of=as_of, timeframe=timeframe)
             except RuntimeError as exc:
                 last_provider_error = exc
                 continue
@@ -124,8 +209,20 @@ class SyncService:
                 continue
             has_any_rows = True
             total_written_rows += self.bar_store.upsert_bars(rows)
+            for row in rows:
+                symbol = row.get("symbol")
+                bar_time = row.get("bar_time")
+                if not symbol or not bar_time:
+                    continue
+                try:
+                    current_bar_time = self._parse_datetime(bar_time)
+                except ValueError:
+                    continue
+                previous_bar_time = latest_bar_times.get(symbol)
+                if previous_bar_time is None or current_bar_time > previous_bar_time:
+                    latest_bar_times[symbol] = current_bar_time
 
-        if not has_any_rows:
+        if not has_any_rows and made_fetch_call:
             if last_provider_error is not None:
                 raise RuntimeError(str(last_provider_error)) from last_provider_error
             raise ValueError("no market data fetched for requested scope")
@@ -139,25 +236,61 @@ class SyncService:
             "days": days,
             "end_date": end_date,
             "timeframe": timeframe,
+            "selection_mode": selection_mode,
             "symbols_hash": self._symbols_hash(effective_symbols),
             "effective_symbols_count": len(effective_symbols),
+            "written_rows": total_written_rows,
+            "manifest_ids": [manifest_id],
             "error_code": None,
             "error_message": None,
         }
         insert_sync_run = getattr(self.bar_store, "insert_sync_run", None)
         if callable(insert_sync_run):
-            insert_sync_run(sync_run_payload)
+            try:
+                insert_sync_run(sync_run_payload)
+            except Exception:
+                if request_id and callable(get_existing_run):
+                    existing_run = get_existing_run(request_id)
+                    if existing_run and existing_run.get("status") == "success":
+                        return self._build_sync_summary(
+                            request_id=request_id,
+                            timeframe=timeframe,
+                            days=days,
+                            end_date=end_date,
+                            selection_mode=existing_run.get("selection_mode", selection_mode),
+                            effective_symbols_count=len(effective_symbols),
+                            symbols_hash=existing_run.get("symbols_hash", sync_run_payload["symbols_hash"]),
+                            written_rows=existing_run.get("written_rows", total_written_rows),
+                            manifest_ids=existing_run.get("manifest_ids", []),
+                            generated_at=now,
+                            run=existing_run,
+                        )
+                raise
 
-        return {
-            "status": "success",
-            "run_id": run_id,
-            "timeframe": timeframe,
-            "days": days,
-            "end_date": end_date,
-            "effective_symbols_count": len(effective_symbols),
-            "selection_mode": selection_mode,
-            "symbols_hash": sync_run_payload["symbols_hash"],
-            "written_rows": total_written_rows,
-            "manifest_ids": [manifest_id],
-            "generated_at": now,
-        }
+        upsert_checkpoints = getattr(self.bar_store, "upsert_checkpoints", None)
+        if callable(upsert_checkpoints) and latest_bar_times:
+            upsert_checkpoints(
+                [
+                    {
+                        "symbol": symbol,
+                        "timeframe": timeframe,
+                        "last_bar_time": bar_time.isoformat(),
+                        "last_run_id": run_id,
+                    }
+                    for symbol, bar_time in latest_bar_times.items()
+                ]
+            )
+
+        return self._build_sync_summary(
+            request_id=request_id,
+            timeframe=timeframe,
+            days=days,
+            end_date=end_date,
+            selection_mode=selection_mode,
+            effective_symbols_count=len(effective_symbols),
+            symbols_hash=sync_run_payload["symbols_hash"],
+            written_rows=total_written_rows,
+            manifest_ids=[manifest_id],
+            generated_at=now,
+            run=sync_run_payload,
+        )

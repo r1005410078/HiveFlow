@@ -44,8 +44,8 @@ class TimescaleBarStore:
     def get_sync_run_by_request_id(self, request_id: str) -> dict | None:
         sql = """
         select run_id::text, request_id, status, days, end_date::text, timeframe,
-               effective_symbols_count, started_at::text, finished_at::text,
-               error_code, error_message
+               selection_mode, symbols_hash, effective_symbols_count, written_rows,
+               manifest_ids, started_at::text, finished_at::text, error_code, error_message
         from sync_runs
         where request_id = %s
         limit 1
@@ -65,11 +65,15 @@ class TimescaleBarStore:
             "days": row[3],
             "end_date": row[4],
             "timeframe": row[5],
-            "effective_symbols_count": row[6],
-            "started_at": row[7],
-            "finished_at": row[8],
-            "error_code": row[9],
-            "error_message": row[10],
+            "selection_mode": row[6],
+            "symbols_hash": row[7],
+            "effective_symbols_count": row[8],
+            "written_rows": row[9],
+            "manifest_ids": row[10] or [],
+            "started_at": row[11],
+            "finished_at": row[12],
+            "error_code": row[13],
+            "error_message": row[14],
         }
 
     def get_checkpoints(self, symbols: list[str], timeframe: str) -> dict[str, str]:
@@ -112,14 +116,19 @@ class TimescaleBarStore:
         sql = """
         insert into sync_runs (
           run_id, request_id, status, days, end_date, timeframe,
-          symbols_hash, effective_symbols_count, error_code, error_message, finished_at
+          selection_mode, symbols_hash, effective_symbols_count, written_rows,
+          manifest_ids, error_code, error_message, finished_at
         ) values (
           %(run_id)s, %(request_id)s, %(status)s, %(days)s, %(end_date)s, %(timeframe)s,
-          %(symbols_hash)s, %(effective_symbols_count)s, %(error_code)s, %(error_message)s, now()
+          %(selection_mode)s, %(symbols_hash)s, %(effective_symbols_count)s, %(written_rows)s,
+          %(manifest_ids)s, %(error_code)s, %(error_message)s, now()
         )
         on conflict (run_id)
         do update set
           status = excluded.status,
+          selection_mode = excluded.selection_mode,
+          written_rows = excluded.written_rows,
+          manifest_ids = excluded.manifest_ids,
           error_code = excluded.error_code,
           error_message = excluded.error_message,
           finished_at = now()
@@ -141,8 +150,8 @@ class TimescaleBarStore:
     ) -> list[dict]:
         query = """
         select run_id::text, request_id, status, days, end_date::text, timeframe,
-               effective_symbols_count, started_at::text, finished_at::text,
-               error_code, error_message
+               selection_mode, symbols_hash, effective_symbols_count, written_rows,
+               manifest_ids, started_at::text, finished_at::text, error_code, error_message
         from sync_runs
         where started_at >= (current_date - (%s::int - 1))::timestamptz
         """
@@ -176,11 +185,15 @@ class TimescaleBarStore:
                 "days": row[3],
                 "end_date": row[4],
                 "timeframe": row[5],
-                "effective_symbols_count": row[6],
-                "started_at": row[7],
-                "finished_at": row[8],
-                "error_code": row[9],
-                "error_message": row[10],
+                "selection_mode": row[6],
+                "symbols_hash": row[7],
+                "effective_symbols_count": row[8],
+                "written_rows": row[9],
+                "manifest_ids": row[10] or [],
+                "started_at": row[11],
+                "finished_at": row[12],
+                "error_code": row[13],
+                "error_message": row[14],
             }
             for row in rows
         ]
