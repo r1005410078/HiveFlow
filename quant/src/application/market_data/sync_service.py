@@ -188,6 +188,7 @@ class SyncService:
                         checkpoint_starts[symbol] = self._checkpoint_start_date(last_bar_time, window_start)
                     except ValueError:
                         continue
+        has_incremental_checkpoint = any(start_date > window_start for start_date in checkpoint_starts.values())
 
         total_written_rows = 0
         has_any_rows = False
@@ -225,7 +226,8 @@ class SyncService:
         if not has_any_rows and made_fetch_call:
             if last_provider_error is not None:
                 raise RuntimeError(str(last_provider_error)) from last_provider_error
-            raise ValueError("no market data fetched for requested scope")
+            if not has_incremental_checkpoint:
+                raise ValueError("no market data fetched for requested scope")
         run_id = str(uuid4())
         manifest_id = f"mf_{uuid4().hex[:10]}"
         now = datetime.now(timezone.utc).isoformat()

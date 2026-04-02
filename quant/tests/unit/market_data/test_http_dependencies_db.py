@@ -178,3 +178,18 @@ def test_build_quote_repo_raises_http_503_when_all_sources_unavailable(monkeypat
         assert exc.detail["code"] == "MARKET_DATA_SOURCE_UNAVAILABLE"
     else:
         raise AssertionError("expected HTTPException(503)")
+
+def test_fallback_quote_repo_returns_empty_when_primary_empty_and_secondary_fails() -> None:
+    class _Primary:
+        def fetch(self, symbols, as_of, timeframe):
+            del symbols, as_of, timeframe
+            return []
+
+    class _Secondary:
+        def fetch(self, symbols, as_of, timeframe):
+            del symbols, as_of, timeframe
+            raise RuntimeError("secondary down")
+
+    repo = deps._FallbackQuoteRepo(primary=_Primary(), secondary=_Secondary())
+    out = repo.fetch(symbols=["600519.SH"], as_of="2026-04-01", timeframe="1m")
+    assert out == []

@@ -1,7 +1,7 @@
 RUST_CLI_DIR := cli
 COMPOSE := docker compose
 
-.PHONY: help sync test lint architecture-check rust-test validate-cli-output validate-cli-output-one check run-pipeline run-server run-server-dev db-up db-down db-logs db-psql db-reset-db-volume db-init-env
+.PHONY: help sync test lint architecture-check rust-test validate-cli-output validate-cli-output-one check run-pipeline run-server run-server-dev db-up db-down db-logs db-psql db-reset-db-volume db-init-env db-migrate
 
 help:
 	@echo "Available targets:"
@@ -21,6 +21,7 @@ help:
 	@echo "  make db-down                        # Stop TimescaleDB"
 	@echo "  make db-logs                        # Tail TimescaleDB logs"
 	@echo "  make db-psql                        # Open psql in TimescaleDB container"
+	@echo "  make db-migrate                     # Apply all SQL migrations in quant/db/migrations"
 	@echo "  make db-reset-db-volume             # Drop DB data volume (destructive)"
 
 sync:
@@ -76,6 +77,17 @@ db-logs:
 db-psql:
 	$(COMPOSE) exec timescaledb psql -U "$${POSTGRES_USER:-hiveflow}" -d "$${POSTGRES_DB:-hiveflow}"
 
+db-migrate:
+	@if [ ! -f ".env.db" ]; then \
+		echo "Missing .env.db, creating from template..."; \
+		cp .env.db.example .env.db; \
+	fi
+	@set -a; . ./.env.db; set +a; \
+	for f in quant/db/migrations/*.sql; do \
+		echo "Applying migration: $$f"; \
+		cat "$$f" | $(COMPOSE) exec -T timescaledb psql -v ON_ERROR_STOP=1 -U "$${POSTGRES_USER:-hiveflow}" -d "$${POSTGRES_DB:-hiveflow}"; \
+	done
+
 db-reset-db-volume:
 	@echo "WARNING: This will remove Timescale data volume permanently."
 	$(COMPOSE) down -v
@@ -83,6 +95,7 @@ db-reset-db-volume:
 run-server:
 	@if [ -f ".env.db" ]; then \
 		set -a; . ./.env.db; set +a; \
+		$(MAKE) db-migrate; \
 		cd quant && HTTP_PROXY= HTTPS_PROXY= ALL_PROXY= http_proxy= https_proxy= all_proxy= HF_DB_HOST=$${HF_DB_HOST:-127.0.0.1} HF_DB_PORT=$${HF_DB_PORT:-5432} HF_HOST=$${HF_HOST:-0.0.0.0} HF_PORT=$${HF_PORT:-8000} uv run python bin/server.py; \
 	else \
 		cd quant && HTTP_PROXY= HTTPS_PROXY= ALL_PROXY= http_proxy= https_proxy= all_proxy= HF_HOST=$${HF_HOST:-0.0.0.0} HF_PORT=$${HF_PORT:-8000} uv run python bin/server.py; \
@@ -91,6 +104,7 @@ run-server:
 run-server-dev:
 	@if [ -f ".env.db" ]; then \
 		set -a; . ./.env.db; set +a; \
+		$(MAKE) db-migrate; \
 		cd quant && HTTP_PROXY= HTTPS_PROXY= ALL_PROXY= http_proxy= https_proxy= all_proxy= HF_DB_HOST=$${HF_DB_HOST:-127.0.0.1} HF_DB_PORT=$${HF_DB_PORT:-5432} HF_HOST=$${HF_HOST:-0.0.0.0} HF_PORT=$${HF_PORT:-8000} uv run uvicorn interfaces.http.app:create_app --factory --reload --host "$${HF_HOST}" --port "$${HF_PORT}"; \
 	else \
 		cd quant && HTTP_PROXY= HTTPS_PROXY= ALL_PROXY= http_proxy= https_proxy= all_proxy= HF_HOST=$${HF_HOST:-0.0.0.0} HF_PORT=$${HF_PORT:-8000} uv run uvicorn interfaces.http.app:create_app --factory --reload --host "$${HF_HOST}" --port "$${HF_PORT}"; \

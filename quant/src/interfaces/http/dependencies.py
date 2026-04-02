@@ -53,9 +53,10 @@ class _FallbackQuoteRepo:
                 raise RuntimeError(
                     f"both market data sources failed: primary={primary_error}; secondary={secondary_exc}"
                 ) from secondary_exc
-            raise RuntimeError(
-                f"secondary market data source failed after primary returned empty: {secondary_exc}"
-            ) from secondary_exc
+            # Primary returned empty: this can be a valid non-trading slice.
+            # If secondary also fails here, degrade to empty rows and let upper
+            # layers decide whether the full sync window is acceptable.
+            return []
 
         if primary_error is not None:
             raise RuntimeError(

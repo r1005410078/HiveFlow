@@ -254,6 +254,32 @@ def test_sync_service_uses_checkpoint_to_reduce_fetch_window() -> None:
     assert store.checkpoints_calls == [{"symbols": ["600519.SH"], "timeframe": "1d"}]
 
 
+def test_sync_service_returns_success_when_incremental_window_has_no_new_rows() -> None:
+    """验证增量窗口无新数据时返回成功（written_rows=0），避免误判失败。"""
+
+    class _CheckpointOnlyBarStore(_FakeBarStore):
+        def get_checkpoints(self, symbols, timeframe):
+            super().get_checkpoints(symbols, timeframe)
+            return {"600519.SH": "2026-03-31T15:00:00+08:00"}
+
+    class _EmptyQuoteRepo:
+        def __init__(self):
+            self.calls = []
+
+        def fetch(self, symbols, as_of, timeframe):
+            self.calls.append({"symbols": symbols, "as_of": as_of, "timeframe": timeframe})
+            return []
+
+    repo = _EmptyQuoteRepo()
+    store = _CheckpointOnlyBarStore()
+    svc = SyncService(quote_repo=repo, bar_store=store)
+
+    out = svc.sync(days=2, end_date="2026-04-01", timeframe="1d", symbols=["600519.SH"])
+
+    assert out["status"] == "success"
+    assert out["written_rows"] == 0
+    assert [call["as_of"] for call in repo.calls] == ["2026-04-01"]
+
 def test_sync_service_uses_default_watchlist_plus_positions_when_no_symbols_or_universe() -> None:
     """验证默认集合来自 watchlist + positions（并集去重）。"""
     class _DeterministicSyncService(SyncService):
