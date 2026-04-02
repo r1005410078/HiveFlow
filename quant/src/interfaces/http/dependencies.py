@@ -22,7 +22,13 @@ MarketDataBarsQueryService = Callable[..., dict]
 
 def get_daily_run_service() -> DailyRunService:
     # Provider only: wire application service into FastAPI dependency graph.
-    return lambda as_of: run_daily(as_of=as_of, root=None)
+    bar_store = None
+    if has_db_config():
+        try:
+            bar_store = TimescaleBarStore(open_db_connection_from_env())
+        except Exception:
+            bar_store = None
+    return lambda as_of: run_daily(as_of=as_of, root=None, bar_store=bar_store)
 
 
 class _NoopQuoteRepo:

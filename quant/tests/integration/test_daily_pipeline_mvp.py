@@ -1,3 +1,5 @@
+from datetime import date, timedelta
+
 from application.daily_run_service import run_daily
 
 
@@ -35,3 +37,42 @@ def test_daily_pipeline_end_to_end(tmp_path):
     assert "execution_plan" in out["data"]
     assert out["data"]["as_of"] == "2026-04-01"
     assert out["data"]["execution_plan"]["orders"] == []
+
+
+def _bars_for_symbol(symbol: str, days: int = 90) -> list[dict]:
+    rows = []
+    for i in range(days):
+        d = date(2026, 1, 1) + timedelta(days=i)
+        close = 100 + i
+        rows.append(
+            {
+                "symbol": symbol,
+                "timeframe": "1d",
+                "bar_time": f"{d.isoformat()}T15:00:00+08:00",
+                "open": close - 0.5,
+                "high": close + 0.5,
+                "low": close - 1.0,
+                "close": close,
+                "volume": 5000 + i,
+                "amount": (5000 + i) * close,
+                "adj_factor": 1.0,
+                "data_source": "test",
+            }
+        )
+    return list(reversed(rows))
+
+
+def test_daily_pipeline_prefers_real_bars_when_available() -> None:
+    class _BarStore:
+        def list_bars(self, symbols=None, timeframe=None, start_date=None, end_date=None, limit=None):
+            del timeframe, start_date, end_date, limit
+            out = []
+            for s in symbols or []:
+                out.extend(_bars_for_symbol(s))
+            return out
+
+    out = run_daily(as_of="2026-04-01", root=None, bar_store=_BarStore())
+    rows = out["data"]["factor_snapshot"]["rows"]
+    trend_rows = [r for r in rows if r["factor_name"] == "trend_stability_20"]
+    assert len(trend_rows) == 5
+    assert all(r["raw_value"] == 1.0 for r in trend_rows)

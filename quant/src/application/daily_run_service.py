@@ -1,11 +1,15 @@
+from datetime import date, timedelta
 from uuid import uuid4
 
 from application.contracts.cli_output import ok_output
 from application.decision.l2_decision_service import compute_l2_decision_from_snapshot
-from application.factor.basic_factor_service import compute_basic_factor_snapshot
+from application.factor.basic_factor_service import (
+    compute_basic_factor_snapshot,
+    compute_basic_factor_snapshot_from_bars,
+)
 
 
-def run_daily(as_of: str, root) -> dict:
+def run_daily(as_of: str, root, bar_store=None) -> dict:
     # root 预留给后续持久化与工作目录上下文使用。
     run_id = f"run_{as_of.replace('-', '')}_{str(uuid4())[:8]}"
     symbols = [
@@ -16,6 +20,24 @@ def run_daily(as_of: str, root) -> dict:
         "000333.SZ",
     ]
     factor_snapshot = compute_basic_factor_snapshot(as_of=as_of, symbols=symbols)
+    if bar_store is not None:
+        try:
+            start_date = (date.fromisoformat(as_of) - timedelta(days=180)).isoformat()
+            bar_rows = bar_store.list_bars(
+                symbols=symbols,
+                timeframe="1d",
+                start_date=start_date,
+                end_date=as_of,
+                limit=10000,
+            )
+            factor_snapshot = compute_basic_factor_snapshot_from_bars(
+                as_of=as_of,
+                symbols=symbols,
+                bar_rows=bar_rows,
+            )
+        except Exception:
+            # Keep daily pipeline resilient: fallback to deterministic factor snapshot.
+            pass
     l2_decision = compute_l2_decision_from_snapshot(
         factor_snapshot=factor_snapshot,
         top_n=5,
