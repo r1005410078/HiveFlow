@@ -201,7 +201,7 @@ pub fn render_pipeline_daily_table(payload: &Value) -> String {
     }
 
     format!(
-        "日频管线摘要\n{}\n候选标的 Top5\n{}\n因子可用性\n{}\n",
+        "日频管线摘要\n{}\n候选标的（最多5）\n{}\n因子可用性\n{}\n",
         summary, top, availability
     )
 }

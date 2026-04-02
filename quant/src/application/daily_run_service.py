@@ -8,7 +8,13 @@ from application.factor.basic_factor_service import compute_basic_factor_snapsho
 def run_daily(as_of: str, root) -> dict:
     # root 预留给后续持久化与工作目录上下文使用。
     run_id = f"run_{as_of.replace('-', '')}_{str(uuid4())[:8]}"
-    symbols = ["000001.SZ", "600519.SH"]
+    symbols = [
+        "000001.SZ",
+        "600519.SH",
+        "300750.SZ",
+        "601318.SH",
+        "000333.SZ",
+    ]
     factor_snapshot = compute_basic_factor_snapshot(as_of=as_of, symbols=symbols)
     l2_decision = compute_l2_decision_from_snapshot(
         factor_snapshot=factor_snapshot,
