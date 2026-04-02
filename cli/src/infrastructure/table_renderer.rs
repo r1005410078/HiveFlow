@@ -2,6 +2,8 @@ use comfy_table::presets::UTF8_FULL;
 use comfy_table::{Cell, ContentArrangement, Table};
 use serde_json::Value;
 
+use crate::error::AppError;
+
 fn truncate_middle(s: &str, head: usize, tail: usize) -> String {
     if s.len() <= head + tail + 1 {
         return s.to_string();
@@ -314,4 +316,70 @@ pub fn render_pipeline_compare_table(payload: &Value) -> String {
         "版本对比回放\n版本对比汇总\n{}\n逐日明细\n{}\n",
         summary, daily
     )
+}
+
+pub fn render_factor_optimize_table(payload: &Value) -> Result<String, AppError> {
+    let mut summary = Table::new();
+    summary
+        .load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec![Cell::new("指标"), Cell::new("值")]);
+
+    let recommended = as_str(
+        payload
+            .get("data")
+            .and_then(|d| d.get("recommended_scheme")),
+    );
+    let start_date = as_str(
+        payload
+            .get("audit")
+            .and_then(|a| a.get("analysis_period"))
+            .and_then(|p| p.get("start_date")),
+    );
+    let end_date = as_str(
+        payload
+            .get("audit")
+            .and_then(|a| a.get("analysis_period"))
+            .and_then(|p| p.get("end_date")),
+    );
+
+    summary.add_row(vec!["开始日期".to_string(), start_date]);
+    summary.add_row(vec!["结束日期".to_string(), end_date]);
+    summary.add_row(vec!["推荐方案".to_string(), recommended]);
+
+    let mut schemes = Table::new();
+    schemes
+        .load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec![
+            Cell::new("方案"),
+            Cell::new("预期Sharpe"),
+            Cell::new("预期回撤"),
+            Cell::new("权重"),
+        ]);
+
+    let items = payload
+        .get("data")
+        .and_then(|d| d.get("recommendations"))
+        .and_then(Value::as_array)
+        .ok_or_else(|| AppError::InvalidArgs("missing data.recommendations".to_string()))?;
+
+    for item in items {
+        let name = as_str(item.get("name"));
+        let expected_sharpe = as_f64(item.get("expected_sharpe"));
+        let expected_drawdown = as_f64(item.get("expected_drawdown"));
+        let weights = item
+            .get("weights")
+            .and_then(Value::as_object)
+            .map(|m| {
+                m.iter()
+                    .map(|(k, v)| format!("{k}={}", v.as_f64().unwrap_or(0.0)))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            })
+            .unwrap_or_else(|| "".to_string());
+        schemes.add_row(vec![name, expected_sharpe, expected_drawdown, weights]);
+    }
+
+    Ok(format!("因子优化建议\n{}\n方案明细\n{}\n", summary, schemes))
 }

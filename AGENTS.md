@@ -126,6 +126,7 @@ retry = 1
 
 - `POST /api/v1/pipeline/daily`：日频管线触发
 - `POST /api/v1/pipeline/compare`：版本对比回放（`l2-score-v1` vs `l2-score-v1.1`）
+- `POST /api/v1/factor-optimization/evaluate`：因子评估与权重建议（advice-only，不自动生效）
 - `POST /v1/market-data/sync`：行情同步
 - `GET /v1/market-data/sync-runs`：行情查询（供 CLI `data query`）
 - `GET /v1/market-data/bars`：行情 K 线查询（供 CLI `data bars`）
@@ -134,7 +135,7 @@ retry = 1
 
 - `make architecture-check`：通过
 - `make check`：通过
-  - Python tests：`83 passed`
+  - Python tests：`87 passed`
   - Python architecture tests：`5 passed`
   - CLI output fixtures：`pass=8 fail=0`
   - Rust tests：通过
@@ -159,6 +160,10 @@ retry = 1
   - `quant`：新增 `POST /api/v1/pipeline/compare`
   - `cli`：新增 `hf pipeline compare --start-date --end-date --top-n --output json|table`
   - compare 输出含逐日 `daily_items` 与汇总 `summary`，并统计 `top1_symbol_change_days`
+- Factor 优化建议能力（本轮新增）：
+  - `quant`：新增 `POST /api/v1/factor-optimization/evaluate`
+  - `cli`：新增 `hf factor optimize --start-date --end-date --factors --output json|table`
+  - 输出固定 `advice_only=true`、`decision_weight=0`，并携带 `analysis/recommendations/audit`
 
 ## 8. Superpowers 工作流（强约束）
 

@@ -13,6 +13,13 @@ class PipelineCompareRequest(BaseModel):
     top_n: int = Field(default=5, ge=1, le=50, description="每个版本保留的候选数")
 
 
+class FactorOptimizationEvaluateRequest(BaseModel):
+    start_date: str = Field(description="分析起始日期，格式 `YYYY-MM-DD`")
+    end_date: str = Field(description="分析结束日期，格式 `YYYY-MM-DD`")
+    factor_names: list[str] = Field(description="待评估因子列表")
+    constraints: dict[str, float] = Field(default_factory=dict, description="权重约束，如 `max_weight:max_drawdown_60: 0.3`")
+
+
 class FactorRow(BaseModel):
     as_of: str
     symbol: str
@@ -123,6 +130,18 @@ class PipelineCompareResponse(BaseModel):
     advice_only: bool
     decision_weight: int
     data: PipelineCompareData
+    warnings: list[dict]
+    errors: list[dict]
+
+
+class FactorOptimizationEvaluateResponse(BaseModel):
+    schema_version: str
+    command: str
+    status: str
+    advice_only: bool
+    decision_weight: int
+    data: dict
+    audit: dict
     warnings: list[dict]
     errors: list[dict]
 
