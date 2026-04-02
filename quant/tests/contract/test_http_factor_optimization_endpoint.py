@@ -74,6 +74,34 @@ def test_factor_optimization_endpoint_contract_ok() -> None:
     payload = resp.json()
     assert payload["advice_only"] is True
     assert payload["decision_weight"] == 0
+    assert {"threshold", "alerts", "alert_count"} <= set(payload["data"]["correlation_analysis"].keys())
     assert payload["data"]["correlation_analysis"]["threshold"] == 0.7
     assert payload["data"]["correlation_analysis"]["alert_count"] == 0
-    assert len(payload["data"]["report"]["matrix_10d"]) == 10
+    report = payload["data"]["report"]
+    assert {"matrix_10d", "summary", "g3_checklist"} <= set(report.keys())
+    assert len(report["matrix_10d"]) == 10
+    assert all("dimension" in row for row in report["matrix_10d"])
+    assert len(report["g3_checklist"]) == 3
+    assert all({"item", "checked"} <= set(item.keys()) for item in report["g3_checklist"])
+    assert all(isinstance(item["checked"], bool) for item in report["g3_checklist"])
+
+
+def test_factor_optimization_endpoint_accepts_custom_correlation_threshold() -> None:
+    app = create_app()
+    app.dependency_overrides[get_factor_optimization_service] = lambda: _stub_factor_optimization_service
+    client = TestClient(app)
+
+    resp = client.post(
+        "/api/v1/factor-optimization/evaluate",
+        json={
+            "start_date": "2026-01-01",
+            "end_date": "2026-04-01",
+            "factor_names": ["momentum_20", "inv_volatility_20"],
+            "constraints": {"max_weight:max_drawdown_60": 0.3},
+            "correlation_threshold": 0.9,
+        },
+    )
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["data"]["correlation_analysis"]["threshold"] == 0.9
