@@ -10,6 +10,7 @@ def _stub_factor_optimization_service(
     factor_names: list[str],
     constraints: dict[str, float],
 ) -> dict:
+    correlation_threshold = constraints.get("__correlation_threshold__", 0.7)
     return {
         "schema_version": "1.0.0",
         "command": "hf factor optimize",
@@ -19,6 +20,11 @@ def _stub_factor_optimization_service(
         "data": {
             "factor_names": factor_names,
             "analysis": {"factor_health": [], "correlation_matrix": {}, "coverage": {"symbols": 0, "bars": 0}},
+            "correlation_analysis": {
+                "threshold": correlation_threshold,
+                "alerts": [],
+                "alert_count": 0,
+            },
             "recommendations": [
                 {
                     "name": "balanced",
@@ -29,6 +35,15 @@ def _stub_factor_optimization_service(
                 }
             ],
             "recommended_scheme": "balanced",
+            "report": {
+                "matrix_10d": [{"dimension": "IC"} for _ in range(10)],
+                "summary": {"recommended_scheme": "balanced", "key_findings": []},
+                "g3_checklist": [
+                    {"item": "风控组评审", "checked": False},
+                    {"item": "合规组审核", "checked": False},
+                    {"item": "CRO 最终批准", "checked": False},
+                ],
+            },
         },
         "audit": {
             "generated_at": "2026-04-02T00:00:00+00:00",
@@ -59,4 +74,6 @@ def test_factor_optimization_endpoint_contract_ok() -> None:
     payload = resp.json()
     assert payload["advice_only"] is True
     assert payload["decision_weight"] == 0
-    assert "recommendations" in payload["data"]
+    assert payload["data"]["correlation_analysis"]["threshold"] == 0.7
+    assert payload["data"]["correlation_analysis"]["alert_count"] == 0
+    assert len(payload["data"]["report"]["matrix_10d"]) == 10
