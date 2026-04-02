@@ -30,8 +30,7 @@ def test_l2_decision_contains_explainable_fields() -> None:
 
     assert out["top_candidates"][0]["symbol"] == "600519.SH"
     first = out["score_breakdown"][0]
-    assert "final_score" in first
-    assert "factors" in first
+    assert "symbol" in first
     assert {"final_score", "factors"} <= set(first.keys())
     assert {"factor_name", "raw_value", "normalized_value", "percentile", "clipped", "anomaly_flags", "weight", "contribution"} <= set(first["factors"][0].keys())
 
@@ -62,6 +61,7 @@ def test_l2_decision_with_missing_factor() -> None:
     breakdown_sh = [x for x in out["score_breakdown"] if x["symbol"] == "600519.SH"][0]
     turnover_factor = [f for f in breakdown_sh["factors"] if f["factor_name"] == "turnover_rate"][0]
     assert "missing_factor:turnover_rate" in turnover_factor["anomaly_flags"]
+    assert turnover_factor["raw_value"] == 0.0
 
 
 def test_l2_decision_with_empty_sample() -> None:
@@ -92,7 +92,7 @@ def test_l2_decision_contribution_sum_equals_final_score() -> None:
     """验证 sum(factors[].contribution) == final_score（6 位精度）"""
     out = compute_l2_decision_from_snapshot(_snapshot(), top_n=5)
     for item in out["score_breakdown"]:
-        contribution_sum = round(sum(f["contribution"] for f in item["factors"]), 6)
-        assert contribution_sum == item["final_score"], (
+        contribution_sum = sum(f["contribution"] for f in item["factors"])
+        assert abs(contribution_sum - item["final_score"]) < 1e-6, (
             f"{item['symbol']}: sum(contribution)={contribution_sum} != final_score={item['final_score']}"
         )
