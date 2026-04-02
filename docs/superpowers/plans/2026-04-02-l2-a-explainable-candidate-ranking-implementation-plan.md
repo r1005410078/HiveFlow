@@ -39,7 +39,7 @@
 - Create: `quant/tests/unit/decision/test_l2_decision_service.py`
 - Test: `quant/tests/unit/decision/test_l2_decision_service.py`
 
-- [ ] **Step 1: 写决策服务失败测试（排序、解释字段、确定性）**
+- [x] **Step 1: 写决策服务失败测试（排序、解释字段、确定性）**
 
 **主测试**：
 
@@ -152,12 +152,12 @@ def test_l2_decision_contribution_sum_equals_final_score() -> None:
         )
 ```
 
-- [ ] **Step 2: 运行测试并确认失败**
+- [x] **Step 2: 运行测试并确认失败**
 
 Run: `cd quant && uv run pytest tests/unit/decision/test_l2_decision_service.py -q`  
 Expected: FAIL（模块或函数尚不存在）。
 
-- [ ] **Step 3: 提交测试骨架**
+- [x] **Step 3: 提交测试骨架**
 
 ```bash
 git add quant/tests/unit/decision/test_l2_decision_service.py
@@ -174,7 +174,7 @@ git commit -m "test: add failing unit tests for l2 decision service"
 - Create: `quant/src/application/decision/l2_decision_service.py`
 - Test: `quant/tests/unit/decision/test_l2_decision_service.py`
 
-- [ ] **Step 1: 定义 domain 模型（数据类）**
+- [x] **Step 1: 定义 domain 模型（数据类）**
 
 ```python
 # quant/src/domain/models/l2_decision.py
@@ -213,7 +213,7 @@ class L2Decision:
     score_breakdown: List[ScoreBreakdownItem]
 ```
 
-- [ ] **Step 2: 实现打分逻辑（关键算法）**
+- [x] **Step 2: 实现打分逻辑（关键算法）**
 
 ```python
 # quant/src/application/decision/l2_decision_service.py
@@ -338,12 +338,12 @@ def compute_l2_decision_from_snapshot(factor_snapshot: dict, top_n: int = 5) -> 
     }
 ```
 
-- [ ] **Step 3: 运行单测并确认通过**
+- [x] **Step 3: 运行单测并确认通过**
 
 Run: `cd quant && uv run pytest tests/unit/decision/test_l2_decision_service.py -q`  
 Expected: PASS （包含正常、缺失、空样本、同值等所有测试）。
 
-- [ ] **Step 4: 提交实现**
+- [x] **Step 4: 提交实现**
 
 ```bash
 git add quant/src/domain/models/l2_decision.py quant/src/application/decision/__init__.py quant/src/application/decision/l2_decision_service.py quant/tests/unit/decision/test_l2_decision_service.py
@@ -361,7 +361,7 @@ git commit -m "feat: implement l2 decision scoring service with deterministic al
 - Modify: `quant/src/interfaces/http/schemas.py`（定义 schema）
 - Modify: `quant/src/application/daily_run_service.py`（实现）
 
-- [ ] **Step 1: 先写集成测试（测试优先）**
+- [x] **Step 1: 先写集成测试（测试优先）**
 
 ```python
 # quant/tests/integration/test_daily_pipeline_mvp.py
@@ -403,7 +403,7 @@ def test_http_daily_response_schema_includes_l2_decision() -> None:
     assert "score_breakdown" in l2d
 ```
 
-- [ ] **Step 2: 定义 HTTP typed response**
+- [x] **Step 2: 定义 HTTP typed response**
 
 ```python
 # quant/src/interfaces/http/schemas.py
@@ -458,7 +458,7 @@ class DailyRunResponse(BaseModel):
     errors: List[str] = []
 ```
 
-- [ ] **Step 3: 实现 daily 编排接入**
+- [x] **Step 3: 实现 daily 编排接入**
 
 ```python
 # quant/src/application/daily_run_service.py
@@ -495,7 +495,7 @@ def run_daily(as_of: str, symbols: List[str]) -> dict:
     }
 ```
 
-- [ ] **Step 4: 运行集成 + 契约测试验证**
+- [x] **Step 4: 运行集成 + 契约测试验证**
 
 Run:  
 ```bash
@@ -503,7 +503,7 @@ cd quant && uv run pytest tests/integration/test_daily_pipeline_mvp.py tests/con
 ```
 Expected: PASS。
 
-- [ ] **Step 5: 提交集成改动**
+- [x] **Step 5: 提交集成改动**
 
 ```bash
 git add quant/tests/integration/test_daily_pipeline_mvp.py quant/tests/contract/test_http_daily_endpoint.py quant/tests/contract/test_python_cli_contract.py quant/src/interfaces/http/schemas.py quant/src/application/daily_run_service.py
@@ -518,7 +518,7 @@ git commit -m "feat: integrate l2 decision into daily pipeline with typed schema
 - Modify: `quant/src/application/decision/l2_decision_service.py`
 - Test: `quant/tests/unit/decision/test_l2_decision_service.py`
 
-- [ ] **Step 1: 增加配置化权重结构（当前仅 v1，保持不变）**
+- [x] **Step 1: 增加配置化权重结构（当前仅 v1，保持不变）**
 
 ```python
 # quant/src/application/decision/l2_decision_service.py
@@ -549,7 +549,7 @@ def compute_l2_decision_from_snapshot(
     # ...现有逻辑...
 ```
 
-- [ ] **Step 2: 验证 v1 版本锁定**
+- [x] **Step 2: 验证 v1 版本锁定**
 
 ```python
 # quant/tests/unit/decision/test_l2_decision_service.py
@@ -562,7 +562,7 @@ def test_default_score_version_is_v1() -> None:
 Run: `cd quant && uv run pytest tests/unit/decision/test_l2_decision_service.py -q`  
 Expected: PASS。
 
-- [ ] **Step 3: 提交可扩展框架**
+- [x] **Step 3: 提交可扩展框架**
 
 ```bash
 git add quant/src/application/decision/l2_decision_service.py quant/tests/unit/decision/test_l2_decision_service.py
@@ -583,17 +583,17 @@ git commit -m "refactor: add pluggable score profile framework for future versio
 **Files:**
 - Verify only
 
-- [ ] **Step 1: 架构门禁**
+- [x] **Step 1: 架构门禁**
 
 Run: `cd /Users/rongts/strat-flow && make architecture-check`  
 Expected: PASS。
 
-- [ ] **Step 2: 全量检查**
+- [x] **Step 2: 全量检查**
 
 Run: `cd /Users/rongts/strat-flow && make check`  
 Expected: PASS。
 
-- [ ] **Step 3: 提交任何剩余微调（如有）**
+- [x] **Step 3: 提交任何剩余微调（如有）**
 
 ```bash
 git add <touched-files>
