@@ -19,9 +19,11 @@ def run_daily(as_of: str, root, bar_store=None) -> dict:
         "601318.SH",
         "000333.SZ",
     ]
+    # 默认先构造 deterministic 快照，保证无依赖场景也可稳定运行。
     factor_snapshot = compute_basic_factor_snapshot(as_of=as_of, symbols=symbols)
     if bar_store is not None:
         try:
+            # 优先使用真实 bars 计算因子（近 180 天窗口，覆盖 60/20 日特征需求）。
             start_date = (date.fromisoformat(as_of) - timedelta(days=180)).isoformat()
             bar_rows = bar_store.list_bars(
                 symbols=symbols,
@@ -36,7 +38,7 @@ def run_daily(as_of: str, root, bar_store=None) -> dict:
                 bar_rows=bar_rows,
             )
         except Exception:
-            # Keep daily pipeline resilient: fallback to deterministic factor snapshot.
+            # 保持流水线韧性：任何读取/计算异常都降级到 deterministic 快照，不阻断 daily。
             pass
     l2_decision = compute_l2_decision_from_snapshot(
         factor_snapshot=factor_snapshot,

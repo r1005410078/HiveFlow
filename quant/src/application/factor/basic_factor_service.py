@@ -40,10 +40,12 @@ def _factor_values_for_symbol(symbol: str) -> dict[str, float]:
 
 
 def _mean(values: list[float]) -> float:
+    # 计算均值；空序列返回 0，避免上层分母异常。
     return sum(values) / len(values) if values else 0.0
 
 
 def _std(values: list[float]) -> float:
+    # 使用总体标准差（非样本标准差）作为波动率近似。
     if not values:
         return 0.0
     mu = _mean(values)
@@ -52,6 +54,7 @@ def _std(values: list[float]) -> float:
 
 
 def _max_drawdown(closes: list[float]) -> float:
+    # 计算最大回撤（0~1），用于风险因子。
     if not closes:
         return 0.0
     peak = closes[0]
@@ -67,8 +70,10 @@ def _max_drawdown(closes: list[float]) -> float:
 
 
 def _factor_values_from_real_bars(rows: list[dict]) -> dict[str, float] | None:
+    # 使用真实 1d bars 计算 6 因子；样本不足时返回 None，让上层走回退策略。
     if len(rows) < 61:
         return None
+    # bars 查询默认是倒序，先转为按时间正序，避免收益率/回撤方向错误。
     ordered = sorted(rows, key=lambda r: str(r.get("bar_time", "")))
     closes = [float(r["close"]) for r in ordered]
     volumes = [float(r.get("volume") or 0.0) for r in ordered]
@@ -100,7 +105,7 @@ def _factor_values_from_real_bars(rows: list[dict]) -> dict[str, float] | None:
     up_days = sum(1 for r in rets if r > 0)
     trend_stability_20 = up_days / len(rets)
 
-    # This is a per-symbol proxy when benchmark bars are unavailable in current scope.
+    # 当前作用域未引入基准指数 bars，先使用个股收益代理相对强弱，后续可替换为真实基准对比。
     relative_strength_vs_index = 1.0 + momentum_20
 
     return {
@@ -114,6 +119,7 @@ def _factor_values_from_real_bars(rows: list[dict]) -> dict[str, float] | None:
 
 
 def compute_basic_factor_snapshot_from_bars(as_of: str, symbols: list[str], bar_rows: list[dict]) -> dict:
+    # 按 symbol 聚合 bars，再逐标的计算因子；若单标的数据不足则回退到 deterministic 因子。
     rows_by_symbol: dict[str, list[dict]] = defaultdict(list)
     for row in bar_rows:
         symbol = row.get("symbol")
@@ -125,6 +131,7 @@ def compute_basic_factor_snapshot_from_bars(as_of: str, symbols: list[str], bar_
     for symbol in symbols:
         values = _factor_values_from_real_bars(rows_by_symbol.get(symbol, []))
         if values is None:
+            # 兜底：保障日频流水线在数据空窗/历史不足时仍可产出稳定结构。
             values = _factor_values_for_symbol(symbol)
         for factor_name, raw_value in values.items():
             output_rows.append(
@@ -149,6 +156,7 @@ def compute_basic_factor_snapshot_from_bars(as_of: str, symbols: list[str], bar_
 
 
 def compute_basic_factor_snapshot(as_of: str, symbols: list[str]) -> dict:
+    # deterministic 快照：用于无 DB/无 bars 场景和测试稳定性。
     rows: list[dict] = []
     for symbol in symbols:
         values = _factor_values_for_symbol(symbol)
