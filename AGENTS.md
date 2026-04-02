@@ -104,6 +104,7 @@
 - 架构门禁：`make architecture-check`
 - 启动服务端：`make run-server`（开发热更新：`make run-server-dev`）
 - 运行日频管线：`make run-pipeline AS_OF=YYYY-MM-DD`
+- 运行版本对比回放：`cd cli && cargo run -- pipeline compare --start-date YYYY-MM-DD --end-date YYYY-MM-DD --top-n 5 --output table`
 - 数据库启动：`make db-up`（查看日志：`make db-logs`）
 
 ### 7.4 本地联调最小路径
@@ -124,21 +125,40 @@ retry = 1
 ### 7.5 主要 HTTP 接口（当前）
 
 - `POST /api/v1/pipeline/daily`：日频管线触发
+- `POST /api/v1/pipeline/compare`：版本对比回放（`l2-score-v1` vs `l2-score-v1.1`）
 - `POST /v1/market-data/sync`：行情同步
 - `GET /v1/market-data/sync-runs`：行情查询（供 CLI `data query`）
+- `GET /v1/market-data/bars`：行情 K 线查询（供 CLI `data bars`）
 
 ### 7.6 当前健康状态（最近一次本地检查）
 
 - `make architecture-check`：通过
 - `make check`：通过
-  - Python tests：`50 passed`
-  - Python architecture tests：`2 passed`
+  - Python tests：`83 passed`
+  - Python architecture tests：`5 passed`
   - CLI output fixtures：`pass=8 fail=0`
   - Rust tests：通过
 
 ### 7.7 已知注意点（非阻塞）
 
 - CLI 存在少量 `dead_code` 警告（如 `retry` 字段、部分合同类型/解析函数未使用），当前不影响门禁通过。
+
+### 7.8 近期已交付（避免上下文丢失）
+
+- L1/L2 日频主链路：
+  - `factor_snapshot` 已升级为 6 因子：`momentum_20`、`inv_volatility_20`、`turnover_rate`、`max_drawdown_60`、`trend_stability_20`、`relative_strength_vs_index`
+  - `l2_decision` 已包含：`score_version`、`top_candidates`、`score_breakdown`、`factor_availability`
+  - `execution_plan.orders` 当前仍为空数组（Phase 1 仅做可解释候选输出）
+- 数据韧性：
+  - 因子计算优先使用真实 bars（近 180 天窗口），异常时降级 deterministic 快照
+  - 增加低可用率告警：`FACTOR_AVAILABILITY_LOW`
+- CLI 可读性：
+  - `pipeline daily --output table` 标题和主要列使用中文
+  - Top 候选展示逻辑为“最多 5 条”，实际条数由有效 universe 决定
+- Compare 回放能力（本轮新增）：
+  - `quant`：新增 `POST /api/v1/pipeline/compare`
+  - `cli`：新增 `hf pipeline compare --start-date --end-date --top-n --output json|table`
+  - compare 输出含逐日 `daily_items` 与汇总 `summary`，并统计 `top1_symbol_change_days`
 
 ## 8. Superpowers 工作流（强约束）
 
