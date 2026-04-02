@@ -49,9 +49,17 @@ def get_sync_runs(
     days: int = Query(ge=1),
     timeframe: str | None = None,
     status: str | None = None,
+    request_id: str | None = None,
+    limit: int = Query(default=100, ge=1, le=1000),
     service: MarketDataQueryService = Depends(get_market_data_query_service),
 ) -> dict:
-    return service(days=days, timeframe=timeframe, status=status)
+    return service(
+        days=days,
+        timeframe=timeframe,
+        status=status,
+        request_id=request_id,
+        limit=limit,
+    )
 
 
 @router.get("/bars")
@@ -60,7 +68,7 @@ def get_bars(
     timeframe: str | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
-    limit: int | None = None,
+    limit: int = Query(default=5000, ge=1, le=10000),
     service: MarketDataBarsQueryService = Depends(get_market_data_bars_query_service),
 ) -> dict:
     return service(

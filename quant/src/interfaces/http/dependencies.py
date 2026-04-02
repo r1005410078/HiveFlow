@@ -143,6 +143,28 @@ def _build_bar_store():
     return _InMemoryBarStore()
 
 
+def _build_read_bar_store():
+    if not has_db_config():
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "MARKET_DATA_DB_UNAVAILABLE",
+                "message": "database is required for market-data read endpoints",
+            },
+        )
+    try:
+        return TimescaleBarStore(open_db_connection_from_env())
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "MARKET_DATA_DB_UNAVAILABLE",
+                "message": "database is unavailable for market-data read endpoints",
+                "reason": str(exc),
+            },
+        ) from exc
+
+
 def _build_quote_repo():
     if has_db_config():
         try:
@@ -173,10 +195,10 @@ def get_market_data_sync_service() -> MarketDataSyncService:
 
 
 def get_market_data_query_service() -> MarketDataQueryService:
-    service = QueryService(bar_store=_build_bar_store())
+    service = QueryService(bar_store=_build_read_bar_store())
     return service.query
 
 
 def get_market_data_bars_query_service() -> MarketDataBarsQueryService:
-    service = BarsQueryService(bar_store=_build_bar_store())
+    service = BarsQueryService(bar_store=_build_read_bar_store())
     return service.query
