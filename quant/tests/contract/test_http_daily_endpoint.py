@@ -15,4 +15,6 @@ def test_post_daily_contract():
     assert payload["command"] == "hf pipeline daily"
     assert payload["data"]["as_of"] == "2026-04-01"
     assert "data_manifest_id" in payload["data"]
+    assert "factor_snapshot" in payload["data"]
+    assert payload["data"]["factor_snapshot"]["factor_version"] == "l2-basic-v1"
     assert "execution_plan" in payload["data"]
