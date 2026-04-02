@@ -18,11 +18,10 @@ fn pipeline_daily_table_renders_top_candidates_and_factor_availability() {
     let out = post_daily(&server.url(), "2026-04-01", 1000).expect("http call should succeed");
     let table = render_pipeline_daily_table(&out);
 
-    assert!(table.contains("Pipeline Daily Summary"));
-    assert!(table.contains("Top Candidates"));
-    assert!(table.contains("Factor Availability"));
+    assert!(table.contains("日频管线摘要"));
+    assert!(table.contains("候选标的 Top5"));
+    assert!(table.contains("因子可用性"));
     assert!(table.contains("l2-score-v1.1"));
     assert!(table.contains("600519.SH"));
     assert!(table.contains("trend_stability_20"));
 }
-

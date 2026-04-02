@@ -122,11 +122,11 @@ pub fn render_pipeline_daily_table(payload: &Value) -> String {
         .load_preset(UTF8_FULL)
         .set_content_arrangement(ContentArrangement::Dynamic)
         .set_header(vec![
-            Cell::new("as_of"),
-            Cell::new("status"),
-            Cell::new("score_version"),
-            Cell::new("universe_size"),
-            Cell::new("factor_coverage"),
+            Cell::new("交易日"),
+            Cell::new("状态"),
+            Cell::new("评分版本"),
+            Cell::new("样本数"),
+            Cell::new("因子覆盖率"),
         ]);
 
     let as_of = as_str(payload.get("data").and_then(|d| d.get("as_of")));
@@ -155,9 +155,9 @@ pub fn render_pipeline_daily_table(payload: &Value) -> String {
     top.load_preset(UTF8_FULL)
         .set_content_arrangement(ContentArrangement::Dynamic)
         .set_header(vec![
-            Cell::new("rank"),
-            Cell::new("symbol"),
-            Cell::new("score"),
+            Cell::new("排名"),
+            Cell::new("标的"),
+            Cell::new("得分"),
         ]);
     if let Some(items) = payload
         .get("data")
@@ -179,10 +179,10 @@ pub fn render_pipeline_daily_table(payload: &Value) -> String {
         .load_preset(UTF8_FULL)
         .set_content_arrangement(ContentArrangement::Dynamic)
         .set_header(vec![
-            Cell::new("factor_name"),
-            Cell::new("present"),
-            Cell::new("missing"),
-            Cell::new("availability_rate"),
+            Cell::new("因子名"),
+            Cell::new("有效数"),
+            Cell::new("缺失数"),
+            Cell::new("可用率"),
         ]);
     if let Some(items) = payload
         .get("data")
@@ -201,7 +201,7 @@ pub fn render_pipeline_daily_table(payload: &Value) -> String {
     }
 
     format!(
-        "Pipeline Daily Summary\n{}\nTop Candidates\n{}\nFactor Availability\n{}\n",
+        "日频管线摘要\n{}\n候选标的 Top5\n{}\n因子可用性\n{}\n",
         summary, top, availability
     )
 }
