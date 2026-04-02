@@ -16,3 +16,5 @@ def test_daily_contract_via_http():
     assert "factor_snapshot" in payload["data"]
     assert payload["data"]["factor_snapshot"]["factor_version"] == "l2-basic-v1"
     assert "execution_plan" in payload["data"]
+    assert "l2_decision" in payload["data"]
+    assert payload["data"]["l2_decision"]["score_version"] == "l2-score-v1"

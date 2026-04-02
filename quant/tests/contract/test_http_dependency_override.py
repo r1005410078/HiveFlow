@@ -32,6 +32,32 @@ def _stub_daily_run_service(as_of: str) -> dict:
                 ],
             },
             "execution_plan": {"orders": []},
+            "l2_decision": {
+                "schema_version": "1.0",
+                "generated_at": "2026-04-01T00:00:00+00:00",
+                "producer_version": "quant-l2",
+                "score_version": "l2-score-v1",
+                "universe_size": 1,
+                "top_candidates": [{"symbol": "600519.SH", "score": 0.5, "rank": 1}],
+                "score_breakdown": [
+                    {
+                        "symbol": "600519.SH",
+                        "final_score": 0.5,
+                        "factors": [
+                            {
+                                "factor_name": "momentum_20",
+                                "raw_value": 0.02,
+                                "normalized_value": 1.0,
+                                "percentile": 1.0,
+                                "clipped": False,
+                                "anomaly_flags": [],
+                                "weight": 0.5,
+                                "contribution": 0.5,
+                            }
+                        ],
+                    }
+                ],
+            },
         },
         "warnings": [],
         "errors": [],
