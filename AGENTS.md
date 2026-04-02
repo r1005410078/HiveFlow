@@ -164,6 +164,10 @@ retry = 1
   - `quant`：新增 `POST /api/v1/factor-optimization/evaluate`
   - `cli`：新增 `hf factor optimize --start-date --end-date --factors --output json|table`
   - 输出固定 `advice_only=true`、`decision_weight=0`，并携带 `analysis/recommendations/audit`
+- Factor 优化 P1（统一扩展）：
+  - `evaluate` 新增 `correlation_analysis`（threshold、alerts、alert_count）
+  - `evaluate` 新增 `report`（matrix_10d、summary、g3_checklist）
+  - CLI 支持 `--correlation-threshold`，table 输出增加“相关性告警”“10维评估摘要”
 
 ## 8. Superpowers 工作流（强约束）
 
