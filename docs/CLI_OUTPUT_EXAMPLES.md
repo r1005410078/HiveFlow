@@ -185,14 +185,75 @@ jq -e 'if .source=="web_search" then (.advice_only==true and .decision_weight==0
     "items": [
       {
         "run_id": "run_demo_001",
-        "date": "2026-04-01",
+        "request_id": "req_demo_001",
         "status": "success",
+        "days": 5,
+        "end_date": "2026-04-01",
         "timeframe": "1d",
-        "symbols_count": 4,
-        "manifest_id": "mf_demo_001",
-        "days": 5
+        "selection_mode": "symbols",
+        "symbols_hash": "abc123",
+        "effective_symbols_count": 4,
+        "written_rows": 8,
+        "manifest_ids": [
+          "mf_demo_001"
+        ],
+        "started_at": "2026-04-01T09:30:00+08:00",
+        "finished_at": "2026-04-01T09:31:00+08:00",
+        "error_code": null,
+        "error_message": null
       }
     ]
+  },
+  "warnings": [],
+  "errors": []
+}
+```
+
+---
+
+## 7. hf pipeline daily（JSON 示例，含 L2 因子快照）
+
+```json
+{
+  "schema_version": "1.0.0",
+  "command": "hf pipeline daily",
+  "run_id": "run_16e4d4f2b8bc",
+  "status": "ok",
+  "generated_at": "2026-04-02T09:00:00+00:00",
+  "source": "system",
+  "advice_only": false,
+  "decision_weight": 1,
+  "data": {
+    "as_of": "2026-04-01",
+    "data_manifest_id": "dm_20260401_a1b2c3",
+    "factor_snapshot": {
+      "factor_version": "l2-basic-v1",
+      "factor_names": [
+        "momentum_20",
+        "inv_volatility_20",
+        "turnover_rate"
+      ],
+      "coverage_rate": 1.0,
+      "rows": [
+        {
+          "as_of": "2026-04-01",
+          "symbol": "600519.SH",
+          "factor_name": "momentum_20",
+          "factor_version": "l2-basic-v1",
+          "raw_value": 0.02
+        },
+        {
+          "as_of": "2026-04-01",
+          "symbol": "600519.SH",
+          "factor_name": "inv_volatility_20",
+          "factor_version": "l2-basic-v1",
+          "raw_value": 2.9
+        }
+      ]
+    },
+    "execution_plan": {
+      "orders": []
+    }
   },
   "warnings": [],
   "errors": []
