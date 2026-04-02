@@ -1,8 +1,8 @@
 pub mod data;
 pub mod pipeline;
 
-use clap::{Parser, Subcommand};
 use crate::application::requests::AppCommand;
+use clap::{Parser, Subcommand};
 
 #[derive(Debug, Parser)]
 #[command(name = "hf")]
@@ -24,6 +24,9 @@ impl From<Cli> for AppCommand {
             Commands::Pipeline(args) => match args.command {
                 pipeline::PipelineSubcommand::Daily(daily) => {
                     AppCommand::PipelineDaily(daily.into())
+                }
+                pipeline::PipelineSubcommand::Compare(compare) => {
+                    AppCommand::PipelineCompare(compare.into())
                 }
             },
             Commands::Data(args) => match args.command {

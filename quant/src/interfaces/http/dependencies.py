@@ -5,6 +5,7 @@ from collections.abc import Callable
 from fastapi import HTTPException
 
 from application.daily_run_service import run_daily
+from application.pipeline_compare_service import run_pipeline_compare
 from application.market_data.bars_query_service import BarsQueryService
 from application.market_data.query_service import QueryService
 from application.market_data.sync_service import SyncService
@@ -15,6 +16,7 @@ from interfaces.adapters.market_data.timescale_bar_store import TimescaleBarStor
 
 
 DailyRunService = Callable[[str], dict]
+PipelineCompareService = Callable[[str, str, int], dict]
 MarketDataSyncService = Callable[..., dict]
 MarketDataQueryService = Callable[..., dict]
 MarketDataBarsQueryService = Callable[..., dict]
@@ -29,6 +31,23 @@ def get_daily_run_service() -> DailyRunService:
         except Exception:
             bar_store = None
     return lambda as_of: run_daily(as_of=as_of, root=None, bar_store=bar_store)
+
+
+def get_pipeline_compare_service() -> PipelineCompareService:
+    # Provider only: wire application service into FastAPI dependency graph.
+    bar_store = None
+    if has_db_config():
+        try:
+            bar_store = TimescaleBarStore(open_db_connection_from_env())
+        except Exception:
+            bar_store = None
+    return lambda start_date, end_date, top_n: run_pipeline_compare(
+        start_date=start_date,
+        end_date=end_date,
+        top_n=top_n,
+        root=None,
+        bar_store=bar_store,
+    )
 
 
 class _NoopQuoteRepo:

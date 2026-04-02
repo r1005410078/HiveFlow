@@ -1,0 +1,117 @@
+from application.pipeline_compare_service import run_pipeline_compare
+
+
+def _daily_run(as_of: str, score_version: str, top_candidates: list[dict], warnings: list[dict], availability: list[dict]) -> dict:
+    return {
+        "schema_version": "1.0.0",
+        "command": "hf pipeline daily",
+        "run_id": f"run_{as_of}_{score_version}",
+        "status": "ok",
+        "generated_at": "2026-04-01T00:00:00+00:00",
+        "source": "system",
+        "advice_only": False,
+        "decision_weight": 1,
+        "data": {
+            "as_of": as_of,
+            "data_manifest_id": f"dm_{as_of}",
+            "factor_snapshot": {
+                "factor_version": "l2-basic-v1.1",
+                "factor_names": ["momentum_20"],
+                "coverage_rate": 1.0,
+                "rows": [],
+            },
+            "execution_plan": {"orders": []},
+            "l2_decision": {
+                "schema_version": "1.0",
+                "generated_at": "2026-04-01T00:00:00+00:00",
+                "producer_version": "quant-l2",
+                "score_version": score_version,
+                "universe_size": 2,
+                "top_candidates": top_candidates,
+                "factor_availability": availability,
+                "score_breakdown": [],
+            },
+        },
+        "warnings": warnings,
+        "errors": [],
+    }
+
+
+def test_compare_service_builds_daily_items_and_summary(monkeypatch) -> None:
+    calls: list[tuple[str, str, int]] = []
+
+    def fake_run_daily(as_of: str, root, bar_store=None, score_version: str = "l2-score-v1.1", top_n: int = 5) -> dict:
+        del root, bar_store
+        calls.append((as_of, score_version, top_n))
+        if score_version == "l2-score-v1":
+            return _daily_run(
+                as_of,
+                score_version,
+                top_candidates=[{"symbol": "000001.SZ", "score": 0.4, "rank": 1}],
+                warnings=[{"code": "LOW"}],
+                availability=[{"factor_name": "momentum_20", "present_count": 1, "missing_count": 0, "availability_rate": 1.0}],
+            )
+        return _daily_run(
+            as_of,
+            score_version,
+            top_candidates=[{"symbol": "600519.SH", "score": 0.6, "rank": 1}],
+            warnings=[],
+            availability=[{"factor_name": "momentum_20", "present_count": 1, "missing_count": 0, "availability_rate": 0.5}],
+        )
+
+    monkeypatch.setattr("application.pipeline_compare_service.run_daily", fake_run_daily)
+
+    out = run_pipeline_compare(start_date="2026-04-01", end_date="2026-04-02", top_n=5, root=None, bar_store=None)
+
+    assert out["schema_version"] == "1.0.0"
+    assert out["command"] == "hf pipeline compare"
+    assert out["data"]["start_date"] == "2026-04-01"
+    assert out["data"]["end_date"] == "2026-04-02"
+    assert out["data"]["top_n"] == 5
+    assert out["data"]["score_versions"] == ["l2-score-v1", "l2-score-v1.1"]
+    assert len(out["data"]["daily_items"]) == 2
+    assert out["data"]["daily_items"][0]["v1"]["top_candidates"][0]["symbol"] == "000001.SZ"
+    assert out["data"]["daily_items"][0]["v1_1"]["top_candidates"][0]["symbol"] == "600519.SH"
+    assert out["data"]["summary"]["days"] == 2
+    assert out["data"]["summary"]["avg_warning_count_v1"] == 1.0
+    assert out["data"]["summary"]["avg_warning_count_v1_1"] == 0.0
+    assert out["data"]["summary"]["avg_min_availability_v1"] == 1.0
+    assert out["data"]["summary"]["avg_min_availability_v1_1"] == 0.5
+    assert out["data"]["summary"]["top1_symbol_change_days"] == 2
+    assert calls == [
+        ("2026-04-01", "l2-score-v1", 5),
+        ("2026-04-01", "l2-score-v1.1", 5),
+        ("2026-04-02", "l2-score-v1", 5),
+        ("2026-04-02", "l2-score-v1.1", 5),
+    ]
+
+
+def test_compare_service_records_failed_day_and_continues(monkeypatch) -> None:
+    def fake_run_daily(as_of: str, root, bar_store=None, score_version: str = "l2-score-v1.1", top_n: int = 5) -> dict:
+        del root, bar_store, top_n
+        if as_of == "2026-04-02" and score_version == "l2-score-v1":
+            raise RuntimeError("boom")
+        return _daily_run(
+            as_of,
+            score_version,
+            top_candidates=[{"symbol": f"{score_version}:{as_of}", "score": 0.6, "rank": 1}],
+            warnings=[],
+            availability=[{"factor_name": "momentum_20", "present_count": 1, "missing_count": 0, "availability_rate": 1.0}],
+        )
+
+    monkeypatch.setattr("application.pipeline_compare_service.run_daily", fake_run_daily)
+
+    out = run_pipeline_compare(start_date="2026-04-01", end_date="2026-04-02", top_n=5, root=None, bar_store=None)
+
+    assert len(out["data"]["daily_items"]) == 2
+    assert out["data"]["daily_items"][1]["v1"]["top_candidates"] == []
+    assert out["data"]["daily_items"][1]["v1"]["error"] == "boom"
+    assert out["data"]["summary"]["days"] == 2
+    assert out["errors"]
+
+
+def test_compare_service_rejects_inverted_date_range() -> None:
+    import pytest
+
+    with pytest.raises(ValueError, match="start_date must be on or before end_date"):
+        run_pipeline_compare(start_date="2026-04-02", end_date="2026-04-01", top_n=5, root=None, bar_store=None)

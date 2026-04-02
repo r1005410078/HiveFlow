@@ -1,7 +1,17 @@
-from fastapi import APIRouter, Depends
-from interfaces.http.dependencies import DailyRunService, get_daily_run_service
+from fastapi import APIRouter, Depends, HTTPException
+from interfaces.http.dependencies import (
+    DailyRunService,
+    PipelineCompareService,
+    get_daily_run_service,
+    get_pipeline_compare_service,
+)
 from interfaces.http.mapper import to_daily_input
-from interfaces.http.schemas import DailyRunRequest, DailyRunResponse
+from interfaces.http.schemas import (
+    DailyRunRequest,
+    DailyRunResponse,
+    PipelineCompareRequest,
+    PipelineCompareResponse,
+)
 
 router = APIRouter(prefix="/api/v1/pipeline", tags=["pipeline"])
 
@@ -103,3 +113,28 @@ def post_daily(
 ) -> DailyRunResponse:
     data = to_daily_input(req)
     return DailyRunResponse.model_validate(service(data["as_of"]))
+
+
+@router.post(
+    "/compare",
+    summary="运行版本对比回放",
+    description=(
+        "在指定日期区间内对比 `l2-score-v1` 与 `l2-score-v1.1` 的逐日候选结果与数据质量指标，"
+        "并返回 `json/table` 复用的输出合同。"
+    ),
+    response_description="版本对比回放输出，含逐日明细与汇总统计",
+)
+def post_compare(
+    req: PipelineCompareRequest,
+    service: PipelineCompareService = Depends(get_pipeline_compare_service),
+) -> PipelineCompareResponse:
+    try:
+        return PipelineCompareResponse.model_validate(service(req.start_date, req.end_date, req.top_n))
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "INVALID_DATE_RANGE",
+                "message": str(exc),
+            },
+        ) from exc

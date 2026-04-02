@@ -5,6 +5,14 @@ pub struct PipelineDailyRequest {
 }
 
 #[derive(Debug, Clone)]
+pub struct PipelineCompareRequest {
+    pub start_date: String,
+    pub end_date: String,
+    pub top_n: usize,
+    pub output: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct DataSyncRequest {
     pub days: i32,
     pub end_date: String,
@@ -43,6 +51,7 @@ pub struct DataBarsRequest {
 #[derive(Debug)]
 pub enum AppCommand {
     PipelineDaily(PipelineDailyRequest),
+    PipelineCompare(PipelineCompareRequest),
     DataSync(DataSyncRequest),
     DataQuery(DataQueryRequest),
     DataBars(DataBarsRequest),

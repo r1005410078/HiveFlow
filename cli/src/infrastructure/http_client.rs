@@ -26,7 +26,42 @@ pub fn post_daily(server_url: &str, as_of: &str, timeout_ms: u64) -> Result<Valu
     let status = response.status();
     let body_text = response.text().map_err(AppError::HttpClient)?;
     if !status.is_success() {
-        let body = serde_json::from_str(&body_text).unwrap_or_else(|_| json!({ "raw_body": body_text }));
+        let body =
+            serde_json::from_str(&body_text).unwrap_or_else(|_| json!({ "raw_body": body_text }));
+        return Err(AppError::Upstream(status.as_u16(), body));
+    }
+
+    serde_json::from_str(&body_text).map_err(AppError::InvalidJson)
+}
+
+pub fn post_pipeline_compare(
+    server_url: &str,
+    start_date: &str,
+    end_date: &str,
+    top_n: usize,
+    timeout_ms: u64,
+) -> Result<Value, AppError> {
+    let url = format!(
+        "{}/api/v1/pipeline/compare",
+        server_url.trim_end_matches('/')
+    );
+    let client = build_client(server_url, timeout_ms)?;
+
+    let response = client
+        .post(url)
+        .json(&json!({
+            "start_date": start_date,
+            "end_date": end_date,
+            "top_n": top_n,
+        }))
+        .send()
+        .map_err(AppError::HttpClient)?;
+
+    let status = response.status();
+    let body_text = response.text().map_err(AppError::HttpClient)?;
+    if !status.is_success() {
+        let body =
+            serde_json::from_str(&body_text).unwrap_or_else(|_| json!({ "raw_body": body_text }));
         return Err(AppError::Upstream(status.as_u16(), body));
     }
 
@@ -62,7 +97,8 @@ pub fn post_data_sync(
     let status = response.status();
     let body_text = response.text().map_err(AppError::HttpClient)?;
     if !status.is_success() {
-        let body = serde_json::from_str(&body_text).unwrap_or_else(|_| json!({ "raw_body": body_text }));
+        let body =
+            serde_json::from_str(&body_text).unwrap_or_else(|_| json!({ "raw_body": body_text }));
         return Err(AppError::Upstream(status.as_u16(), body));
     }
     serde_json::from_str(&body_text).map_err(AppError::InvalidJson)
@@ -77,7 +113,10 @@ pub fn get_market_data_sync_runs(
     limit: Option<i32>,
     timeout_ms: u64,
 ) -> Result<Value, AppError> {
-    let url = format!("{}/v1/market-data/sync-runs", server_url.trim_end_matches('/'));
+    let url = format!(
+        "{}/v1/market-data/sync-runs",
+        server_url.trim_end_matches('/')
+    );
     let client = build_client(server_url, timeout_ms)?;
 
     let mut request = client.get(url).query(&[("days", days.to_string())]);
@@ -98,7 +137,8 @@ pub fn get_market_data_sync_runs(
     let status_code = response.status();
     let body_text = response.text().map_err(AppError::HttpClient)?;
     if !status_code.is_success() {
-        let body = serde_json::from_str(&body_text).unwrap_or_else(|_| json!({ "raw_body": body_text }));
+        let body =
+            serde_json::from_str(&body_text).unwrap_or_else(|_| json!({ "raw_body": body_text }));
         return Err(AppError::Upstream(status_code.as_u16(), body));
     }
     serde_json::from_str(&body_text).map_err(AppError::InvalidJson)
@@ -139,7 +179,8 @@ pub fn get_market_data_bars(
     let status_code = response.status();
     let body_text = response.text().map_err(AppError::HttpClient)?;
     if !status_code.is_success() {
-        let body = serde_json::from_str(&body_text).unwrap_or_else(|_| json!({ "raw_body": body_text }));
+        let body =
+            serde_json::from_str(&body_text).unwrap_or_else(|_| json!({ "raw_body": body_text }));
         return Err(AppError::Upstream(status_code.as_u16(), body));
     }
     serde_json::from_str(&body_text).map_err(AppError::InvalidJson)
