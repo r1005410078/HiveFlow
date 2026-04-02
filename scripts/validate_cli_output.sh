@@ -67,7 +67,13 @@ jq -e '
     (.data | has("correlation_analysis")) and
     (.data | has("top_combinations")) and
     (.data | has("release_gate")) and
-    (.data | has("recommendations"))
+    (.data | has("report")) and
+    (.data | has("recommendations")) and
+    (.data.release_gate | type == "object") and
+    (.data.release_gate.status | type == "string" and IN("pass","watch","fail")) and
+    (.data.release_gate.blocking_reasons | type == "array" and all(.[]; type == "string")) and
+    (.data.release_gate.watch_items | type == "array" and all(.[]; type == "string")) and
+    (.data.report | type == "object")
   else
     true
   end

@@ -187,8 +187,32 @@
               "correlation_analysis",
               "top_combinations",
               "release_gate",
+              "report",
               "recommendations"
-            ]
+            ],
+            "properties": {
+              "release_gate": {
+                "type": "object",
+                "required": ["status", "blocking_reasons", "watch_items"],
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": ["pass", "watch", "fail"]
+                  },
+                  "blocking_reasons": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "watch_items": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  }
+                }
+              },
+              "report": {
+                "type": "object"
+              }
+            }
           }
         }
       }

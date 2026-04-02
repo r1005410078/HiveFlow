@@ -369,6 +369,20 @@ jq -e 'if .source=="web_search" then (.advice_only==true and .decision_weight==0
       "blocking_reasons": [],
       "watch_items": ["correlation_alert_count:1"]
     },
+    "report": {
+      "matrix_10d": [
+        [1.0, 0.82],
+        [0.82, 1.0]
+      ],
+      "summary": {
+        "coverage_ok": true,
+        "alert_count": 1
+      },
+      "g3_checklist": [
+        "review_top1_combination",
+        "confirm_release_gate_status"
+      ]
+    },
     "recommendations": [
       {
         "scheme": "balanced_v1",
