@@ -1,10 +1,10 @@
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class DailyRunRequest(BaseModel):
-    as_of: str
+    as_of: str = Field(description="计算基准日期，格式 `YYYY-MM-DD`，只使用该日期前的数据（PIT 语义）")
 
 
 class FactorRow(BaseModel):
