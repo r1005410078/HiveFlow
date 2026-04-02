@@ -44,15 +44,14 @@ def test_application_layer_does_not_depend_on_fastapi():
 
 
 def test_application_decision_can_import_domain():
-    """application.decision 可以依赖 domain 层"""
+    """application.decision 内至少有一个文件引用 domain 层"""
     decision_dir = APP_DIR / "decision"
-    for py in decision_dir.rglob("*.py"):
-        imports = _imports(py)
-        has_domain = any(name == "domain" or name.startswith("domain.") for name in imports)
-        # This test merely asserts the module can be parsed without error.
-        # The real constraint is the negative tests below.
-    # If we reach here without error, the module parses fine.
     assert decision_dir.exists(), "application/decision directory must exist"
+    py_files = list(decision_dir.glob("*.py"))
+    assert any(
+        "from domain" in f.read_text() or "import domain" in f.read_text()
+        for f in py_files
+    ), "At least one file in application/decision must import from domain"
 
 
 def test_application_decision_does_not_import_interfaces():

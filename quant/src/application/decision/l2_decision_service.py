@@ -44,12 +44,11 @@ def compute_l2_decision_from_snapshot(factor_snapshot: dict, top_n: int = 5) -> 
         # Build clipped column (NaN preserved for missing)
         clipped_col = raw_col.copy()
         clipped_col[non_missing_mask] = np.clip(raw_col[non_missing_mask].values, p1, p99)
-        clipped_values = clipped_col[non_missing_mask].values
-        col_min = float(clipped_values.min())
-        col_max = float(clipped_values.max())
+        clipped_non_missing = clipped_col[non_missing_mask]
+        col_min = float(clipped_non_missing.min())
+        col_max = float(clipped_non_missing.max())
         factor_clip_info[factor_name] = {
             "clipped_col": clipped_col,
-            "clipped_values": clipped_values,
             "col_min": col_min,
             "col_max": col_max,
             "p1": p1,
@@ -75,16 +74,12 @@ def compute_l2_decision_from_snapshot(factor_snapshot: dict, top_n: int = 5) -> 
                 if info is not None and info["col_max"] != info["col_min"]:
                     # Missing filled with 0.0; normalize against clipped range
                     normalized_value = (raw_value - info["col_min"]) / (info["col_max"] - info["col_min"])
-                    clipped_series = pd.Series(info["clipped_values"])
-                    rank_series = clipped_series.rank(method="average")
-                    # For missing (filled 0.0), find rank as if it were in the column
-                    # Use interpolated rank approach: count values <= 0.0
-                    n_less = float((clipped_series < raw_value).sum())
-                    n_equal = float((clipped_series == raw_value).sum())
-                    if n_equal == 0:
-                        n_equal = 1.0
-                    rank_avg = n_less + (n_equal + 1.0) / 2.0
-                    percentile = rank_avg / len(info["clipped_values"])
+                    # Rank 0.0 against the clipped column (Fix 3)
+                    clipped_series = info["clipped_col"].dropna()
+                    clipped_values_with_fill = list(clipped_series) + [0.0]
+                    temp = pd.Series(clipped_values_with_fill)
+                    ranks = temp.rank(method="average")
+                    percentile = float(ranks.iloc[-1] / len(temp))
             else:
                 anomaly_flags = []
                 info = factor_clip_info.get(factor_name)
@@ -97,7 +92,7 @@ def compute_l2_decision_from_snapshot(factor_snapshot: dict, top_n: int = 5) -> 
                 else:
                     # Determine if this symbol's value was clipped
                     clipped_value = float(info["clipped_col"].loc[symbol])
-                    clipped = (clipped_value != float(raw_value))
+                    clipped = float(raw_value) < info["p1"] or float(raw_value) > info["p99"]
 
                     col_min = info["col_min"]
                     col_max = info["col_max"]
@@ -108,12 +103,10 @@ def compute_l2_decision_from_snapshot(factor_snapshot: dict, top_n: int = 5) -> 
                         anomaly_flags.append(f"flat_distribution:{factor_name}")
                     else:
                         normalized_value = (clipped_value - col_min) / (col_max - col_min)
-                        # Rank the clipped value against the full clipped column (Issue 2 fix)
-                        clipped_series = pd.Series(info["clipped_values"])
+                        # Rank using symbol-indexed Series (Fix 1)
+                        clipped_series = info["clipped_col"].dropna()
                         rank_series = clipped_series.rank(method="average")
-                        # Find index of this symbol in clipped_col non-missing
-                        symbol_rank = rank_series[info["clipped_col"].dropna().index.get_loc(symbol)]
-                        percentile = symbol_rank / len(info["clipped_values"])
+                        percentile = float(rank_series.loc[symbol] / len(clipped_series))
 
                     # Use clipped_value as the reported raw_value
                     raw_value = clipped_value
