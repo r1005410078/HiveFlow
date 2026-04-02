@@ -1,4 +1,5 @@
 use clap::{Args, Subcommand};
+use crate::application::requests::PipelineDailyRequest;
 
 #[derive(Debug, Args)]
 pub struct PipelineArgs {
@@ -15,4 +16,10 @@ pub enum PipelineSubcommand {
 pub struct DailyArgs {
     #[arg(long)]
     pub as_of: String,
+}
+
+impl From<DailyArgs> for PipelineDailyRequest {
+    fn from(args: DailyArgs) -> Self {
+        Self { as_of: args.as_of }
+    }
 }

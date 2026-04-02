@@ -68,12 +68,13 @@ pub fn post_data_sync(
     serde_json::from_str(&body_text).map_err(AppError::InvalidJson)
 }
 
-pub fn get_data_sync_runs(
+pub fn get_market_data_sync_runs(
     server_url: &str,
     days: i32,
     timeframe: Option<&str>,
-    symbols: Option<&[String]>,
     status: Option<&str>,
+    request_id: Option<&str>,
+    limit: Option<i32>,
     timeout_ms: u64,
 ) -> Result<Value, AppError> {
     let url = format!("{}/v1/market-data/sync-runs", server_url.trim_end_matches('/'));
@@ -85,6 +86,48 @@ pub fn get_data_sync_runs(
     }
     if let Some(st) = status {
         request = request.query(&[("status", st)]);
+    }
+    if let Some(req_id) = request_id {
+        request = request.query(&[("request_id", req_id)]);
+    }
+    if let Some(lim) = limit {
+        request = request.query(&[("limit", lim.to_string())]);
+    }
+
+    let response = request.send().map_err(AppError::HttpClient)?;
+    let status_code = response.status();
+    let body_text = response.text().map_err(AppError::HttpClient)?;
+    if !status_code.is_success() {
+        let body = serde_json::from_str(&body_text).unwrap_or_else(|_| json!({ "raw_body": body_text }));
+        return Err(AppError::Upstream(status_code.as_u16(), body));
+    }
+    serde_json::from_str(&body_text).map_err(AppError::InvalidJson)
+}
+
+pub fn get_market_data_bars(
+    server_url: &str,
+    symbols: Option<&[String]>,
+    timeframe: Option<&str>,
+    start_date: Option<&str>,
+    end_date: Option<&str>,
+    limit: Option<i32>,
+    timeout_ms: u64,
+) -> Result<Value, AppError> {
+    let url = format!("{}/v1/market-data/bars", server_url.trim_end_matches('/'));
+    let client = build_client(server_url, timeout_ms)?;
+
+    let mut request = client.get(url);
+    if let Some(tf) = timeframe {
+        request = request.query(&[("timeframe", tf)]);
+    }
+    if let Some(start) = start_date {
+        request = request.query(&[("start_date", start)]);
+    }
+    if let Some(end) = end_date {
+        request = request.query(&[("end_date", end)]);
+    }
+    if let Some(lim) = limit {
+        request = request.query(&[("limit", lim.to_string())]);
     }
     if let Some(list) = symbols {
         for s in list {

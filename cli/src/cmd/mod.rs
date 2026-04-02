@@ -2,6 +2,7 @@ pub mod data;
 pub mod pipeline;
 
 use clap::{Parser, Subcommand};
+use crate::application::requests::AppCommand;
 
 #[derive(Debug, Parser)]
 #[command(name = "hf")]
@@ -15,4 +16,21 @@ pub struct Cli {
 pub enum Commands {
     Pipeline(pipeline::PipelineArgs),
     Data(data::DataArgs),
+}
+
+impl From<Cli> for AppCommand {
+    fn from(cli: Cli) -> Self {
+        match cli.command {
+            Commands::Pipeline(args) => match args.command {
+                pipeline::PipelineSubcommand::Daily(daily) => {
+                    AppCommand::PipelineDaily(daily.into())
+                }
+            },
+            Commands::Data(args) => match args.command {
+                data::DataSubcommand::Sync(sync_args) => AppCommand::DataSync(sync_args.into()),
+                data::DataSubcommand::Query(query_args) => AppCommand::DataQuery(query_args.into()),
+                data::DataSubcommand::Bars(bars_args) => AppCommand::DataBars(bars_args.into()),
+            },
+        }
+    }
 }

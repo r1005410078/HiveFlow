@@ -1,5 +1,5 @@
-use crate::cmd::data::DataSyncArgs;
 use crate::error::AppError;
+use crate::application::requests::DataSyncRequest;
 use crate::infrastructure::config_loader::load_default_config;
 use crate::infrastructure::http_client::post_data_sync;
 
@@ -12,7 +12,7 @@ fn parse_csv(input: Option<&str>) -> Option<Vec<String>> {
     })
 }
 
-pub fn handle(args: DataSyncArgs) -> Result<(), AppError> {
+pub fn handle(args: DataSyncRequest) -> Result<(), AppError> {
     let cfg = load_default_config()?;
     let timeout_ms = args.timeout_ms.unwrap_or(cfg.timeout_ms);
     let symbols = parse_csv(args.symbols.as_deref());

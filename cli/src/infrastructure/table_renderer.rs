@@ -26,20 +26,59 @@ fn as_f64(v: Option<&Value>) -> String {
 }
 
 pub fn render_sync_runs_table(payload: &Value, verbose: bool) -> String {
-    if let Some(first) = payload
-        .get("items")
-        .and_then(Value::as_array)
-        .and_then(|items| items.first())
-    {
-        if first.get("bar_time").is_some() && first.get("close").is_some() {
-            return render_market_data_table(payload, verbose);
+    let mut table = Table::new();
+    table
+        .load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec![
+            Cell::new("end_date"),
+            Cell::new("status"),
+            Cell::new("timeframe"),
+            Cell::new("effective_symbols_count"),
+            Cell::new("run_id"),
+            Cell::new("request_id"),
+        ]);
+
+    if let Some(items) = payload.get("items").and_then(Value::as_array) {
+        for item in items {
+            let end_date = as_str(item.get("end_date"));
+            let status = as_str(item.get("status"));
+            let timeframe = as_str(item.get("timeframe"));
+            let effective_symbols_count = as_i64(item.get("effective_symbols_count"));
+            let run_id = truncate_middle(&as_str(item.get("run_id")), 8, 6);
+            let request_id = truncate_middle(&as_str(item.get("request_id")), 8, 6);
+            table.add_row(vec![
+                end_date,
+                status,
+                timeframe,
+                effective_symbols_count,
+                run_id,
+                request_id,
+            ]);
+
+            if verbose {
+                let days = as_i64(item.get("days"));
+                let selection_mode = as_str(item.get("selection_mode"));
+                let written_rows = as_i64(item.get("written_rows"));
+                let started_at = as_str(item.get("started_at"));
+                let finished_at = as_str(item.get("finished_at"));
+                let error_code = as_str(item.get("error_code"));
+                let error_message = truncate_middle(&as_str(item.get("error_message")), 12, 10);
+                table.add_row(vec![
+                    "".to_string(),
+                    format!("days={days}"),
+                    format!("sel={selection_mode}"),
+                    format!("written={written_rows}"),
+                    format!("started={started_at}"),
+                    format!("finished={finished_at} {error_code} {error_message}"),
+                ]);
+            }
         }
     }
-
-    render_sync_runs_status_table(payload, verbose)
+    format!("Sync Runs\n{}\n", table)
 }
 
-fn render_market_data_table(payload: &Value, verbose: bool) -> String {
+pub fn render_market_data_bars_table(payload: &Value, verbose: bool) -> String {
     let mut table = Table::new();
     table
         .load_preset(UTF8_FULL)
@@ -75,47 +114,4 @@ fn render_market_data_table(payload: &Value, verbose: bool) -> String {
         }
     }
     format!("Market Data\n{}\n", table)
-}
-
-fn render_sync_runs_status_table(payload: &Value, verbose: bool) -> String {
-    let mut table = Table::new();
-    table
-        .load_preset(UTF8_FULL)
-        .set_content_arrangement(ContentArrangement::Dynamic)
-        .set_header(vec![
-            Cell::new("date"),
-            Cell::new("status"),
-            Cell::new("timeframe"),
-            Cell::new("symbols_count"),
-            Cell::new("run_id"),
-            Cell::new("manifest_id"),
-        ]);
-
-    if let Some(items) = payload.get("items").and_then(Value::as_array) {
-        for item in items {
-            let date = as_str(item.get("date"));
-            let status = as_str(item.get("status"));
-            let timeframe = as_str(item.get("timeframe"));
-            let symbols_count = as_i64(item.get("symbols_count"));
-            let run_id = truncate_middle(&as_str(item.get("run_id")), 8, 6);
-            let manifest_id = truncate_middle(&as_str(item.get("manifest_id")), 8, 6);
-            table.add_row(vec![date, status, timeframe, symbols_count, run_id, manifest_id]);
-
-            if verbose {
-                let error_code = as_str(item.get("error_code"));
-                let error_message = as_str(item.get("error_message"));
-                let started_at = as_str(item.get("started_at"));
-                let finished_at = as_str(item.get("finished_at"));
-                table.add_row(vec![
-                    "".to_string(),
-                    format!("error={error_code}"),
-                    format!("msg={}", truncate_middle(&error_message, 12, 10)),
-                    "".to_string(),
-                    format!("started={started_at}"),
-                    format!("finished={finished_at}"),
-                ]);
-            }
-        }
-    }
-    format!("Sync Runs\n{}\n", table)
 }

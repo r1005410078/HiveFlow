@@ -9,8 +9,8 @@ use crate::cmd::Cli;
 use clap::Parser;
 
 fn main() {
-    let cli = Cli::parse();
-    if let Err(err) = application::dispatch::run(cli) {
+    let command = Cli::parse();
+    if let Err(err) = application::dispatch::run(command.into()) {
         eprintln!("{err}");
         std::process::exit(1);
     }
