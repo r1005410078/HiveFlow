@@ -17,6 +17,7 @@ pub struct FactorOptimizeRequest {
     pub start_date: String,
     pub end_date: String,
     pub factor_names: Vec<String>,
+    pub correlation_threshold: Option<f64>,
     pub output: String,
 }
 

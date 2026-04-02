@@ -17,6 +17,7 @@ pub fn handle(args: FactorOptimizeRequest) -> Result<(), AppError> {
         &args.start_date,
         &args.end_date,
         &args.factor_names,
+        args.correlation_threshold,
         cfg.timeout_ms,
     )?;
 
