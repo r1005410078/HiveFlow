@@ -8,6 +8,12 @@
 - `data.correlation_analysis.alert_count`
 - `data.top_combinations.items[0].factors`
 
+注意：
+
+- `fetch_status=error` 表示网络或解析失败。
+- 这类错误不计入业务 `pass/watch/fail`。
+- `error_days` 单独统计抓取失败的天数。
+
 ## 运行方式
 
 在仓库根目录执行：
@@ -40,6 +46,7 @@ python scripts/factor_optimize_replay.py \
 JSON 报告包含：
 
 - `summary.days`
+- `summary.error_days`
 - `summary.pass_days`
 - `summary.watch_days`
 - `summary.fail_days`
@@ -47,10 +54,18 @@ JSON 报告包含：
 - `summary.top1_change_days`
 - `daily_items[]`
 
+`daily_items[]` 中，抓取失败的条目会带有：
+
+- `fetch_status=error`
+- `release_gate_status=unknown`
+- `error_message`
+
 ### Markdown 格式
 
 Markdown 报告包含：
 
+- `error_days` 摘要
+- `error_dates` 列表
 - Summary 区块
 - `fail/watch` 日期列表
 - Top1 组合变化天数

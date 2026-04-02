@@ -6,7 +6,7 @@ import json
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
-from urllib import error, request
+from urllib import request
 
 
 DEFAULT_SERVER_URL = "http://127.0.0.1:8000"
@@ -74,6 +74,7 @@ def extract_daily_metrics(as_of: str, response: dict[str, Any]) -> dict[str, Any
 
     return {
         "as_of": as_of,
+        "fetch_status": "ok",
         "release_gate_status": release_gate.get("status", "fail") if isinstance(release_gate, dict) else "fail",
         "alert_count": correlation_analysis.get("alert_count", 0) if isinstance(correlation_analysis, dict) else 0,
         "top1_factors": top1_factors,
@@ -88,30 +89,31 @@ def fetch_day(server_url: str, as_of: str, factors: list[str]) -> dict[str, Any]
         if not isinstance(response, dict):
             raise ValueError("response is not a JSON object")
         daily = extract_daily_metrics(as_of, response)
-        daily["ok"] = True
         return daily
     except Exception as exc:  # noqa: BLE001 - replay should continue across days.
         return {
             "as_of": as_of,
-            "release_gate_status": "fail",
+            "fetch_status": "error",
+            "release_gate_status": "unknown",
             "alert_count": 0,
             "top1_factors": [],
-            "ok": False,
-            "error": str(exc),
+            "error_message": str(exc),
         }
 
 
 def summarize(daily_items: list[dict[str, Any]]) -> dict[str, Any]:
     days = len(daily_items)
-    pass_days = sum(1 for item in daily_items if item.get("release_gate_status") == "pass")
-    watch_days = sum(1 for item in daily_items if item.get("release_gate_status") == "watch")
-    fail_days = sum(1 for item in daily_items if item.get("release_gate_status") == "fail")
-    alert_sum = sum(int(item.get("alert_count", 0) or 0) for item in daily_items)
-    avg_alert_count = round(alert_sum / days, 6) if days else 0.0
+    ok_items = [item for item in daily_items if item.get("fetch_status") == "ok"]
+    error_days = days - len(ok_items)
+    pass_days = sum(1 for item in ok_items if item.get("release_gate_status") == "pass")
+    watch_days = sum(1 for item in ok_items if item.get("release_gate_status") == "watch")
+    fail_days = sum(1 for item in ok_items if item.get("release_gate_status") == "fail")
+    alert_sum = sum(int(item.get("alert_count", 0) or 0) for item in ok_items)
+    avg_alert_count = round(alert_sum / len(ok_items), 6) if ok_items else 0.0
 
     top1_change_days = 0
     previous_top1: list[str] | None = None
-    for item in daily_items:
+    for item in ok_items:
         current_top1 = list(item.get("top1_factors", []) or [])
         if previous_top1 is not None and current_top1 != previous_top1:
             top1_change_days += 1
@@ -119,6 +121,7 @@ def summarize(daily_items: list[dict[str, Any]]) -> dict[str, Any]:
 
     return {
         "days": days,
+        "error_days": error_days,
         "pass_days": pass_days,
         "watch_days": watch_days,
         "fail_days": fail_days,
@@ -128,6 +131,7 @@ def summarize(daily_items: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def render_markdown(start_date: str, end_date: str, summary: dict[str, Any], daily_items: list[dict[str, Any]]) -> str:
+    error_dates = [item["as_of"] for item in daily_items if item.get("fetch_status") == "error"]
     fail_dates = [item["as_of"] for item in daily_items if item.get("release_gate_status") == "fail"]
     watch_dates = [item["as_of"] for item in daily_items if item.get("release_gate_status") == "watch"]
 
@@ -137,11 +141,16 @@ def render_markdown(start_date: str, end_date: str, summary: dict[str, Any], dai
     lines.append("## Summary")
     lines.append("")
     lines.append(f"- days: {summary['days']}")
+    lines.append(f"- error_days: {summary['error_days']}")
     lines.append(f"- pass_days: {summary['pass_days']}")
     lines.append(f"- watch_days: {summary['watch_days']}")
     lines.append(f"- fail_days: {summary['fail_days']}")
     lines.append(f"- avg_alert_count: {summary['avg_alert_count']}")
     lines.append(f"- top1_change_days: {summary['top1_change_days']}")
+    lines.append("")
+    lines.append("## Fetch Errors")
+    lines.append("")
+    lines.append(f"- error_dates: {', '.join(error_dates) if error_dates else 'none'}")
     lines.append("")
     lines.append("## Watch / Fail Dates")
     lines.append("")
@@ -155,8 +164,9 @@ def render_markdown(start_date: str, end_date: str, summary: dict[str, Any], dai
     lines.append("## Daily Items")
     lines.append("")
     for item in daily_items:
+        error_suffix = f", error_message={item.get('error_message')}" if item.get("fetch_status") == "error" else ""
         lines.append(
-            f"- {item['as_of']}: status={item.get('release_gate_status')}, alert_count={item.get('alert_count', 0)}, top1_factors={item.get('top1_factors', [])}"
+            f"- {item['as_of']}: fetch_status={item.get('fetch_status')}, status={item.get('release_gate_status')}, alert_count={item.get('alert_count', 0)}, top1_factors={item.get('top1_factors', [])}{error_suffix}"
         )
     lines.append("")
     return "\n".join(lines)
