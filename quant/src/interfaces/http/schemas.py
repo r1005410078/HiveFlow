@@ -53,7 +53,7 @@ class L2Decision(BaseModel):
     schema_version: Literal["1.0"] = "1.0"
     generated_at: str
     producer_version: Literal["quant-l2"] = "quant-l2"
-    score_version: Literal["l2-score-v1"] = "l2-score-v1"
+    score_version: Literal["l2-score-v1", "l2-score-v1.1"] = "l2-score-v1.1"
     universe_size: int
     top_candidates: list[L2TopCandidate]
     score_breakdown: list[L2ScoreBreakdownItem]

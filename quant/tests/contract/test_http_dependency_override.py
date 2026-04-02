@@ -18,7 +18,7 @@ def _stub_daily_run_service(as_of: str) -> dict:
             "as_of": as_of,
             "data_manifest_id": "dm_stub",
             "factor_snapshot": {
-                "factor_version": "l2-basic-v1",
+                "factor_version": "l2-basic-v1.1",
                 "factor_names": ["momentum_20", "inv_volatility_20", "turnover_rate"],
                 "coverage_rate": 1.0,
                 "rows": [
@@ -26,7 +26,7 @@ def _stub_daily_run_service(as_of: str) -> dict:
                         "as_of": as_of,
                         "symbol": "600519.SH",
                         "factor_name": "momentum_20",
-                        "factor_version": "l2-basic-v1",
+                        "factor_version": "l2-basic-v1.1",
                         "raw_value": 0.02,
                     }
                 ],
@@ -36,7 +36,7 @@ def _stub_daily_run_service(as_of: str) -> dict:
                 "schema_version": "1.0",
                 "generated_at": "2026-04-01T00:00:00+00:00",
                 "producer_version": "quant-l2",
-                "score_version": "l2-score-v1",
+                "score_version": "l2-score-v1.1",
                 "universe_size": 1,
                 "top_candidates": [{"symbol": "600519.SH", "score": 0.5, "rank": 1}],
                 "score_breakdown": [
@@ -94,4 +94,4 @@ def test_http_dependency_override_for_daily_service():
     payload = resp.json()
     assert payload["run_id"] == "run_stub"
     assert payload["data"]["data_manifest_id"] == "dm_stub"
-    assert payload["data"]["factor_snapshot"]["factor_version"] == "l2-basic-v1"
+    assert payload["data"]["factor_snapshot"]["factor_version"] == "l2-basic-v1.1"

@@ -3,23 +3,35 @@ import numpy as np
 from datetime import datetime, timezone
 from domain.models.l2_decision import FactorDetail, ScoreBreakdownItem, TopCandidate
 
-_FACTOR_WEIGHTS = {"momentum_20": 0.5, "inv_volatility_20": 0.3, "turnover_rate": 0.2}
-
-assert abs(sum(_FACTOR_WEIGHTS.values()) - 1.0) < 1e-9, "Factor weights must sum to 1.0"
-
-SCORE_VERSION = "l2-score-v1"
+SCORE_VERSION = "l2-score-v1.1"
 
 SCORE_PROFILES = {
     "l2-score-v1": {
         "weights": {"momentum_20": 0.5, "inv_volatility_20": 0.3, "turnover_rate": 0.2},
         "enabled_factors": ["momentum_20", "inv_volatility_20", "turnover_rate"],
     },
-    # Phase 2+ 预留：新增因子时需确保数据已在 factor_snapshot 中可用
-    # "l2-score-v1.1": {
-    #     "weights": {...},
-    #     "enabled_factors": [...],
-    # }
+    "l2-score-v1.1": {
+        "weights": {
+            "momentum_20": 0.25,
+            "inv_volatility_20": 0.15,
+            "turnover_rate": 0.10,
+            "max_drawdown_60": 0.20,
+            "trend_stability_20": 0.15,
+            "relative_strength_vs_index": 0.15,
+        },
+        "enabled_factors": [
+            "momentum_20",
+            "inv_volatility_20",
+            "turnover_rate",
+            "max_drawdown_60",
+            "trend_stability_20",
+            "relative_strength_vs_index",
+        ],
+    },
 }
+
+for profile_name, profile in SCORE_PROFILES.items():
+    assert abs(sum(profile["weights"].values()) - 1.0) < 1e-9, f"Weights in {profile_name} must sum to 1.0"
 
 
 def compute_l2_decision_from_snapshot(factor_snapshot: dict, top_n: int = 5, score_version: str = SCORE_VERSION) -> dict:

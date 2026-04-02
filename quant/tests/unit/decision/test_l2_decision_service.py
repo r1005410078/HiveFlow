@@ -2,18 +2,31 @@ from application.decision.l2_decision_service import compute_l2_decision_from_sn
 
 
 def _snapshot() -> dict:
-    """标准测试数据：2 个标的，各 3 个因子完整"""
+    """标准测试数据：2 个标的，各 6 个因子完整"""
     return {
-        "factor_version": "l2-basic-v1",
-        "factor_names": ["momentum_20", "inv_volatility_20", "turnover_rate"],
+        "factor_version": "l2-basic-v1.1",
+        "factor_names": [
+            "momentum_20",
+            "inv_volatility_20",
+            "turnover_rate",
+            "max_drawdown_60",
+            "trend_stability_20",
+            "relative_strength_vs_index",
+        ],
         "coverage_rate": 1.0,
         "rows": [
-            {"as_of": "2026-04-01", "symbol": "000001.SZ", "factor_name": "momentum_20", "factor_version": "l2-basic-v1", "raw_value": 0.011},
-            {"as_of": "2026-04-01", "symbol": "000001.SZ", "factor_name": "inv_volatility_20", "factor_version": "l2-basic-v1", "raw_value": 1.1},
-            {"as_of": "2026-04-01", "symbol": "000001.SZ", "factor_name": "turnover_rate", "factor_version": "l2-basic-v1", "raw_value": 0.006},
-            {"as_of": "2026-04-01", "symbol": "600519.SH", "factor_name": "momentum_20", "factor_version": "l2-basic-v1", "raw_value": 0.024},
-            {"as_of": "2026-04-01", "symbol": "600519.SH", "factor_name": "inv_volatility_20", "factor_version": "l2-basic-v1", "raw_value": 2.9},
-            {"as_of": "2026-04-01", "symbol": "600519.SH", "factor_name": "turnover_rate", "factor_version": "l2-basic-v1", "raw_value": 0.019},
+            {"as_of": "2026-04-01", "symbol": "000001.SZ", "factor_name": "momentum_20", "factor_version": "l2-basic-v1.1", "raw_value": 0.011},
+            {"as_of": "2026-04-01", "symbol": "000001.SZ", "factor_name": "inv_volatility_20", "factor_version": "l2-basic-v1.1", "raw_value": 1.1},
+            {"as_of": "2026-04-01", "symbol": "000001.SZ", "factor_name": "turnover_rate", "factor_version": "l2-basic-v1.1", "raw_value": 0.006},
+            {"as_of": "2026-04-01", "symbol": "000001.SZ", "factor_name": "max_drawdown_60", "factor_version": "l2-basic-v1.1", "raw_value": 0.66},
+            {"as_of": "2026-04-01", "symbol": "000001.SZ", "factor_name": "trend_stability_20", "factor_version": "l2-basic-v1.1", "raw_value": 0.51},
+            {"as_of": "2026-04-01", "symbol": "000001.SZ", "factor_name": "relative_strength_vs_index", "factor_version": "l2-basic-v1.1", "raw_value": 0.91},
+            {"as_of": "2026-04-01", "symbol": "600519.SH", "factor_name": "momentum_20", "factor_version": "l2-basic-v1.1", "raw_value": 0.024},
+            {"as_of": "2026-04-01", "symbol": "600519.SH", "factor_name": "inv_volatility_20", "factor_version": "l2-basic-v1.1", "raw_value": 2.9},
+            {"as_of": "2026-04-01", "symbol": "600519.SH", "factor_name": "turnover_rate", "factor_version": "l2-basic-v1.1", "raw_value": 0.019},
+            {"as_of": "2026-04-01", "symbol": "600519.SH", "factor_name": "max_drawdown_60", "factor_version": "l2-basic-v1.1", "raw_value": 0.84},
+            {"as_of": "2026-04-01", "symbol": "600519.SH", "factor_name": "trend_stability_20", "factor_version": "l2-basic-v1.1", "raw_value": 0.69},
+            {"as_of": "2026-04-01", "symbol": "600519.SH", "factor_name": "relative_strength_vs_index", "factor_version": "l2-basic-v1.1", "raw_value": 1.24},
         ],
     }
 
@@ -23,7 +36,7 @@ def test_l2_decision_contains_explainable_fields() -> None:
     out = compute_l2_decision_from_snapshot(_snapshot(), top_n=5)
 
     assert out["schema_version"] == "1.0"
-    assert out["score_version"] == "l2-score-v1"
+    assert out["score_version"] == "l2-score-v1.1"
     assert out["producer_version"] == "quant-l2"
     assert "generated_at" in out
     assert out["universe_size"] == 2
@@ -98,10 +111,10 @@ def test_l2_decision_contribution_sum_equals_final_score() -> None:
         )
 
 
-def test_default_score_version_is_v1() -> None:
-    """确保默认版本为 v1（Phase 1 锁定）"""
+def test_default_score_version_is_v1_1() -> None:
+    """确保默认版本升级为 v1.1"""
     out = compute_l2_decision_from_snapshot(_snapshot())
-    assert out["score_version"] == "l2-score-v1"
+    assert out["score_version"] == "l2-score-v1.1"
 
 
 def test_unknown_score_version_raises() -> None:

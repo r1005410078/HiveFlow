@@ -14,7 +14,7 @@ def test_daily_contract_via_http():
     assert payload["data"]["as_of"] == "2026-04-01"
     assert "data_manifest_id" in payload["data"]
     assert "factor_snapshot" in payload["data"]
-    assert payload["data"]["factor_snapshot"]["factor_version"] == "l2-basic-v1"
+    assert payload["data"]["factor_snapshot"]["factor_version"] == "l2-basic-v1.1"
     assert "execution_plan" in payload["data"]
     assert "l2_decision" in payload["data"]
-    assert payload["data"]["l2_decision"]["score_version"] == "l2-score-v1"
+    assert payload["data"]["l2_decision"]["score_version"] == "l2-score-v1.1"

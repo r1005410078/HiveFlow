@@ -10,7 +10,11 @@ def run_daily(as_of: str, root) -> dict:
     run_id = f"run_{as_of.replace('-', '')}_{str(uuid4())[:8]}"
     symbols = ["000001.SZ", "600519.SH"]
     factor_snapshot = compute_basic_factor_snapshot(as_of=as_of, symbols=symbols)
-    l2_decision = compute_l2_decision_from_snapshot(factor_snapshot=factor_snapshot, top_n=5)
+    l2_decision = compute_l2_decision_from_snapshot(
+        factor_snapshot=factor_snapshot,
+        top_n=5,
+        score_version="l2-score-v1.1",
+    )
     return ok_output(
         command="hf pipeline daily",
         run_id=run_id,
