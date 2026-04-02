@@ -78,3 +78,96 @@
 
 - 描述必须明确“改了什么”，禁止使用模糊词（如“更新一下”“修复问题”）
 - 一次提交尽量只包含一个逻辑主题，避免混合无关改动
+
+## 7. 项目快速上下文（新窗口速览）
+
+本节用于让 agent 在新窗口中 1-2 分钟完成上下文恢复。若与上文“强约束”冲突，以上文强约束为准。
+
+### 7.1 仓库定位
+
+- 项目名：HiveFlow
+- 形态：`quant`（Python HTTP 服务端） + `cli`（Rust 客户端）
+- 调用关系：`cli` 通过 HTTP 调用 `quant`，不走本地 Python CLI 主流程
+
+### 7.2 关键目录
+
+- `quant/src/`：服务端核心（`domain/application/interfaces`）
+- `quant/tests/`：Python 单元/集成/契约/架构测试
+- `cli/src/`：Rust CLI（`cmd/application/domain/infrastructure`）
+- `cli/tests/`：CLI 集成与架构规则测试
+- `docs/`：架构与输出合同文档（入口：`docs/DOCUMENTATION_INDEX.md`）
+- `scripts/`：输出合同校验脚本
+
+### 7.3 高频命令
+
+- 全量校验：`make check`
+- 架构门禁：`make architecture-check`
+- 启动服务端：`make run-server`（开发热更新：`make run-server-dev`）
+- 运行日频管线：`make run-pipeline AS_OF=YYYY-MM-DD`
+- 数据库启动：`make db-up`（查看日志：`make db-logs`）
+
+### 7.4 本地联调最小路径
+
+1. `make db-init-env`（如需要） + `make db-up`
+2. 启动 quant：`make run-server`
+3. 准备 CLI 配置：`~/.hiveflow/config.toml`
+4. 运行：`make run-pipeline AS_OF=2026-04-01`
+
+CLI 最小配置示例：
+
+```toml
+server_url = "http://127.0.0.1:8000"
+timeout_ms = 10000
+retry = 1
+```
+
+### 7.5 主要 HTTP 接口（当前）
+
+- `POST /api/v1/pipeline/daily`：日频管线触发
+- `POST /v1/market-data/sync`：行情同步
+- `GET /v1/market-data/sync-runs`：行情查询（供 CLI `data query`）
+
+### 7.6 当前健康状态（最近一次本地检查）
+
+- `make architecture-check`：通过
+- `make check`：通过
+  - Python tests：`50 passed`
+  - Python architecture tests：`2 passed`
+  - CLI output fixtures：`pass=8 fail=0`
+  - Rust tests：通过
+
+### 7.7 已知注意点（非阻塞）
+
+- CLI 存在少量 `dead_code` 警告（如 `retry` 字段、部分合同类型/解析函数未使用），当前不影响门禁通过。
+
+## 8. Superpowers 工作流（强约束）
+
+本仓库默认启用 `using-superpowers`。收到任何需求后，先做技能判定，再执行代码动作。
+
+### 8.1 执行顺序
+
+1. 判定任务类型（功能 / 缺陷 / 仅执行已有计划）
+2. 先调用流程技能（process skill），后调用实现技能（implementation skill）
+3. 在回复中明确说明“当前使用的 skill 与目的”
+4. 按 skill 清单逐项执行，不跳步骤
+
+### 8.2 任务到技能映射
+
+- 新功能、需求不完整、方案未定：
+  - 先用 `brainstorming`
+  - 产出设计后，用 `writing-plans`
+  - 再进入实现
+- 缺陷、性能异常、测试失败：
+  - 先用 `systematic-debugging`
+  - 找到根因后再改代码
+- 已有明确实现计划，直接落地：
+  - 用 `executing-plans`
+- 准备提交前：
+  - 用 `verification-before-completion` 做结果核验
+  - 需要时用 `requesting-code-review` 做收口检查
+
+### 8.3 禁止事项
+
+- 未完成技能判定就直接改代码
+- 在 `systematic-debugging` 前先尝试“拍脑袋修复”
+- 跳过验证就声称“已完成/已修复”
