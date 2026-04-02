@@ -33,6 +33,30 @@ def test_build_release_gate_returns_watch_when_alerts_need_attention() -> None:
     assert gate["watch_items"] == ["alert_count_watch:2"]
 
 
+def test_build_release_gate_returns_watch_when_high_severity_alert_present() -> None:
+    gate = build_release_gate(
+        coverage={"symbols": 20, "bars": 500},
+        correlation_analysis={
+            "threshold": 0.7,
+            "alerts": [
+                {
+                    "factor_a": "momentum_20",
+                    "factor_b": "inv_volatility_20",
+                    "correlation": 0.82,
+                    "severity": "high",
+                    "suggestion": "reduce overlap",
+                }
+            ],
+            "alert_count": 1,
+        },
+        top_combinations={"items": [{"rank": 1, "factors": ["momentum_20", "inv_volatility_20"]}]},
+    )
+
+    assert gate["status"] == "watch"
+    assert gate["blocking_reasons"] == []
+    assert gate["watch_items"] == ["high_correlation_alert_present"]
+
+
 def test_build_release_gate_returns_fail_when_blockers_exist() -> None:
     gate = build_release_gate(
         coverage={"symbols": 19, "bars": 499},
