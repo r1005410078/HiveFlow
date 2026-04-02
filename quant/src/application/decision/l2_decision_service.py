@@ -5,6 +5,10 @@ from domain.models.l2_decision import FactorDetail, ScoreBreakdownItem, TopCandi
 
 _FACTOR_WEIGHTS = {"momentum_20": 0.5, "inv_volatility_20": 0.3, "turnover_rate": 0.2}
 
+assert abs(sum(_FACTOR_WEIGHTS.values()) - 1.0) < 1e-9, "Factor weights must sum to 1.0"
+
+SCORE_VERSION = "l2-score-v1"
+
 
 def compute_l2_decision_from_snapshot(factor_snapshot: dict, top_n: int = 5) -> dict:
     rows = factor_snapshot.get("rows", [])
@@ -13,7 +17,7 @@ def compute_l2_decision_from_snapshot(factor_snapshot: dict, top_n: int = 5) -> 
             "schema_version": "1.0",
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "producer_version": "quant-l2",
-            "score_version": "l2-score-v1",
+            "score_version": SCORE_VERSION,
             "universe_size": 0,
             "top_candidates": [],
             "score_breakdown": [],
@@ -21,6 +25,36 @@ def compute_l2_decision_from_snapshot(factor_snapshot: dict, top_n: int = 5) -> 
 
     df = pd.DataFrame(rows)
     wide = df.pivot_table(index="symbol", columns="factor_name", values="raw_value", aggfunc="first")
+
+    # Pre-compute per-factor clipped columns (Issue 1 fix)
+    # For each factor: compute p1/p99 on non-missing raw values, clip all non-missing values,
+    # then derive col_min/col_max from the clipped column.
+    factor_clip_info: dict = {}  # factor_name -> {clipped_col, col_min, col_max, p1, p99}
+    for factor_name in _FACTOR_WEIGHTS:
+        if factor_name not in wide.columns:
+            factor_clip_info[factor_name] = None
+            continue
+        raw_col = wide[factor_name]
+        non_missing_mask = ~pd.isna(raw_col)
+        non_missing_values = raw_col[non_missing_mask].values
+        if len(non_missing_values) == 0:
+            factor_clip_info[factor_name] = None
+            continue
+        p1, p99 = np.percentile(non_missing_values, [1, 99])
+        # Build clipped column (NaN preserved for missing)
+        clipped_col = raw_col.copy()
+        clipped_col[non_missing_mask] = np.clip(raw_col[non_missing_mask].values, p1, p99)
+        clipped_values = clipped_col[non_missing_mask].values
+        col_min = float(clipped_values.min())
+        col_max = float(clipped_values.max())
+        factor_clip_info[factor_name] = {
+            "clipped_col": clipped_col,
+            "clipped_values": clipped_values,
+            "col_min": col_min,
+            "col_max": col_max,
+            "p1": p1,
+            "p99": p99,
+        }
 
     score_breakdown = []
 
@@ -34,38 +68,55 @@ def compute_l2_decision_from_snapshot(factor_snapshot: dict, top_n: int = 5) -> 
                 raw_value = 0.0
                 anomaly_flags = [f"missing_factor:{factor_name}"]
                 clipped = False
-            else:
-                anomaly_flags = []
-                col_values_raw = [v for v in wide[factor_name] if not pd.isna(v)]
-                p1, p99 = np.percentile(col_values_raw, [1, 99])
-                clipped = False
-                if raw_value < p1:
-                    raw_value = p1
-                    clipped = True
-                elif raw_value > p99:
-                    raw_value = p99
-                    clipped = True
-
-            col_values = [v for v in wide[factor_name].tolist() if not pd.isna(v)] if factor_name in wide.columns else []
-            col_min = min(col_values) if col_values else 0.0
-            col_max = max(col_values) if col_values else 0.0
-
-            if col_max == col_min:
                 normalized_value = 1.0
                 percentile = 1.0
-                anomaly_flags.append(f"flat_distribution:{factor_name}")
+                # Check flat distribution using clip info if available
+                info = factor_clip_info.get(factor_name)
+                if info is not None and info["col_max"] != info["col_min"]:
+                    # Missing filled with 0.0; normalize against clipped range
+                    normalized_value = (raw_value - info["col_min"]) / (info["col_max"] - info["col_min"])
+                    clipped_series = pd.Series(info["clipped_values"])
+                    rank_series = clipped_series.rank(method="average")
+                    # For missing (filled 0.0), find rank as if it were in the column
+                    # Use interpolated rank approach: count values <= 0.0
+                    n_less = float((clipped_series < raw_value).sum())
+                    n_equal = float((clipped_series == raw_value).sum())
+                    if n_equal == 0:
+                        n_equal = 1.0
+                    rank_avg = n_less + (n_equal + 1.0) / 2.0
+                    percentile = rank_avg / len(info["clipped_values"])
             else:
-                normalized_value = (raw_value - col_min) / (col_max - col_min)
-                series = pd.Series(sorted(col_values))
-                # count values strictly less than raw_value, ties use average rank
-                n_less = float((series < raw_value).sum())
-                n_equal = float((series == raw_value).sum())
-                if n_equal == 0:
-                    # raw_value was clipped; find its rank by interpolation
-                    n_less = float((series < raw_value).sum())
-                    n_equal = 1.0
-                rank_avg = n_less + (n_equal + 1.0) / 2.0
-                percentile = rank_avg / len(col_values)
+                anomaly_flags = []
+                info = factor_clip_info.get(factor_name)
+                if info is None:
+                    # No valid column data
+                    normalized_value = 1.0
+                    percentile = 1.0
+                    clipped = False
+                    anomaly_flags.append(f"flat_distribution:{factor_name}")
+                else:
+                    # Determine if this symbol's value was clipped
+                    clipped_value = float(info["clipped_col"].loc[symbol])
+                    clipped = (clipped_value != float(raw_value))
+
+                    col_min = info["col_min"]
+                    col_max = info["col_max"]
+
+                    if col_max == col_min:
+                        normalized_value = 1.0
+                        percentile = 1.0
+                        anomaly_flags.append(f"flat_distribution:{factor_name}")
+                    else:
+                        normalized_value = (clipped_value - col_min) / (col_max - col_min)
+                        # Rank the clipped value against the full clipped column (Issue 2 fix)
+                        clipped_series = pd.Series(info["clipped_values"])
+                        rank_series = clipped_series.rank(method="average")
+                        # Find index of this symbol in clipped_col non-missing
+                        symbol_rank = rank_series[info["clipped_col"].dropna().index.get_loc(symbol)]
+                        percentile = symbol_rank / len(info["clipped_values"])
+
+                    # Use clipped_value as the reported raw_value
+                    raw_value = clipped_value
 
             contribution = weight * normalized_value
             factors.append(FactorDetail(
@@ -104,7 +155,7 @@ def compute_l2_decision_from_snapshot(factor_snapshot: dict, top_n: int = 5) -> 
         "schema_version": "1.0",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "producer_version": "quant-l2",
-        "score_version": "l2-score-v1",
+        "score_version": SCORE_VERSION,
         "universe_size": len(wide),
         "top_candidates": [{"symbol": t.symbol, "score": t.score, "rank": t.rank} for t in top_candidates],
         "score_breakdown": [
