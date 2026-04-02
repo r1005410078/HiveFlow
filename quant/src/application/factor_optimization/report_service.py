@@ -6,6 +6,7 @@ from application.factor_optimization.correlation_alert_service import build_corr
 from application.factor_optimization.analysis_service import analyze_factors
 from application.factor_optimization.combination_service import suggest_top_combinations
 from application.factor_optimization.recommendation_service import suggest_weight_schemes
+from application.factor_optimization.release_gate_service import build_release_gate
 from application.factor_optimization.report_10d_service import build_report_10d
 
 
@@ -114,6 +115,11 @@ def build_factor_optimization_report(
         combination_size_max=combination_size_max,
         top_k=top_k_combinations,
     )
+    release_gate = build_release_gate(
+        coverage=analysis.get("coverage", {}),
+        correlation_analysis=correlation_analysis,
+        top_combinations=top_combinations,
+    )
 
     return {
         "schema_version": "1.0.0",
@@ -129,6 +135,7 @@ def build_factor_optimization_report(
             "recommended_scheme": recommendations[0]["name"] if recommendations else None,
             "report": report,
             "top_combinations": top_combinations,
+            "release_gate": release_gate,
         },
         "audit": {
             "generated_at": datetime.now(timezone.utc).isoformat(),

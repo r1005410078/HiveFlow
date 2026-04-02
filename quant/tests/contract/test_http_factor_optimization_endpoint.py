@@ -103,6 +103,11 @@ def test_factor_optimization_endpoint_contract_ok() -> None:
     assert all({"item", "checked"} <= set(item.keys()) for item in report["g3_checklist"])
     assert all(isinstance(item["checked"], bool) for item in report["g3_checklist"])
     release_gate = payload["data"]["release_gate"]
+    assert release_gate == {
+        "status": "pass",
+        "blocking_reasons": [],
+        "watch_items": [],
+    }
     assert {"status", "blocking_reasons", "watch_items"} <= set(release_gate.keys())
     assert release_gate["status"] in {"pass", "watch", "fail"}
     assert release_gate["blocking_reasons"] == []

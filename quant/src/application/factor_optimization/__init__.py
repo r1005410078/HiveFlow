@@ -2,6 +2,7 @@ from application.factor_optimization.correlation_alert_service import build_corr
 from application.factor_optimization.analysis_service import analyze_factors
 from application.factor_optimization.combination_service import suggest_top_combinations
 from application.factor_optimization.recommendation_service import suggest_weight_schemes
+from application.factor_optimization.release_gate_service import build_release_gate
 from application.factor_optimization.report_10d_service import build_report_10d
 from application.factor_optimization.report_service import (
     build_factor_optimization_report,
@@ -13,6 +14,7 @@ __all__ = [
     "build_correlation_alerts",
     "suggest_top_combinations",
     "suggest_weight_schemes",
+    "build_release_gate",
     "build_report_10d",
     "build_factor_optimization_report",
     "run_factor_optimization",
