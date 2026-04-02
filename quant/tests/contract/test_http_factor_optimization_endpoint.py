@@ -11,6 +11,8 @@ def _stub_factor_optimization_service(
     constraints: dict[str, float],
 ) -> dict:
     correlation_threshold = constraints.get("__correlation_threshold__", 0.7)
+    combination_size_min = int(constraints.get("__combination_size_min__", 2))
+    combination_size_max = int(constraints.get("__combination_size_max__", 4))
     return {
         "schema_version": "1.0.0",
         "command": "hf factor optimize",
@@ -35,6 +37,16 @@ def _stub_factor_optimization_service(
                 }
             ],
             "recommended_scheme": "balanced",
+            "top_combinations": {
+                "search_space": {
+                    "factor_pool_size": len(factor_names),
+                    "combination_size_min": combination_size_min,
+                    "combination_size_max": combination_size_max,
+                    "candidate_count": 3,
+                },
+                "ranking_profile": "balanced_v1",
+                "items": [],
+            },
             "report": {
                 "matrix_10d": [{"dimension": "IC"} for _ in range(10)],
                 "summary": {"recommended_scheme": "balanced", "key_findings": []},
@@ -77,6 +89,7 @@ def test_factor_optimization_endpoint_contract_ok() -> None:
     assert {"threshold", "alerts", "alert_count"} <= set(payload["data"]["correlation_analysis"].keys())
     assert payload["data"]["correlation_analysis"]["threshold"] == 0.7
     assert payload["data"]["correlation_analysis"]["alert_count"] == 0
+    assert {"search_space", "ranking_profile", "items"} <= set(payload["data"]["top_combinations"].keys())
     report = payload["data"]["report"]
     assert {"matrix_10d", "summary", "g3_checklist"} <= set(report.keys())
     assert len(report["matrix_10d"]) == 10
@@ -105,3 +118,50 @@ def test_factor_optimization_endpoint_accepts_custom_correlation_threshold() -> 
     assert resp.status_code == 200
     payload = resp.json()
     assert payload["data"]["correlation_analysis"]["threshold"] == 0.9
+
+
+def test_factor_optimization_endpoint_accepts_combination_args() -> None:
+    app = create_app()
+    app.dependency_overrides[get_factor_optimization_service] = lambda: _stub_factor_optimization_service
+    client = TestClient(app)
+
+    resp = client.post(
+        "/api/v1/factor-optimization/evaluate",
+        json={
+            "start_date": "2026-01-01",
+            "end_date": "2026-04-01",
+            "factor_names": ["momentum_20", "inv_volatility_20", "max_drawdown_60"],
+            "constraints": {},
+            "combination_size_min": 3,
+            "combination_size_max": 4,
+            "top_k_combinations": 3,
+        },
+    )
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    search_space = payload["data"]["top_combinations"]["search_space"]
+    assert search_space["combination_size_min"] == 3
+    assert search_space["combination_size_max"] == 4
+
+
+def test_factor_optimization_endpoint_rejects_invalid_combination_range() -> None:
+    app = create_app()
+    app.dependency_overrides[get_factor_optimization_service] = lambda: _stub_factor_optimization_service
+    client = TestClient(app)
+
+    resp = client.post(
+        "/api/v1/factor-optimization/evaluate",
+        json={
+            "start_date": "2026-01-01",
+            "end_date": "2026-04-01",
+            "factor_names": ["momentum_20", "inv_volatility_20"],
+            "constraints": {},
+            "combination_size_min": 4,
+            "combination_size_max": 3,
+        },
+    )
+
+    assert resp.status_code == 400
+    payload = resp.json()
+    assert payload["detail"]["code"] == "INVALID_ARGUMENT"

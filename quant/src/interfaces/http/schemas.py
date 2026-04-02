@@ -24,6 +24,9 @@ class FactorOptimizationEvaluateRequest(BaseModel):
         le=1.0,
         description="相关性告警阈值，范围 `(0, 1]`，默认 `0.7`",
     )
+    combination_size_min: int = Field(default=2, ge=2, le=4, description="组合最小因子数，默认 `2`")
+    combination_size_max: int = Field(default=4, ge=2, le=4, description="组合最大因子数，默认 `4`")
+    top_k_combinations: int = Field(default=5, ge=1, le=20, description="返回组合数量，默认 `5`")
 
 
 class FactorRow(BaseModel):

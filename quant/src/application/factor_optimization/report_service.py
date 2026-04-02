@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from application.factor_optimization.correlation_alert_service import build_correlation_alerts
 from application.factor_optimization.analysis_service import analyze_factors
+from application.factor_optimization.combination_service import suggest_top_combinations
 from application.factor_optimization.recommendation_service import suggest_weight_schemes
 from application.factor_optimization.report_10d_service import build_report_10d
 
@@ -23,6 +24,9 @@ def run_factor_optimization(
     factor_names: list[str],
     constraints: dict[str, float] | None = None,
     correlation_threshold: float = 0.7,
+    combination_size_min: int = 2,
+    combination_size_max: int = 4,
+    top_k_combinations: int = 5,
     bar_store=None,
 ) -> dict:
     if start_date > end_date:
@@ -50,6 +54,9 @@ def run_factor_optimization(
     }
     constraint_map = dict(constraints or {})
     correlation_threshold = float(constraint_map.pop("__correlation_threshold__", correlation_threshold))
+    combination_size_min = int(constraint_map.pop("__combination_size_min__", combination_size_min))
+    combination_size_max = int(constraint_map.pop("__combination_size_max__", combination_size_max))
+    top_k_combinations = int(constraint_map.pop("__top_k_combinations__", top_k_combinations))
     recommendations = suggest_weight_schemes(
         metrics=metrics,
         correlation_pairs=_to_correlation_pairs(analysis.get("correlation_matrix", {})),
@@ -62,6 +69,9 @@ def run_factor_optimization(
         analysis=analysis,
         recommendations=recommendations,
         correlation_threshold=correlation_threshold,
+        combination_size_min=combination_size_min,
+        combination_size_max=combination_size_max,
+        top_k_combinations=top_k_combinations,
     )
 
 
@@ -72,6 +82,9 @@ def build_factor_optimization_report(
     analysis: dict,
     recommendations: list[dict],
     correlation_threshold: float = 0.7,
+    combination_size_min: int = 2,
+    combination_size_max: int = 4,
+    top_k_combinations: int = 5,
 ) -> dict:
     metrics = {
         item["factor_name"]: {
@@ -92,6 +105,15 @@ def build_factor_optimization_report(
         recommendations=recommendations,
         correlation_analysis=correlation_analysis,
     )
+    top_combinations = suggest_top_combinations(
+        factor_names=factor_names,
+        metrics=metrics,
+        correlation_matrix=analysis.get("correlation_matrix", {}),
+        correlation_threshold=correlation_threshold,
+        combination_size_min=combination_size_min,
+        combination_size_max=combination_size_max,
+        top_k=top_k_combinations,
+    )
 
     return {
         "schema_version": "1.0.0",
@@ -106,6 +128,7 @@ def build_factor_optimization_report(
             "recommendations": recommendations,
             "recommended_scheme": recommendations[0]["name"] if recommendations else None,
             "report": report,
+            "top_combinations": top_combinations,
         },
         "audit": {
             "generated_at": datetime.now(timezone.utc).isoformat(),

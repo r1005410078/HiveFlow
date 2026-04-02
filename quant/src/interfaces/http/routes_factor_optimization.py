@@ -26,8 +26,13 @@ def post_factor_optimization_evaluate(
     service: FactorOptimizationService = Depends(get_factor_optimization_service),
 ) -> FactorOptimizationEvaluateResponse:
     try:
+        if req.combination_size_min > req.combination_size_max:
+            raise ValueError("combination_size_min must be on or below combination_size_max")
         constraints = dict(req.constraints)
         constraints["__correlation_threshold__"] = req.correlation_threshold
+        constraints["__combination_size_min__"] = req.combination_size_min
+        constraints["__combination_size_max__"] = req.combination_size_max
+        constraints["__top_k_combinations__"] = req.top_k_combinations
         return FactorOptimizationEvaluateResponse.model_validate(
             service(
                 start_date=req.start_date,
@@ -37,10 +42,11 @@ def post_factor_optimization_evaluate(
             )
         )
     except ValueError as exc:
+        code = "INVALID_DATE_RANGE" if "start_date" in str(exc) else "INVALID_ARGUMENT"
         raise HTTPException(
             status_code=400,
             detail={
-                "code": "INVALID_DATE_RANGE",
+                "code": code,
                 "message": str(exc),
             },
         ) from exc

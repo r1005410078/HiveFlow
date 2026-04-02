@@ -27,3 +27,4 @@ def test_build_factor_optimization_report_contains_audit_and_never_auto_apply() 
     assert report["data"]["correlation_analysis"]["alert_count"] == 1
     assert len(report["data"]["report"]["matrix_10d"]) == 10
     assert len(report["data"]["report"]["g3_checklist"]) == 3
+    assert "top_combinations" in report["data"]
