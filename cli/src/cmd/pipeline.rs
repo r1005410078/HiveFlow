@@ -16,10 +16,15 @@ pub enum PipelineSubcommand {
 pub struct DailyArgs {
     #[arg(long)]
     pub as_of: String,
+    #[arg(long, default_value = "json")]
+    pub output: String,
 }
 
 impl From<DailyArgs> for PipelineDailyRequest {
     fn from(args: DailyArgs) -> Self {
-        Self { as_of: args.as_of }
+        Self {
+            as_of: args.as_of,
+            output: args.output,
+        }
     }
 }

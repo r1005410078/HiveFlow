@@ -1,6 +1,7 @@
 #[derive(Debug, Clone)]
 pub struct PipelineDailyRequest {
     pub as_of: String,
+    pub output: String,
 }
 
 #[derive(Debug, Clone)]

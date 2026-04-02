@@ -115,3 +115,93 @@ pub fn render_market_data_bars_table(payload: &Value, verbose: bool) -> String {
     }
     format!("Market Data\n{}\n", table)
 }
+
+pub fn render_pipeline_daily_table(payload: &Value) -> String {
+    let mut summary = Table::new();
+    summary
+        .load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec![
+            Cell::new("as_of"),
+            Cell::new("status"),
+            Cell::new("score_version"),
+            Cell::new("universe_size"),
+            Cell::new("factor_coverage"),
+        ]);
+
+    let as_of = as_str(payload.get("data").and_then(|d| d.get("as_of")));
+    let status = as_str(payload.get("status"));
+    let score_version = as_str(
+        payload
+            .get("data")
+            .and_then(|d| d.get("l2_decision"))
+            .and_then(|x| x.get("score_version")),
+    );
+    let universe_size = as_i64(
+        payload
+            .get("data")
+            .and_then(|d| d.get("l2_decision"))
+            .and_then(|x| x.get("universe_size")),
+    );
+    let factor_coverage = as_f64(
+        payload
+            .get("data")
+            .and_then(|d| d.get("factor_snapshot"))
+            .and_then(|x| x.get("coverage_rate")),
+    );
+    summary.add_row(vec![as_of, status, score_version, universe_size, factor_coverage]);
+
+    let mut top = Table::new();
+    top.load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec![
+            Cell::new("rank"),
+            Cell::new("symbol"),
+            Cell::new("score"),
+        ]);
+    if let Some(items) = payload
+        .get("data")
+        .and_then(|d| d.get("l2_decision"))
+        .and_then(|x| x.get("top_candidates"))
+        .and_then(Value::as_array)
+    {
+        for item in items {
+            top.add_row(vec![
+                as_i64(item.get("rank")),
+                as_str(item.get("symbol")),
+                as_f64(item.get("score")),
+            ]);
+        }
+    }
+
+    let mut availability = Table::new();
+    availability
+        .load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec![
+            Cell::new("factor_name"),
+            Cell::new("present"),
+            Cell::new("missing"),
+            Cell::new("availability_rate"),
+        ]);
+    if let Some(items) = payload
+        .get("data")
+        .and_then(|d| d.get("l2_decision"))
+        .and_then(|x| x.get("factor_availability"))
+        .and_then(Value::as_array)
+    {
+        for item in items {
+            availability.add_row(vec![
+                as_str(item.get("factor_name")),
+                as_i64(item.get("present_count")),
+                as_i64(item.get("missing_count")),
+                as_f64(item.get("availability_rate")),
+            ]);
+        }
+    }
+
+    format!(
+        "Pipeline Daily Summary\n{}\nTop Candidates\n{}\nFactor Availability\n{}\n",
+        summary, top, availability
+    )
+}
