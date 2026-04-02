@@ -40,3 +40,4 @@ config/target-templates.history.json
 .claude/
 hf-cli/target
 cli/target
+.worktrees/
