@@ -535,8 +535,96 @@ pub fn render_factor_optimize_table(payload: &Value) -> Result<String, AppError>
         schemes.add_row(vec![name, expected_sharpe, expected_drawdown, weights]);
     }
 
+    let top_combinations = payload
+        .get("data")
+        .and_then(|d| d.get("top_combinations"));
+
+    let mut combo_summary = Table::new();
+    combo_summary
+        .load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec![Cell::new("指标"), Cell::new("值")]);
+    combo_summary.add_row(vec![
+        "ranking_profile".to_string(),
+        as_str(top_combinations.and_then(|x| x.get("ranking_profile"))),
+    ]);
+    combo_summary.add_row(vec![
+        "factor_pool_size".to_string(),
+        as_i64(
+            top_combinations
+                .and_then(|x| x.get("search_space"))
+                .and_then(|s| s.get("factor_pool_size")),
+        ),
+    ]);
+    combo_summary.add_row(vec![
+        "combination_range".to_string(),
+        format!(
+            "{}~{}",
+            as_i64(
+                top_combinations
+                    .and_then(|x| x.get("search_space"))
+                    .and_then(|s| s.get("combination_size_min")),
+            ),
+            as_i64(
+                top_combinations
+                    .and_then(|x| x.get("search_space"))
+                    .and_then(|s| s.get("combination_size_max")),
+            )
+        ),
+    ]);
+    combo_summary.add_row(vec![
+        "candidate_count".to_string(),
+        as_i64(
+            top_combinations
+                .and_then(|x| x.get("search_space"))
+                .and_then(|s| s.get("candidate_count")),
+        ),
+    ]);
+
+    let mut combo_items = Table::new();
+    combo_items
+        .load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec![
+            Cell::new("rank"),
+            Cell::new("factors"),
+            Cell::new("composite_score"),
+            Cell::new("return_score"),
+            Cell::new("risk_score"),
+            Cell::new("penalty"),
+            Cell::new("alerts"),
+        ]);
+    if let Some(items) = top_combinations
+        .and_then(|x| x.get("items"))
+        .and_then(Value::as_array)
+    {
+        for item in items {
+            let factors = item
+                .get("factors")
+                .and_then(Value::as_array)
+                .map(|factors| {
+                    factors
+                        .iter()
+                        .map(|x| x.as_str().unwrap_or_default().to_string())
+                        .collect::<Vec<_>>()
+                        .join("+")
+                })
+                .unwrap_or_else(String::new);
+
+            combo_items.add_row(vec![
+                as_i64(item.get("rank")),
+                factors,
+                as_f64(item.get("composite_score")),
+                as_f64(item.get("return_score")),
+                as_f64(item.get("risk_score")),
+                as_f64(item.get("redundancy_penalty")),
+                as_i64(item.get("alerts_inside")),
+            ]);
+        }
+    }
+
     Ok(format!(
-        "因子优化建议\n{}\n相关性告警\n{}\n10维评估摘要\n{}\n{}\nG3 checklist\n{}\n方案明细\n{}\n",
-        summary, alerts, report_summary, matrix, checklist, schemes
+        "因子优化建议\n{}\n相关性告警\n{}\n10维评估摘要\n{}\n{}\nG3 checklist\n{}\nTop5 组合推荐\n组合空间\n{}\n{}\n方案明细\n{}\n",
+        summary, alerts, report_summary, matrix, checklist, combo_summary, combo_items, schemes
     ))
 }
