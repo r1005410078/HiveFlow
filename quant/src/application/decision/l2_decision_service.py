@@ -9,15 +9,33 @@ assert abs(sum(_FACTOR_WEIGHTS.values()) - 1.0) < 1e-9, "Factor weights must sum
 
 SCORE_VERSION = "l2-score-v1"
 
+SCORE_PROFILES = {
+    "l2-score-v1": {
+        "weights": {"momentum_20": 0.5, "inv_volatility_20": 0.3, "turnover_rate": 0.2},
+        "enabled_factors": ["momentum_20", "inv_volatility_20", "turnover_rate"],
+    },
+    # Phase 2+ 预留：新增因子时需确保数据已在 factor_snapshot 中可用
+    # "l2-score-v1.1": {
+    #     "weights": {...},
+    #     "enabled_factors": [...],
+    # }
+}
 
-def compute_l2_decision_from_snapshot(factor_snapshot: dict, top_n: int = 5) -> dict:
+
+def compute_l2_decision_from_snapshot(factor_snapshot: dict, top_n: int = 5, score_version: str = SCORE_VERSION) -> dict:
+    # Validate score_version
+    profile = SCORE_PROFILES.get(score_version)
+    if not profile:
+        raise ValueError(f"Unknown score_version: {score_version}")
+    factor_weights = profile["weights"]
+
     rows = factor_snapshot.get("rows", [])
     if not rows:
         return {
             "schema_version": "1.0",
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "producer_version": "quant-l2",
-            "score_version": SCORE_VERSION,
+            "score_version": score_version,
             "universe_size": 0,
             "top_candidates": [],
             "score_breakdown": [],
@@ -30,7 +48,7 @@ def compute_l2_decision_from_snapshot(factor_snapshot: dict, top_n: int = 5) -> 
     # For each factor: compute p1/p99 on non-missing raw values, clip all non-missing values,
     # then derive col_min/col_max from the clipped column.
     factor_clip_info: dict = {}  # factor_name -> {clipped_col, col_min, col_max, p1, p99}
-    for factor_name in _FACTOR_WEIGHTS:
+    for factor_name in factor_weights:
         if factor_name not in wide.columns:
             factor_clip_info[factor_name] = None
             continue
@@ -59,7 +77,7 @@ def compute_l2_decision_from_snapshot(factor_snapshot: dict, top_n: int = 5) -> 
 
     for symbol in wide.index:
         factors = []
-        for factor_name, weight in _FACTOR_WEIGHTS.items():
+        for factor_name, weight in factor_weights.items():
             raw_value = wide.loc[symbol, factor_name] if factor_name in wide.columns else float("nan")
             is_missing = pd.isna(raw_value)
 
@@ -151,7 +169,7 @@ def compute_l2_decision_from_snapshot(factor_snapshot: dict, top_n: int = 5) -> 
         "schema_version": "1.0",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "producer_version": "quant-l2",
-        "score_version": SCORE_VERSION,
+        "score_version": score_version,
         "universe_size": len(wide),
         "top_candidates": [{"symbol": t.symbol, "score": t.score, "rank": t.rank} for t in top_candidates],
         "score_breakdown": [

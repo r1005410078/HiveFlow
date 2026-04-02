@@ -96,3 +96,16 @@ def test_l2_decision_contribution_sum_equals_final_score() -> None:
         assert abs(contribution_sum - item["final_score"]) < 1e-6, (
             f"{item['symbol']}: sum(contribution)={contribution_sum} != final_score={item['final_score']}"
         )
+
+
+def test_default_score_version_is_v1() -> None:
+    """确保默认版本为 v1（Phase 1 锁定）"""
+    out = compute_l2_decision_from_snapshot(_snapshot())
+    assert out["score_version"] == "l2-score-v1"
+
+
+def test_unknown_score_version_raises() -> None:
+    """未知版本应抛出 ValueError"""
+    import pytest
+    with pytest.raises(ValueError, match="Unknown score_version"):
+        compute_l2_decision_from_snapshot(_snapshot(), score_version="l2-score-v999")
