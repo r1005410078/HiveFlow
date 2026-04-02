@@ -56,6 +56,11 @@ def _stub_factor_optimization_service(
                     {"item": "CRO 最终批准", "checked": False},
                 ],
             },
+            "release_gate": {
+                "status": "pass",
+                "blocking_reasons": [],
+                "watch_items": [],
+            },
         },
         "audit": {
             "generated_at": "2026-04-02T00:00:00+00:00",
@@ -97,6 +102,11 @@ def test_factor_optimization_endpoint_contract_ok() -> None:
     assert len(report["g3_checklist"]) == 3
     assert all({"item", "checked"} <= set(item.keys()) for item in report["g3_checklist"])
     assert all(isinstance(item["checked"], bool) for item in report["g3_checklist"])
+    release_gate = payload["data"]["release_gate"]
+    assert {"status", "blocking_reasons", "watch_items"} <= set(release_gate.keys())
+    assert release_gate["status"] == "pass"
+    assert release_gate["blocking_reasons"] == []
+    assert release_gate["watch_items"] == []
 
 
 def test_factor_optimization_endpoint_accepts_custom_correlation_threshold() -> None:

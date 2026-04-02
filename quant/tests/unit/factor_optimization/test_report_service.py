@@ -23,6 +23,7 @@ def test_build_factor_optimization_report_contains_audit_and_never_auto_apply() 
     assert report["advice_only"] is True
     assert report["decision_weight"] == 0
     assert {"generated_at", "analysis_period", "g3_review_required"} <= set(report["audit"].keys())
+    assert {"status", "blocking_reasons", "watch_items"} <= set(report["data"]["release_gate"].keys())
     assert report["data"]["correlation_analysis"]["threshold"] == 0.7
     assert report["data"]["correlation_analysis"]["alert_count"] == 1
     assert len(report["data"]["report"]["matrix_10d"]) == 10
