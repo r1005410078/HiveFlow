@@ -18,6 +18,12 @@ class FactorOptimizationEvaluateRequest(BaseModel):
     end_date: str = Field(description="分析结束日期，格式 `YYYY-MM-DD`")
     factor_names: list[str] = Field(description="待评估因子列表")
     constraints: dict[str, float] = Field(default_factory=dict, description="权重约束，如 `max_weight:max_drawdown_60: 0.3`")
+    correlation_threshold: float = Field(
+        default=0.7,
+        gt=0.0,
+        le=1.0,
+        description="相关性告警阈值，范围 `(0, 1]`，默认 `0.7`",
+    )
 
 
 class FactorRow(BaseModel):

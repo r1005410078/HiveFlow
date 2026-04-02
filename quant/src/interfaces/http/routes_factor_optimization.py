@@ -26,12 +26,14 @@ def post_factor_optimization_evaluate(
     service: FactorOptimizationService = Depends(get_factor_optimization_service),
 ) -> FactorOptimizationEvaluateResponse:
     try:
+        constraints = dict(req.constraints)
+        constraints["__correlation_threshold__"] = req.correlation_threshold
         return FactorOptimizationEvaluateResponse.model_validate(
             service(
                 start_date=req.start_date,
                 end_date=req.end_date,
                 factor_names=req.factor_names,
-                constraints=req.constraints,
+                constraints=constraints,
             )
         )
     except ValueError as exc:
