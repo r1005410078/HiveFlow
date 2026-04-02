@@ -39,6 +39,44 @@ def _stub_daily_run_service(as_of: str) -> dict:
                 "score_version": "l2-score-v1.1",
                 "universe_size": 1,
                 "top_candidates": [{"symbol": "600519.SH", "score": 0.5, "rank": 1}],
+                "factor_availability": [
+                    {
+                        "factor_name": "momentum_20",
+                        "present_count": 1,
+                        "missing_count": 0,
+                        "availability_rate": 1.0,
+                    },
+                    {
+                        "factor_name": "inv_volatility_20",
+                        "present_count": 0,
+                        "missing_count": 1,
+                        "availability_rate": 0.0,
+                    },
+                    {
+                        "factor_name": "turnover_rate",
+                        "present_count": 0,
+                        "missing_count": 1,
+                        "availability_rate": 0.0,
+                    },
+                    {
+                        "factor_name": "max_drawdown_60",
+                        "present_count": 0,
+                        "missing_count": 1,
+                        "availability_rate": 0.0,
+                    },
+                    {
+                        "factor_name": "trend_stability_20",
+                        "present_count": 0,
+                        "missing_count": 1,
+                        "availability_rate": 0.0,
+                    },
+                    {
+                        "factor_name": "relative_strength_vs_index",
+                        "present_count": 0,
+                        "missing_count": 1,
+                        "availability_rate": 0.0,
+                    },
+                ],
                 "score_breakdown": [
                     {
                         "symbol": "600519.SH",

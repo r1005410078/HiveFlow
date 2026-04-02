@@ -49,6 +49,13 @@ class L2TopCandidate(BaseModel):
     rank: int
 
 
+class L2FactorAvailability(BaseModel):
+    factor_name: str
+    present_count: int
+    missing_count: int
+    availability_rate: float
+
+
 class L2Decision(BaseModel):
     schema_version: Literal["1.0"] = "1.0"
     generated_at: str
@@ -57,6 +64,7 @@ class L2Decision(BaseModel):
     universe_size: int
     top_candidates: list[L2TopCandidate]
     score_breakdown: list[L2ScoreBreakdownItem]
+    factor_availability: list[L2FactorAvailability]
 
 
 class DailyRunData(BaseModel):

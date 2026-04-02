@@ -35,5 +35,6 @@ def test_http_daily_response_schema_includes_l2_decision() -> None:
     assert isinstance(l2d["universe_size"], int)
     assert isinstance(l2d["top_candidates"], list)
     assert isinstance(l2d["score_breakdown"], list)
+    assert isinstance(l2d["factor_availability"], list)
     scores = [c["score"] for c in l2d["top_candidates"]]
     assert scores == sorted(scores, reverse=True)

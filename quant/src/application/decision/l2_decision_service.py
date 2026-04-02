@@ -51,10 +51,29 @@ def compute_l2_decision_from_snapshot(factor_snapshot: dict, top_n: int = 5, sco
             "universe_size": 0,
             "top_candidates": [],
             "score_breakdown": [],
+            "factor_availability": [],
         }
 
     df = pd.DataFrame(rows)
     wide = df.pivot_table(index="symbol", columns="factor_name", values="raw_value", aggfunc="first")
+    universe_size = len(wide)
+
+    factor_availability = []
+    for factor_name in factor_weights:
+        if factor_name in wide.columns:
+            present_count = int(wide[factor_name].notna().sum())
+        else:
+            present_count = 0
+        missing_count = max(universe_size - present_count, 0)
+        availability_rate = round(present_count / universe_size, 6) if universe_size > 0 else 0.0
+        factor_availability.append(
+            {
+                "factor_name": factor_name,
+                "present_count": present_count,
+                "missing_count": missing_count,
+                "availability_rate": availability_rate,
+            }
+        )
 
     # Pre-compute per-factor clipped columns (Issue 1 fix)
     # For each factor: compute p1/p99 on non-missing raw values, clip all non-missing values,
@@ -182,10 +201,11 @@ def compute_l2_decision_from_snapshot(factor_snapshot: dict, top_n: int = 5, sco
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "producer_version": "quant-l2",
         "score_version": score_version,
-        "universe_size": len(wide),
+        "universe_size": universe_size,
         "top_candidates": [{"symbol": t.symbol, "score": t.score, "rank": t.rank} for t in top_candidates],
         "score_breakdown": [
             {"symbol": item.symbol, "final_score": item.final_score, "factors": [factor_to_dict(f) for f in item.factors]}
             for item in sorted_breakdown
         ],
+        "factor_availability": factor_availability,
     }

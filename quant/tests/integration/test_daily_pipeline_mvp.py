@@ -12,6 +12,7 @@ def test_daily_run_includes_l2_decision() -> None:
     assert l2d["universe_size"] >= 0
     assert isinstance(l2d["top_candidates"], list)
     assert isinstance(l2d["score_breakdown"], list)
+    assert isinstance(l2d["factor_availability"], list)
 
     scores = [c["score"] for c in l2d["top_candidates"]]
     assert scores == sorted(scores, reverse=True)

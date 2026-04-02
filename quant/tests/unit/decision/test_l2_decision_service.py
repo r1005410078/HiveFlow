@@ -40,6 +40,9 @@ def test_l2_decision_contains_explainable_fields() -> None:
     assert out["producer_version"] == "quant-l2"
     assert "generated_at" in out
     assert out["universe_size"] == 2
+    assert "factor_availability" in out
+    assert len(out["factor_availability"]) == 6
+    assert {"factor_name", "present_count", "missing_count", "availability_rate"} <= set(out["factor_availability"][0].keys())
 
     assert out["top_candidates"][0]["symbol"] == "600519.SH"
     first = out["score_breakdown"][0]
@@ -85,6 +88,7 @@ def test_l2_decision_with_empty_sample() -> None:
     assert out["universe_size"] == 0
     assert out["top_candidates"] == []
     assert out["score_breakdown"] == []
+    assert out["factor_availability"] == []
 
 
 def test_l2_decision_with_flat_distribution() -> None:
@@ -122,3 +126,16 @@ def test_unknown_score_version_raises() -> None:
     import pytest
     with pytest.raises(ValueError, match="Unknown score_version"):
         compute_l2_decision_from_snapshot(_snapshot(), score_version="l2-score-v999")
+
+
+def test_factor_availability_reflects_missing_values() -> None:
+    snapshot = _snapshot()
+    snapshot["rows"] = [
+        row for row in snapshot["rows"]
+        if not (row["symbol"] == "600519.SH" and row["factor_name"] == "trend_stability_20")
+    ]
+    out = compute_l2_decision_from_snapshot(snapshot, top_n=5)
+    ts = [x for x in out["factor_availability"] if x["factor_name"] == "trend_stability_20"][0]
+    assert ts["present_count"] == 1
+    assert ts["missing_count"] == 1
+    assert ts["availability_rate"] == 0.5

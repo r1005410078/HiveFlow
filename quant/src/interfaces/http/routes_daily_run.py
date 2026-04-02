@@ -60,6 +60,14 @@ router = APIRouter(prefix="/api/v1/pipeline", tags=["pipeline"])
                                     {"symbol": "600519.SH", "score": 0.812300, "rank": 1},
                                     {"symbol": "000001.SZ", "score": 0.423100, "rank": 2},
                                 ],
+                                "factor_availability": [
+                                    {
+                                        "factor_name": "momentum_20",
+                                        "present_count": 2,
+                                        "missing_count": 0,
+                                        "availability_rate": 1.0,
+                                    }
+                                ],
                                 "score_breakdown": [
                                     {
                                         "symbol": "600519.SH",
