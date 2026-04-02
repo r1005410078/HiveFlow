@@ -9,6 +9,26 @@ from application.factor.basic_factor_service import (
 )
 
 
+_FACTOR_AVAILABILITY_WARN_THRESHOLD = 0.8
+
+
+def _build_factor_quality_warnings(l2_decision: dict) -> list[dict]:
+    warnings: list[dict] = []
+    for item in l2_decision.get("factor_availability", []):
+        rate = float(item.get("availability_rate", 0.0))
+        if rate < _FACTOR_AVAILABILITY_WARN_THRESHOLD:
+            warnings.append(
+                {
+                    "code": "FACTOR_AVAILABILITY_LOW",
+                    "message": (
+                        f"factor {item.get('factor_name')} availability {rate:.4f} "
+                        f"is below threshold {_FACTOR_AVAILABILITY_WARN_THRESHOLD:.2f}"
+                    ),
+                }
+            )
+    return warnings
+
+
 def run_daily(as_of: str, root, bar_store=None) -> dict:
     # root 预留给后续持久化与工作目录上下文使用。
     run_id = f"run_{as_of.replace('-', '')}_{str(uuid4())[:8]}"
@@ -45,6 +65,7 @@ def run_daily(as_of: str, root, bar_store=None) -> dict:
         top_n=5,
         score_version="l2-score-v1.1",
     )
+    warnings = _build_factor_quality_warnings(l2_decision)
     return ok_output(
         command="hf pipeline daily",
         run_id=run_id,
@@ -55,4 +76,5 @@ def run_daily(as_of: str, root, bar_store=None) -> dict:
             "execution_plan": {"orders": []},
             "l2_decision": l2_decision,
         },
+        warnings=warnings,
     )

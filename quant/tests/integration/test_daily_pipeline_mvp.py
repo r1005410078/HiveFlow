@@ -1,5 +1,6 @@
 from datetime import date, timedelta
 
+import application.daily_run_service as daily_run_module
 from application.daily_run_service import run_daily
 
 
@@ -76,3 +77,31 @@ def test_daily_pipeline_prefers_real_bars_when_available() -> None:
     trend_rows = [r for r in rows if r["factor_name"] == "trend_stability_20"]
     assert len(trend_rows) == 5
     assert all(r["raw_value"] == 1.0 for r in trend_rows)
+
+
+def test_daily_pipeline_warns_when_factor_availability_is_low(monkeypatch) -> None:
+    def _stub_l2_decision(*, factor_snapshot, top_n, score_version):
+        del factor_snapshot, top_n, score_version
+        return {
+            "schema_version": "1.0",
+            "generated_at": "2026-04-01T00:00:00+00:00",
+            "producer_version": "quant-l2",
+            "score_version": "l2-score-v1.1",
+            "universe_size": 5,
+            "top_candidates": [],
+            "score_breakdown": [],
+            "factor_availability": [
+                {
+                    "factor_name": "relative_strength_vs_index",
+                    "present_count": 3,
+                    "missing_count": 2,
+                    "availability_rate": 0.6,
+                }
+            ],
+        }
+
+    monkeypatch.setattr(daily_run_module, "compute_l2_decision_from_snapshot", _stub_l2_decision)
+
+    out = run_daily(as_of="2026-04-01", root=None)
+    assert out["warnings"]
+    assert out["warnings"][0]["code"] == "FACTOR_AVAILABILITY_LOW"
