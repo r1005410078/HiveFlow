@@ -5,6 +5,7 @@ from collections.abc import Callable
 from fastapi import HTTPException
 
 from application.daily_run_service import run_daily
+from application.factor_optimization import run_factor_optimization
 from application.pipeline_compare_service import run_pipeline_compare
 from application.market_data.bars_query_service import BarsQueryService
 from application.market_data.query_service import QueryService
@@ -17,6 +18,7 @@ from interfaces.adapters.market_data.timescale_bar_store import TimescaleBarStor
 
 DailyRunService = Callable[[str], dict]
 PipelineCompareService = Callable[[str, str, int], dict]
+FactorOptimizationService = Callable[[str, str, list[str], dict[str, float]], dict]
 MarketDataSyncService = Callable[..., dict]
 MarketDataQueryService = Callable[..., dict]
 MarketDataBarsQueryService = Callable[..., dict]
@@ -46,6 +48,23 @@ def get_pipeline_compare_service() -> PipelineCompareService:
         end_date=end_date,
         top_n=top_n,
         root=None,
+        bar_store=bar_store,
+    )
+
+
+def get_factor_optimization_service() -> FactorOptimizationService:
+    # Provider only: wire application service into FastAPI dependency graph.
+    bar_store = None
+    if has_db_config():
+        try:
+            bar_store = TimescaleBarStore(open_db_connection_from_env())
+        except Exception:
+            bar_store = None
+    return lambda start_date, end_date, factor_names, constraints: run_factor_optimization(
+        start_date=start_date,
+        end_date=end_date,
+        factor_names=factor_names,
+        constraints=constraints,
         bar_store=bar_store,
     )
 
