@@ -68,6 +68,40 @@ pub fn post_pipeline_compare(
     serde_json::from_str(&body_text).map_err(AppError::InvalidJson)
 }
 
+pub fn post_factor_optimize(
+    server_url: &str,
+    start_date: &str,
+    end_date: &str,
+    factor_names: &[String],
+    timeout_ms: u64,
+) -> Result<Value, AppError> {
+    let url = format!(
+        "{}/api/v1/factor-optimization/evaluate",
+        server_url.trim_end_matches('/')
+    );
+    let client = build_client(server_url, timeout_ms)?;
+
+    let response = client
+        .post(url)
+        .json(&json!({
+            "start_date": start_date,
+            "end_date": end_date,
+            "factor_names": factor_names,
+            "constraints": {},
+        }))
+        .send()
+        .map_err(AppError::HttpClient)?;
+
+    let status = response.status();
+    let body_text = response.text().map_err(AppError::HttpClient)?;
+    if !status.is_success() {
+        let body =
+            serde_json::from_str(&body_text).unwrap_or_else(|_| json!({ "raw_body": body_text }));
+        return Err(AppError::Upstream(status.as_u16(), body));
+    }
+    serde_json::from_str(&body_text).map_err(AppError::InvalidJson)
+}
+
 pub fn post_data_sync(
     server_url: &str,
     days: i32,

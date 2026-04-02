@@ -1,4 +1,5 @@
 pub mod data;
+pub mod factor;
 pub mod pipeline;
 
 use crate::application::requests::AppCommand;
@@ -15,6 +16,7 @@ pub struct Cli {
 #[derive(Debug, Subcommand)]
 pub enum Commands {
     Pipeline(pipeline::PipelineArgs),
+    Factor(factor::FactorArgs),
     Data(data::DataArgs),
 }
 
@@ -27,6 +29,11 @@ impl From<Cli> for AppCommand {
                 }
                 pipeline::PipelineSubcommand::Compare(compare) => {
                     AppCommand::PipelineCompare(compare.into())
+                }
+            },
+            Commands::Factor(args) => match args.command {
+                factor::FactorSubcommand::Optimize(optimize) => {
+                    AppCommand::FactorOptimize(optimize.into())
                 }
             },
             Commands::Data(args) => match args.command {
