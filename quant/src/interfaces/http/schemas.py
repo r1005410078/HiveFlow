@@ -38,7 +38,7 @@ class FactorRow(BaseModel):
 
 
 class FactorSnapshot(BaseModel):
-    factor_version: str
+    snapshot_version: str
     factor_names: list[str]
     coverage_rate: float
     rows: list[FactorRow]

@@ -4,7 +4,7 @@ from application.decision.l2_decision_service import compute_l2_decision_from_sn
 def _snapshot() -> dict:
     """标准测试数据：2 个标的，各 6 个因子完整"""
     return {
-        "factor_version": "l2-basic-v1.1",
+        "snapshot_version": "l2-basic-v1.1",
         "factor_names": [
             "momentum_20",
             "inv_volatility_20",

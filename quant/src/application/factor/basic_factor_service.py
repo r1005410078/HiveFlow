@@ -2,9 +2,17 @@ from __future__ import annotations
 
 from collections import defaultdict
 from math import sqrt
+from typing import TypedDict
 
 
-FACTOR_METADATA: dict[str, dict] = {
+class FactorMeta(TypedDict):
+    version: str
+    direction: int
+    unit: str
+    missing_strategy: str
+
+
+FACTOR_METADATA: dict[str, FactorMeta] = {
     "momentum_20": {
         "version": "l2-momentum-v1.0",
         "direction": 1,
@@ -25,7 +33,7 @@ FACTOR_METADATA: dict[str, dict] = {
     },
     "max_drawdown_60": {
         "version": "l2-mdd-v1.0",
-        "direction": 1,
+        "direction": 1,  # encoded as 1.0 - raw_drawdown, so higher = less drawdown
         "unit": "ratio",
         "missing_strategy": "deterministic_fallback",
     },
@@ -180,7 +188,7 @@ def compute_basic_factor_snapshot_from_bars(as_of: str, symbols: list[str], bar_
     if symbols:
         coverage_rate = round(len(output_rows) / (len(symbols) * len(_FACTOR_NAMES)), 4)
     return {
-        "factor_version": "l2-basic-v1.1",
+        "snapshot_version": "l2-basic-v1.1",
         "factor_names": list(_FACTOR_NAMES),
         "coverage_rate": coverage_rate,
         "rows": output_rows,
@@ -209,7 +217,7 @@ def compute_basic_factor_snapshot(as_of: str, symbols: list[str]) -> dict:
         coverage_rate = round(len(rows) / (len(symbols) * len(_FACTOR_NAMES)), 4)
 
     return {
-        "factor_version": "l2-basic-v1.1",
+        "snapshot_version": "l2-basic-v1.1",
         "factor_names": list(_FACTOR_NAMES),
         "coverage_rate": coverage_rate,
         "rows": rows,

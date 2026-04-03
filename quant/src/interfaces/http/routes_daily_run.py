@@ -46,7 +46,7 @@ router = APIRouter(prefix="/api/v1/pipeline", tags=["pipeline"])
                             "as_of": "2026-04-01",
                             "data_manifest_id": "manifest_20260401",
                             "factor_snapshot": {
-                                "factor_version": "l2-basic-v1.1",
+                                "snapshot_version": "l2-basic-v1.1",
                                 "factor_names": [
                                     "momentum_20",
                                     "inv_volatility_20",

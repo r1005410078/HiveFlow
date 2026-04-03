@@ -13,7 +13,7 @@ def test_compute_basic_factor_snapshot_shape() -> None:
         symbols=["000001.SZ", "600519.SH"],
     )
 
-    assert out["factor_version"] == "l2-basic-v1.1"
+    assert out["snapshot_version"] == "l2-basic-v1.1"
     assert set(out["factor_names"]) == {
         "momentum_20",
         "inv_volatility_20",
@@ -60,7 +60,7 @@ def test_compute_basic_factor_snapshot_from_bars_prefers_real_data() -> None:
         bar_rows=bars,
     )
 
-    assert out["factor_version"] == "l2-basic-v1.1"
+    assert out["snapshot_version"] == "l2-basic-v1.1"
     assert len(out["rows"]) == 12
 
     sh_rows = [r for r in out["rows"] if r["symbol"] == "600519.SH"]

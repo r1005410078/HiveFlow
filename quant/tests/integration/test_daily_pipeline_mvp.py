@@ -28,7 +28,7 @@ def test_daily_pipeline_end_to_end(tmp_path):
     assert out["run_id"].startswith("run_")
     assert "data_manifest_id" in out["data"]
     assert "factor_snapshot" in out["data"]
-    assert out["data"]["factor_snapshot"]["factor_version"] == "l2-basic-v1.1"
+    assert out["data"]["factor_snapshot"]["snapshot_version"] == "l2-basic-v1.1"
     assert set(out["data"]["factor_snapshot"]["factor_names"]) >= {
         "max_drawdown_60",
         "trend_stability_20",
