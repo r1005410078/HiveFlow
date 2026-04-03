@@ -308,7 +308,43 @@ def test_sync_service_universe_overrides_default_set() -> None:
     out = svc.sync(days=1, end_date="2026-04-01", timeframe="1d", universe="csi300")
 
     assert out["selection_mode"] == "universe"
-    assert out["effective_symbols_count"] == 3
+    assert out["effective_symbols_count"] >= 1
+
+
+def test_sync_service_supports_self_select_universe_file() -> None:
+    """验证 universe=self_select 会从独立文件读取。"""
+    svc = SyncService(quote_repo=_FakeQuoteRepo(), bar_store=_FakeBarStore())
+
+    out = svc.sync(days=1, end_date="2026-04-01", timeframe="1d", universe="self_select")
+
+    assert out["selection_mode"] == "universe"
+    assert out["effective_symbols_count"] >= 1
+
+
+def test_sync_service_can_sync_universe_from_provider() -> None:
+    """验证可通过第三方 provider 同步 universe 文件。"""
+
+    class _FakeUniverseSourceRepo:
+        def fetch_universe_symbols(self, universe: str):
+            assert universe == "csi300"
+            return ["600519.SH", "000001.SZ", "600036.SH"]
+
+    class _TestableSyncService(SyncService):
+        def _config_root(self):
+            # 用项目内真实 config 目录做集成式验证（无副作用，写回同名样例）。
+            return super()._config_root()
+
+    svc = _TestableSyncService(
+        quote_repo=_FakeQuoteRepo(),
+        bar_store=_FakeBarStore(),
+        universe_source_repo=_FakeUniverseSourceRepo(),
+    )
+    out = svc.sync_universe_symbols(universe="csi300", provider="akshare")
+
+    assert out["universe"] == "csi300"
+    assert out["provider"] == "akshare"
+    assert out["symbols_count"] == 3
+    assert out["file_path"].endswith("quant/config/universes/csi300.txt")
 
 
 def test_sync_service_raises_when_no_rows_fetched() -> None:

@@ -39,6 +39,9 @@ impl From<Cli> for AppCommand {
             },
             Commands::Data(args) => match args.command {
                 data::DataSubcommand::Sync(sync_args) => AppCommand::DataSync(sync_args.into()),
+                data::DataSubcommand::UniverseSync(sync_args) => {
+                    AppCommand::DataUniverseSync(sync_args.into())
+                }
                 data::DataSubcommand::Query(query_args) => AppCommand::DataQuery(query_args.into()),
                 data::DataSubcommand::Bars(bars_args) => AppCommand::DataBars(bars_args.into()),
             },

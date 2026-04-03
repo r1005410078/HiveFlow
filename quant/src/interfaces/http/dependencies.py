@@ -11,6 +11,7 @@ from application.market_data.bars_query_service import BarsQueryService
 from application.market_data.query_service import QueryService
 from application.market_data.sync_service import SyncService
 from interfaces.adapters.market_data.akshare_quote_adapter import AkshareQuoteAdapter
+from interfaces.adapters.market_data.akshare_universe_adapter import AkshareUniverseAdapter
 from interfaces.adapters.market_data.db_connection import has_db_config, open_db_connection_from_env
 from interfaces.adapters.market_data.tencent_quote_adapter import TencentQuoteAdapter
 from interfaces.adapters.market_data.timescale_bar_store import TimescaleBarStore
@@ -20,6 +21,7 @@ DailyRunService = Callable[[str], dict]
 PipelineCompareService = Callable[[str, str, int], dict]
 FactorOptimizationService = Callable[[str, str, list[str], dict[str, float]], dict]
 MarketDataSyncService = Callable[..., dict]
+MarketDataUniverseSyncService = Callable[..., dict]
 MarketDataQueryService = Callable[..., dict]
 MarketDataBarsQueryService = Callable[..., dict]
 
@@ -237,6 +239,19 @@ def _build_quote_repo():
 def get_market_data_sync_service() -> MarketDataSyncService:
     service = SyncService(quote_repo=_build_quote_repo(), bar_store=_build_bar_store())
     return service.sync
+
+
+def get_market_data_universe_sync_service() -> MarketDataUniverseSyncService:
+    try:
+        universe_source = AkshareUniverseAdapter()
+    except Exception:
+        universe_source = None
+    service = SyncService(
+        quote_repo=_build_quote_repo(),
+        bar_store=_build_bar_store(),
+        universe_source_repo=universe_source,
+    )
+    return service.sync_universe_symbols
 
 
 def get_market_data_query_service() -> MarketDataQueryService:

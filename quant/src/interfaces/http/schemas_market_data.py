@@ -10,6 +10,11 @@ class MarketDataSyncRequest(BaseModel):
     request_id: str | None = None
 
 
+class MarketDataUniverseSyncRequest(BaseModel):
+    universe: str = Field(description="目标标的池名称，如 csi300 / zz500 / all_a / self_select / follow")
+    provider: str = Field(default="akshare", description="第三方来源，当前仅支持 akshare")
+
+
 class MarketDataSyncRunsQuery(BaseModel):
     days: int = Field(ge=1)
     timeframe: str | None = None

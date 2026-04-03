@@ -99,6 +99,15 @@ fn join_factor_names(value: Option<&Value>) -> String {
         .unwrap_or_default()
 }
 
+fn localize_scheme_name(raw: &str) -> String {
+    match raw {
+        "balanced" => "均衡".to_string(),
+        "return_first" => "收益优先".to_string(),
+        "risk_first" => "风险优先".to_string(),
+        _ => raw.to_string(),
+    }
+}
+
 pub fn render_sync_runs_table(payload: &Value, verbose: bool) -> String {
     let mut table = Table::new();
     table
@@ -487,11 +496,11 @@ pub fn render_factor_optimize_table(payload: &Value) -> Result<String, AppError>
         .set_content_arrangement(ContentArrangement::Dynamic)
         .set_header(vec![Cell::new("指标"), Cell::new("值")]);
 
-    let recommended = as_str(
+    let recommended = localize_scheme_name(&as_str(
         payload
             .get("data")
             .and_then(|d| d.get("recommended_scheme")),
-    );
+    ));
     let start_date = as_str(
         payload
             .get("audit")
@@ -564,7 +573,11 @@ pub fn render_factor_optimize_table(payload: &Value) -> Result<String, AppError>
         .set_header(vec![Cell::new("指标"), Cell::new("值")]);
     report_summary.add_row(vec![
         "推荐方案".to_string(),
-        as_str(report.and_then(|r| r.get("summary")).and_then(|s| s.get("recommended_scheme"))),
+        localize_scheme_name(&as_str(
+            report
+                .and_then(|r| r.get("summary"))
+                .and_then(|s| s.get("recommended_scheme")),
+        )),
     ]);
     report_summary.add_row(vec![
         "关键结论".to_string(),
@@ -632,7 +645,7 @@ pub fn render_factor_optimize_table(payload: &Value) -> Result<String, AppError>
         .ok_or_else(|| AppError::InvalidArgs("missing data.recommendations".to_string()))?;
 
     for item in items {
-        let name = as_str(item.get("name"));
+        let name = localize_scheme_name(&as_str(item.get("name")));
         let expected_sharpe = as_f64(item.get("expected_sharpe"));
         let expected_drawdown = as_f64(item.get("expected_drawdown"));
         let weights = item

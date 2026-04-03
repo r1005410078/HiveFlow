@@ -1,4 +1,6 @@
-use crate::application::requests::{DataBarsRequest, DataQueryRequest, DataSyncRequest};
+use crate::application::requests::{
+    DataBarsRequest, DataQueryRequest, DataSyncRequest, DataUniverseSyncRequest,
+};
 use clap::{Args, Subcommand};
 
 #[derive(Debug, Args)]
@@ -10,6 +12,7 @@ pub struct DataArgs {
 #[derive(Debug, Subcommand)]
 pub enum DataSubcommand {
     Sync(DataSyncArgs),
+    UniverseSync(DataUniverseSyncArgs),
     Query(DataQueryArgs),
     Bars(DataBarsArgs),
 }
@@ -28,6 +31,16 @@ pub struct DataSyncArgs {
     pub universe: Option<String>,
     #[arg(long)]
     pub request_id: Option<String>,
+    #[arg(long)]
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Args)]
+pub struct DataUniverseSyncArgs {
+    #[arg(long)]
+    pub universe: String,
+    #[arg(long, default_value = "akshare")]
+    pub provider: String,
     #[arg(long)]
     pub timeout_ms: Option<u64>,
 }
@@ -83,6 +96,16 @@ impl From<DataSyncArgs> for DataSyncRequest {
             symbols: args.symbols,
             universe: args.universe,
             request_id: args.request_id,
+            timeout_ms: args.timeout_ms,
+        }
+    }
+}
+
+impl From<DataUniverseSyncArgs> for DataUniverseSyncRequest {
+    fn from(args: DataUniverseSyncArgs) -> Self {
+        Self {
+            universe: args.universe,
+            provider: args.provider,
             timeout_ms: args.timeout_ms,
         }
     }

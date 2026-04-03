@@ -8,23 +8,28 @@ from uuid import uuid4
 
 from domain.market_data.value_objects import validate_timeframe
 
-_UNIVERSE_MAP: dict[str, list[str]] = {
-    "csi300": ["600519.SH", "000001.SZ", "600036.SH"],
-    "zz500": ["000001.SZ", "002475.SZ"],
-    "all_a": ["000001.SZ", "600000.SH", "600519.SH"],
-}
+_UNIVERSE_KEYS = ("csi300", "zz500", "all_a", "self_select", "follow")
+_UNIVERSE_FILE_EXT = ".txt"
 
 _SYMBOL_PATTERN = re.compile(r"^[0-9]{6}\.(SH|SZ|BJ)$")
 
 
 class SyncService:
-    def __init__(self, quote_repo, bar_store):
+    def __init__(self, quote_repo, bar_store, universe_source_repo=None):
         self.quote_repo = quote_repo
         self.bar_store = bar_store
+        self.universe_source_repo = universe_source_repo
 
     def _config_root(self) -> Path:
         # quant/src/application/market_data/sync_service.py -> quant/
         return Path(__file__).resolve().parents[3]
+
+    def _universe_dir(self) -> Path:
+        return self._config_root() / "config" / "universes"
+
+    @staticmethod
+    def _universe_file_name(universe: str) -> str:
+        return f"{universe}{_UNIVERSE_FILE_EXT}"
 
     @staticmethod
     def _norm_symbol(symbol: str) -> str:
@@ -66,6 +71,35 @@ class SyncService:
                 if value:
                     symbols.append(self._norm_symbol(value))
         return symbols
+
+    def _parse_universe_file(self, universe: str) -> list[str]:
+        if universe not in _UNIVERSE_KEYS:
+            raise ValueError(f"unknown universe: {universe}")
+        path = self._universe_dir() / self._universe_file_name(universe)
+        if not path.exists():
+            raise ValueError(f"unknown universe: {universe}")
+        symbols: list[str] = []
+        for raw in path.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            symbols.append(self._norm_symbol(line))
+        normalized = sorted(set(symbols))
+        if not normalized:
+            raise ValueError(f"universe {universe} has no symbols")
+        return normalized
+
+    def _write_universe_file(self, universe: str, symbols: list[str]) -> Path:
+        if universe not in _UNIVERSE_KEYS:
+            raise ValueError(f"unknown universe: {universe}")
+        normalized = sorted({self._norm_symbol(s) for s in symbols if s and s.strip()})
+        if not normalized:
+            raise ValueError(f"universe {universe} resolved empty symbols")
+        universe_dir = self._universe_dir()
+        universe_dir.mkdir(parents=True, exist_ok=True)
+        path = universe_dir / self._universe_file_name(universe)
+        path.write_text("\n".join(normalized) + "\n", encoding="utf-8")
+        return path
 
     @staticmethod
     def _symbols_hash(symbols: list[str]) -> str:
@@ -130,9 +164,7 @@ class SyncService:
             return normalized, "symbols"
 
         if universe:
-            if universe not in _UNIVERSE_MAP:
-                raise ValueError(f"unknown universe: {universe}")
-            normalized = sorted({_s for _s in _UNIVERSE_MAP[universe]})
+            normalized = self._parse_universe_file(universe)
             return normalized, "universe"
 
         cfg = self._config_root() / "config"
@@ -140,6 +172,24 @@ class SyncService:
         positions = self._parse_positions(cfg / "positions.yml")
         default_set = sorted(set(watchlist + positions))
         return default_set, "default"
+
+    def sync_universe_symbols(self, universe: str, provider: str = "akshare") -> dict:
+        if provider != "akshare":
+            raise ValueError(f"unsupported provider: {provider}")
+        if self.universe_source_repo is None:
+            raise RuntimeError("universe source provider is unavailable")
+        fetch = getattr(self.universe_source_repo, "fetch_universe_symbols", None)
+        if not callable(fetch):
+            raise RuntimeError("universe source provider is unavailable")
+        symbols = fetch(universe=universe)
+        path = self._write_universe_file(universe=universe, symbols=symbols)
+        return {
+            "universe": universe,
+            "provider": provider,
+            "symbols_count": len(symbols),
+            "file_path": str(path),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
 
     def sync(
         self,

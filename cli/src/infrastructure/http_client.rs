@@ -144,6 +144,37 @@ pub fn post_data_sync(
     serde_json::from_str(&body_text).map_err(AppError::InvalidJson)
 }
 
+pub fn post_data_universe_sync(
+    server_url: &str,
+    universe: &str,
+    provider: &str,
+    timeout_ms: u64,
+) -> Result<Value, AppError> {
+    let url = format!(
+        "{}/v1/market-data/universes/sync",
+        server_url.trim_end_matches('/')
+    );
+    let client = build_client(server_url, timeout_ms)?;
+
+    let response = client
+        .post(url)
+        .json(&json!({
+            "universe": universe,
+            "provider": provider,
+        }))
+        .send()
+        .map_err(AppError::HttpClient)?;
+
+    let status = response.status();
+    let body_text = response.text().map_err(AppError::HttpClient)?;
+    if !status.is_success() {
+        let body =
+            serde_json::from_str(&body_text).unwrap_or_else(|_| json!({ "raw_body": body_text }));
+        return Err(AppError::Upstream(status.as_u16(), body));
+    }
+    serde_json::from_str(&body_text).map_err(AppError::InvalidJson)
+}
+
 pub fn get_market_data_sync_runs(
     server_url: &str,
     days: i32,

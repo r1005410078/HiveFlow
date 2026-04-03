@@ -42,6 +42,13 @@ pub struct DataSyncRequest {
 }
 
 #[derive(Debug, Clone)]
+pub struct DataUniverseSyncRequest {
+    pub universe: String,
+    pub provider: String,
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone)]
 pub struct DataQueryRequest {
     pub days: i32,
     pub timeframe: String,
@@ -73,6 +80,7 @@ pub enum AppCommand {
     FactorOptimize(FactorOptimizeRequest),
     FactorReplay(FactorReplayRequest),
     DataSync(DataSyncRequest),
+    DataUniverseSync(DataUniverseSyncRequest),
     DataQuery(DataQueryRequest),
     DataBars(DataBarsRequest),
 }

@@ -4,11 +4,13 @@ from interfaces.http.dependencies import (
     MarketDataBarsQueryService,
     MarketDataQueryService,
     MarketDataSyncService,
+    MarketDataUniverseSyncService,
     get_market_data_bars_query_service,
     get_market_data_query_service,
     get_market_data_sync_service,
+    get_market_data_universe_sync_service,
 )
-from interfaces.http.schemas_market_data import MarketDataSyncRequest
+from interfaces.http.schemas_market_data import MarketDataSyncRequest, MarketDataUniverseSyncRequest
 
 router = APIRouter(prefix="/v1/market-data", tags=["market-data"])
 
@@ -70,6 +72,39 @@ def post_sync(
         raise HTTPException(
             status_code=500,
             detail={"code": "MARKET_DATA_SYNC_FAILED", "message": str(exc)},
+        ) from exc
+
+
+@router.post(
+    "/universes/sync",
+    summary="从第三方接口同步标的池定义",
+    description=(
+        "将第三方接口返回的标的列表同步到本地 universe 文件（`quant/config/universes/*.txt`）。\n\n"
+        "- `universe`：目标标的池名称（如 `csi300`、`zz500`、`all_a`、`self_select`、`follow`）\n"
+        "- `provider`：第三方来源，当前仅支持 `akshare`"
+    ),
+    response_description="同步结果，包含写入文件路径和标的数量",
+)
+def post_universe_sync(
+    req: MarketDataUniverseSyncRequest,
+    service: MarketDataUniverseSyncService = Depends(get_market_data_universe_sync_service),
+) -> dict:
+    try:
+        return service(universe=req.universe, provider=req.provider)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "UNIVERSE_SYNC_INVALID_ARGUMENT", "message": str(exc)},
+        ) from exc
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "UNIVERSE_SYNC_PROVIDER_ERROR", "message": str(exc)},
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "UNIVERSE_SYNC_FAILED", "message": str(exc)},
         ) from exc
 
 

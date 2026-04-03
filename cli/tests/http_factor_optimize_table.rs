@@ -61,6 +61,6 @@ fn factor_optimize_table_contains_recommendation_rows() {
     assert!(table.contains("correlation"));
     assert!(table.contains("IC"));
     assert!(table.contains("G3 checklist"));
-    assert!(table.contains("balanced"));
-    assert!(table.contains("risk_first"));
+    assert!(table.contains("均衡"));
+    assert!(table.contains("风险优先"));
 }
