@@ -157,7 +157,35 @@ def _factor_values_from_real_bars(rows: list[dict]) -> dict[str, float] | None:
     }
 
 
-def compute_basic_factor_snapshot_from_bars(as_of: str, symbols: list[str], bar_rows: list[dict]) -> dict:
+def _relative_strength_from_benchmark(
+    symbol_closes: list[float],
+    benchmark_rows: list[dict],
+) -> float | None:
+    """Returns real relative strength vs benchmark. Returns None if benchmark has < 21 bars."""
+    ordered = sorted(benchmark_rows, key=lambda r: str(r.get("bar_time", "")))
+    b_closes = [float(r["close"]) for r in ordered]
+    if len(b_closes) < 21:
+        return None
+    b_t = b_closes[-1]
+    b_t20 = b_closes[-21]
+    if b_t20 == 0:
+        return None
+    benchmark_ret_20 = (b_t / b_t20) - 1.0
+    symbol_t = symbol_closes[-1]
+    symbol_t20 = symbol_closes[-21]
+    if symbol_t20 == 0:
+        return None
+    symbol_ret_20 = (symbol_t / symbol_t20) - 1.0
+    return (1.0 + symbol_ret_20) / (1.0 + benchmark_ret_20) - 1.0
+
+
+def compute_basic_factor_snapshot_from_bars(
+    as_of: str,
+    symbols: list[str],
+    bar_rows: list[dict],
+    benchmark_rows: list[dict] | None = None,
+    historical_baselines: dict[str, dict] | None = None,
+) -> dict:
     # 按 symbol 聚合 bars，再逐标的计算因子；若单标的数据不足则回退到 deterministic 因子。
     rows_by_symbol: dict[str, list[dict]] = defaultdict(list)
     for row in bar_rows:
@@ -173,11 +201,29 @@ def compute_basic_factor_snapshot_from_bars(as_of: str, symbols: list[str], bar_
             # 兜底：保障日频流水线在数据空窗/历史不足时仍可产出稳定结构。
             values = _factor_values_for_symbol(symbol)
             default_source = "deterministic_fallback"
+            rs_used_real_benchmark = False
         else:
             values = real_values
             default_source = "real"
+            # Try to compute real relative strength vs benchmark
+            rs_used_real_benchmark = False
+            if benchmark_rows is not None:
+                ordered_sym = sorted(
+                    rows_by_symbol.get(symbol, []),
+                    key=lambda r: str(r.get("bar_time", "")),
+                )
+                sym_closes = [float(r["close"]) for r in ordered_sym]
+                rs_real = _relative_strength_from_benchmark(sym_closes, benchmark_rows)
+                if rs_real is not None:
+                    values["relative_strength_vs_index"] = round(rs_real, 6)
+                    rs_used_real_benchmark = True
+
         for factor_name, raw_value in values.items():
             meta = FACTOR_METADATA[factor_name]
+            if factor_name == "relative_strength_vs_index" and default_source == "real" and not rs_used_real_benchmark:
+                row_source = "benchmark_proxy_fallback"
+            else:
+                row_source = default_source
             output_rows.append(
                 {
                     "as_of": as_of,
@@ -188,7 +234,7 @@ def compute_basic_factor_snapshot_from_bars(as_of: str, symbols: list[str], bar_
                     "direction": meta["direction"],
                     "unit": meta["unit"],
                     "missing_strategy": meta["missing_strategy"],
-                    "source": default_source,
+                    "source": row_source,
                 }
             )
 

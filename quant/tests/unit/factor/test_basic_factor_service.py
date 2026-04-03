@@ -105,4 +105,43 @@ def test_bars_row_source_is_real_when_data_sufficient() -> None:
     )
     for row in out["rows"]:
         if row["symbol"] == "600519.SH":
-            assert row["source"] == "real", f"{row['factor_name']} should be real"
+            if row["factor_name"] == "relative_strength_vs_index":
+                assert row["source"] == "benchmark_proxy_fallback", "rs without benchmark should be proxy fallback"
+            else:
+                assert row["source"] == "real", f"{row['factor_name']} should be real"
+
+
+def test_relative_strength_uses_real_benchmark_when_provided() -> None:
+    from datetime import date
+
+    symbol_bars = _build_monotonic_bars("600519.SH", date(2026, 1, 1), 80, 100.0)
+    # 基准 base_close=200，绝对增幅相同（+1/day），但比例更小；个股涨幅相对更高
+    benchmark_bars = _build_monotonic_bars("000300.SH", date(2026, 1, 1), 80, 200.0)
+
+    out = compute_basic_factor_snapshot_from_bars(
+        as_of="2026-04-01",
+        symbols=["600519.SH"],
+        bar_rows=symbol_bars,
+        benchmark_rows=benchmark_bars,
+    )
+    rs_row = next(r for r in out["rows"] if r["factor_name"] == "relative_strength_vs_index")
+    assert rs_row["source"] == "real"
+    # 个股涨幅 > 基准涨幅（relative），相对强度应 > 0
+    assert rs_row["raw_value"] > 0.0
+
+
+def test_relative_strength_falls_back_to_proxy_without_benchmark() -> None:
+    from datetime import date
+
+    symbol_bars = _build_monotonic_bars("600519.SH", date(2026, 1, 1), 80, 100.0)
+    out = compute_basic_factor_snapshot_from_bars(
+        as_of="2026-04-01",
+        symbols=["600519.SH"],
+        bar_rows=symbol_bars,
+        benchmark_rows=None,
+    )
+    rs_row = next(r for r in out["rows"] if r["factor_name"] == "relative_strength_vs_index")
+    assert rs_row["source"] == "benchmark_proxy_fallback"
+    # 其他因子仍为 real
+    other_rows = [r for r in out["rows"] if r["factor_name"] != "relative_strength_vs_index"]
+    assert all(r["source"] == "real" for r in other_rows)
