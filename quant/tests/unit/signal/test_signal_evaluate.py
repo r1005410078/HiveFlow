@@ -1,7 +1,4 @@
 import math
-from unittest.mock import MagicMock
-
-import pytest
 
 
 def test_ic_perfect_positive():
