@@ -105,6 +105,7 @@
 - 启动服务端：`make run-server`（开发热更新：`make run-server-dev`）
 - 运行日频管线：`make run-pipeline AS_OF=YYYY-MM-DD`
 - 运行版本对比回放：`cd cli && cargo run -- pipeline compare --start-date YYYY-MM-DD --end-date YYYY-MM-DD --top-n 5 --output table`
+- 运行因子回放：`cd cli && cargo run -- factor replay --start-date YYYY-MM-DD --end-date YYYY-MM-DD --factors momentum_20,inv_volatility_20 --output json|table`
 - 数据库启动：`make db-up`（查看日志：`make db-logs`）
 
 ### 7.4 本地联调最小路径
@@ -164,6 +165,9 @@ retry = 1
   - `quant`：新增 `POST /api/v1/factor-optimization/evaluate`
   - `cli`：新增 `hf factor optimize --start-date --end-date --factors --output json|table`
   - 输出固定 `advice_only=true`、`decision_weight=0`，并携带 `analysis/recommendations/audit`
+- Factor 回放能力（本轮新增）：
+  - `cli`：新增 `hf factor replay --start-date --end-date --factors --output json|table`
+  - 输出 `summary + daily_items`，可区分 `fetch_status=error` 与 `release_gate_status=fail`
 - Factor 优化 P1（统一扩展）：
   - `evaluate` 新增 `correlation_analysis`（threshold、alerts、alert_count）
   - `evaluate` 新增 `report`（matrix_10d、summary、g3_checklist）

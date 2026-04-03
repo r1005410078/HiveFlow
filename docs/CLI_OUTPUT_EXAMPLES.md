@@ -396,3 +396,44 @@ jq -e 'if .source=="web_search" then (.advice_only==true and .decision_weight==0
   "errors": []
 }
 ```
+
+---
+
+## 9. hf factor replay（JSON 示例）
+
+```json
+{
+  "summary": {
+    "days": 3,
+    "error_days": 0,
+    "pass_days": 0,
+    "watch_days": 0,
+    "fail_days": 3,
+    "avg_alert_count": 0.0,
+    "top1_change_days": 1
+  },
+  "daily_items": [
+    {
+      "as_of": "2026-04-01",
+      "fetch_status": "ok",
+      "release_gate_status": "fail",
+      "alert_count": 0,
+      "top1_factors": ["momentum_20", "inv_volatility_20"]
+    },
+    {
+      "as_of": "2026-04-02",
+      "fetch_status": "ok",
+      "release_gate_status": "fail",
+      "alert_count": 0,
+      "top1_factors": []
+    },
+    {
+      "as_of": "2026-04-03",
+      "fetch_status": "ok",
+      "release_gate_status": "fail",
+      "alert_count": 0,
+      "top1_factors": []
+    }
+  ]
+}
+```
