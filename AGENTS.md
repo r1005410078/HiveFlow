@@ -166,7 +166,7 @@ cd cli && cargo run -- factor replay --start-date YYYY-MM-DD --end-date YYYY-MM-
 |---|---|---|---|
 | L0 | 标的池 | ✅ Phase 1 完成 | A 股 universe，静态快照 |
 | L1 | 数据层 | ✅ Phase 1 完成 | TimescaleDB + bars 同步，180 天窗口 |
-| L2 | 因子层 | ✅ Phase 1 完成 | 6 因子，评分 v1.1，可解释输出（top_candidates、score_breakdown、factor_availability） |
+| L2 | 因子层 | ✅ Phase 2 完成 | 6 因子，per-factor 独立版本（FactorMeta TypedDict）、rows 含 direction/unit/missing_strategy/source、真实基准计算（000300.SH）、per-factor stability_metrics（coverage_rate/drift 检测）、FactorValue domain model 对齐、Pydantic schema 同步（FactorStabilityMetric） |
 | L3 | 信号工程 | 🔲 未开始 | **下一步** |
 | L4 | 组合优化 | 🔲 未开始 | — |
 | L5 | 风险门控 | 🔲 未开始 | — |
@@ -182,8 +182,8 @@ cd cli && cargo run -- factor replay --start-date YYYY-MM-DD --end-date YYYY-MM-
 
 ### 7.9 已交付能力摘要
 
-- **L1/L2 主链路**：factor_snapshot（6 因子）+ l2_decision（score_version、top_candidates、score_breakdown、factor_availability）
-- **数据韧性**：优先真实 bars，异常降级 deterministic 快照，低可用率告警 `FACTOR_AVAILABILITY_LOW`
+- **L1/L2 主链路**：factor_snapshot（6 因子，per-factor 版本/方向/单位/来源标记）+ l2_decision（score_version、top_candidates、score_breakdown、factor_availability）+ stability_metrics（coverage_rate、drift_flag、drift_z_score）
+- **数据韧性**：优先真实 bars + 真实基准（000300.SH），异常降级 deterministic 快照，低可用率告警 `FACTOR_AVAILABILITY_LOW`；source 字段区分 real/deterministic_fallback/benchmark_proxy_fallback
 - **Compare 回放**：`POST /api/v1/pipeline/compare` + `hf pipeline compare`，逐日 daily_items + summary
 - **Factor 优化建议**：`POST /api/v1/factor-optimization/evaluate` + `hf factor optimize`，含 correlation_analysis、report、g3_checklist，固定 advice_only
 - **Factor 回放**：`hf factor replay`，summary + daily_items，区分 fetch_status/release_gate_status
