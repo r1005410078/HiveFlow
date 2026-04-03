@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from math import sqrt
 from typing import TypedDict
@@ -52,6 +53,8 @@ FACTOR_METADATA: dict[str, FactorMeta] = {
 }
 
 _FACTOR_NAMES = tuple(FACTOR_METADATA.keys())
+
+_logger = logging.getLogger(__name__)
 
 
 def _base_seed(symbol: str) -> int:
@@ -181,6 +184,71 @@ def _relative_strength_from_benchmark(
     return (1.0 + symbol_ret_20) / (1.0 + benchmark_ret_20) - 1.0
 
 
+def _compute_stability_metrics(
+    rows: list[dict],
+    factor_names: tuple,
+    historical_baselines: dict[str, dict] | None,
+) -> list[dict]:
+    values_by_factor: dict[str, list[float]] = defaultdict(list)
+    real_count_by_factor: dict[str, int] = defaultdict(int)
+    fallback_count_by_factor: dict[str, int] = defaultdict(int)
+
+    for row in rows:
+        fn = row["factor_name"]
+        values_by_factor[fn].append(row["raw_value"])
+        if row.get("source") == "real":
+            real_count_by_factor[fn] += 1
+        else:
+            fallback_count_by_factor[fn] += 1
+
+    total_symbols = (
+        (real_count_by_factor.get(factor_names[0], 0) + fallback_count_by_factor.get(factor_names[0], 0))
+        if factor_names
+        else 0
+    )
+
+    if historical_baselines:
+        known_factor_set = set(factor_names)
+        for key in historical_baselines:
+            if key not in known_factor_set:
+                _logger.warning(
+                    "historical_baselines contains unknown factor key %r; skipping drift for it", key
+                )
+
+    result = []
+    for fn in factor_names:
+        vals = values_by_factor.get(fn, [])
+        real_c = real_count_by_factor.get(fn, 0)
+        fallback_c = fallback_count_by_factor.get(fn, 0)
+        coverage = round(real_c / total_symbols, 4) if total_symbols > 0 else 0.0
+        mean_v = round(_mean(vals), 6) if vals else 0.0
+        std_v = round(_std(vals), 6) if vals else 0.0
+
+        drift_flag = None
+        drift_z = None
+        if historical_baselines and fn in historical_baselines:
+            baseline = historical_baselines[fn]
+            b_mean = float(baseline.get("mean", 0.0))
+            b_std = float(baseline.get("std", 1e-6))
+            drift_z = round((mean_v - b_mean) / max(b_std, 1e-6), 4)
+            drift_flag = abs(drift_z) > 2.0
+
+        result.append(
+            {
+                "factor_name": fn,
+                "factor_version": FACTOR_METADATA[fn]["version"],
+                "coverage_rate": coverage,
+                "real_count": real_c,
+                "fallback_count": fallback_c,
+                "mean_value": mean_v,
+                "std_value": std_v,
+                "drift_flag": drift_flag,
+                "drift_z_score": drift_z,
+            }
+        )
+    return result
+
+
 def compute_basic_factor_snapshot_from_bars(
     as_of: str,
     symbols: list[str],
@@ -243,11 +311,17 @@ def compute_basic_factor_snapshot_from_bars(
     coverage_rate = 0.0
     if symbols:
         coverage_rate = round(len(output_rows) / (len(symbols) * len(_FACTOR_NAMES)), 4)
+    stability_metrics = _compute_stability_metrics(
+        rows=output_rows,
+        factor_names=_FACTOR_NAMES,
+        historical_baselines=historical_baselines,
+    )
     return {
         "snapshot_version": "l2-basic-v1.1",
         "factor_names": list(_FACTOR_NAMES),
         "coverage_rate": coverage_rate,
         "rows": output_rows,
+        "stability_metrics": stability_metrics,
     }
 
 
@@ -276,9 +350,15 @@ def compute_basic_factor_snapshot(as_of: str, symbols: list[str]) -> dict:
     if symbols:
         coverage_rate = round(len(rows) / (len(symbols) * len(_FACTOR_NAMES)), 4)
 
+    stability_metrics = _compute_stability_metrics(
+        rows=rows,
+        factor_names=_FACTOR_NAMES,
+        historical_baselines=None,
+    )
     return {
         "snapshot_version": "l2-basic-v1.1",
         "factor_names": list(_FACTOR_NAMES),
         "coverage_rate": coverage_rate,
         "rows": rows,
+        "stability_metrics": stability_metrics,
     }

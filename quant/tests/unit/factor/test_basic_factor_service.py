@@ -128,6 +128,53 @@ def test_relative_strength_uses_real_benchmark_when_provided() -> None:
     assert rs_row["raw_value"] > 0.0
 
 
+def test_stability_metrics_present_in_snapshot() -> None:
+    from datetime import date
+
+    bars = _build_monotonic_bars("600519.SH", date(2026, 1, 1), 80, 100.0)
+    out = compute_basic_factor_snapshot_from_bars(
+        as_of="2026-04-01", symbols=["600519.SH"], bar_rows=bars
+    )
+    assert "stability_metrics" in out
+    metrics = out["stability_metrics"]
+    assert isinstance(metrics, list)
+    assert len(metrics) == 6  # one per factor
+    m = metrics[0]
+    assert "factor_name" in m
+    assert "factor_version" in m
+    assert "coverage_rate" in m
+    assert "real_count" in m
+    assert "fallback_count" in m
+    assert "mean_value" in m
+    assert "std_value" in m
+    assert m["drift_flag"] is None   # no historical_baselines provided
+    assert m["drift_z_score"] is None
+    # With sufficient bars, real_count > 0, so coverage_rate > 0
+    assert m["coverage_rate"] > 0.0
+
+
+def test_stability_metrics_drift_flag_when_baselines_provided() -> None:
+    from datetime import date
+
+    bars = _build_monotonic_bars("600519.SH", date(2026, 1, 1), 80, 100.0)
+    # Set momentum_20 baseline mean to extreme value to trigger drift
+    baselines = {
+        "momentum_20": {"mean": 0.0, "std": 0.001},  # actual value will be >> 2σ away
+    }
+    out = compute_basic_factor_snapshot_from_bars(
+        as_of="2026-04-01",
+        symbols=["600519.SH"],
+        bar_rows=bars,
+        historical_baselines=baselines,
+    )
+    m_momentum = next(m for m in out["stability_metrics"] if m["factor_name"] == "momentum_20")
+    assert m_momentum["drift_flag"] is True
+    assert m_momentum["drift_z_score"] is not None
+    # Other factors without baselines should have drift_flag = None
+    m_inv_vol = next(m for m in out["stability_metrics"] if m["factor_name"] == "inv_volatility_20")
+    assert m_inv_vol["drift_flag"] is None
+
+
 def test_relative_strength_falls_back_to_proxy_without_benchmark() -> None:
     symbol_bars = _build_monotonic_bars("600519.SH", date(2026, 1, 1), 80, 100.0)
     out = compute_basic_factor_snapshot_from_bars(
