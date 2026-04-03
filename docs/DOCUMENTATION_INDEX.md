@@ -2,6 +2,10 @@
 
 > 文档目标：提供统一阅读路径与术语入口。适用对象：所有参与 HiveFlow 设计、开发、评审的成员。
 
+补充说明：
+- 若关注“当前可运行能力”，优先阅读 `GETTING_STARTED.md`、`BEGINNER_QUICKSTART.md`、`ARCHITECTURE.md`，并以 `cargo run -- --help`（或 `hf --help`）为最终命令面依据。
+- `docs/requirements/` 与 `docs/superpowers/` 下文档包含需求、方案与实施计划，部分内容可能是目标态，不代表已全部落地。
+
 ## 按角色阅读路径（推荐）
 
 | 角色 | 第一步 | 第二步 | 第三步 |

@@ -260,10 +260,11 @@ retry = 1
 
 当前 CLI 数据查询形态（与运行实现对齐）：
 
-- `hf data query --output` 支持 `json|table|chart|tui`。
-- `chart` 模式要求单标的 `--symbols`（如 `600519.SH`）。
-- `tui` 模式支持左侧选股与键盘交互（`↑/↓` 切换、`←/→` 光标、`a/d` 平移、`+/-` 缩放、`0` 重置、`b` 开关大盘对比）。
-- `chart/tui` 默认大盘基准为 `000300.SH`，可通过 `--no-benchmark` 关闭。
+- `hf data query --output` 仅支持 `json|table`，用于查询同步任务元数据（`/v1/market-data/sync-runs`）。
+- `hf data bars --output` 支持 `json|table|chart|tui`，用于查询 K 线明细（`/v1/market-data/bars`）。
+- `data bars` 的 `chart` 模式要求单标的 `--symbols`（如 `600519.SH`）。
+- `data bars` 的 `tui` 模式支持左侧选股与键盘交互（`↑/↓` 切换、`←/→` 光标、`a/d` 平移、`+/-` 缩放、`0` 重置、`b` 开关大盘对比）。
+- `data bars` 的 `chart/tui` 默认大盘基准为 `000300.SH`，可通过 `--no-benchmark` 关闭。
 
 运行前提：
 

@@ -121,16 +121,25 @@ def post_universe_sync(
             "content": {
                 "application/json": {
                     "example": {
-                        "runs": [
+                        "items": [
                             {
+                                "run_id": "run_demo_001",
                                 "request_id": "sync_20260401_1d",
-                                "status": "completed",
+                                "status": "success",
+                                "days": 5,
+                                "end_date": "2026-04-01",
                                 "timeframe": "1d",
-                                "bars_written": 120,
-                                "created_at": "2026-04-01T08:00:00+08:00",
+                                "selection_mode": "symbols",
+                                "symbols_hash": "2b8c5f5cbf5f65f17fd4fd0fc2b6a1a53f70f13a6c3ab2e0f5fcdb6f6d4b24f5",
+                                "effective_symbols_count": 2,
+                                "written_rows": 120,
+                                "manifest_ids": ["mf_demo_001"],
+                                "started_at": "2026-04-01T08:00:00+08:00",
+                                "finished_at": "2026-04-01T08:01:00+08:00",
+                                "error_code": None,
+                                "error_message": None,
                             }
-                        ],
-                        "total": 1,
+                        ]
                     }
                 }
             }
@@ -171,19 +180,21 @@ def get_sync_runs(
             "content": {
                 "application/json": {
                     "example": {
-                        "bars": [
+                        "items": [
                             {
                                 "symbol": "600519.SH",
-                                "timestamp": "2026-04-01T00:00:00+08:00",
+                                "timeframe": "1d",
+                                "bar_time": "2026-04-01T15:00:00+08:00",
                                 "open": 1680.0,
                                 "high": 1710.5,
                                 "low": 1675.0,
                                 "close": 1702.3,
                                 "volume": 12345678,
-                                "timeframe": "1d",
+                                "amount": 4567890123.0,
+                                "adj_factor": 1.0,
+                                "data_source": "tencent",
                             }
-                        ],
-                        "total": 1,
+                        ]
                     }
                 }
             }

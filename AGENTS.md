@@ -149,12 +149,13 @@ cd cli && cargo run -- factor replay --start-date YYYY-MM-DD --end-date YYYY-MM-
 - `POST /api/v1/pipeline/compare`：版本对比回放（`l2-score-v1` vs `l2-score-v1.1`）
 - `POST /api/v1/factor-optimization/evaluate`：因子评估与权重建议（advice-only）
 - `POST /v1/market-data/sync`：行情同步
+- `POST /v1/market-data/universes/sync`：标的池同步（写入 `quant/config/universes/*.txt`）
 - `GET /v1/market-data/sync-runs`：行情查询
 - `GET /v1/market-data/bars`：行情 K 线查询
 
 ### 7.7 当前健康状态
 
-- `make check`：通过（Python tests: 87 passed，architecture: 5 passed，CLI fixtures: pass=8 fail=0，Rust tests: 通过）
+- `make check`：通过（Python tests: 105 passed，architecture: 5 passed，CLI fixtures: pass=11 fail=0，Rust tests: 通过）
 - 已知非阻塞警告：CLI 存在少量 `dead_code` 警告（`retry` 字段、部分合同类型未使用），不影响门禁。
 
 ### 7.8 各层完成度（2026-04-03）

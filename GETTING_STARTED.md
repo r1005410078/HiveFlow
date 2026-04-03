@@ -110,45 +110,57 @@ cargo run -- data query --days 7 --output json
 cargo run -- data query --days 7 --output table
 ```
 
-图表输出：
+按状态筛选（可选）：
 
 ```bash
-cargo run -- data query --days 30 --symbols 600519.SH --output chart
+cargo run -- data query --days 7 --status success --output table
 ```
 
 说明：
-- 图表输出包含两部分：`Compact Trend`（高可读单行趋势）和 `Close Price`（textplots 折线图）。
-- `chart` 模式要求 `--symbols` 只传一个股票。
+- `data query` 对应 `GET /v1/market-data/sync-runs`，用于查看同步任务元数据。
+- `--output` 仅支持 `json|table`。
+- 常用过滤参数：`--timeframe`、`--status`、`--request-id`、`--limit`。
 
-TUI 输出（全屏趋势图，更清晰）：
-
-```bash
-cargo run -- data query --days 30 --output tui
-```
-
-说明：
-- TUI 键位：
-  - `↑ / ↓`（或 `j / k`）切换左侧股票
-  - `← / →`（或 `h / l`）移动图表光标，查看每个时点价格
-  - `a / d` 平移可视窗口
-  - `+ / -` 缩放窗口
-  - `b` 开关大盘对比线（默认开启）
-  - `0` 重置视图
-  - `q / Esc / Enter` 退出
-  - 可选传 `--symbols` 来限制股票范围，或指定默认选中股票（取第一个）
-- 默认大盘基准为 `000300.SH`（沪深300）。
-
-查询时同样可临时覆盖超时：
+查询时可临时覆盖超时：
 
 ```bash
 cargo run -- data query --days 30 --output table --timeout-ms 120000
 ```
 
+### 8.4 K 线查询（data bars）
+
+JSON 输出：
+
+```bash
+cargo run -- data bars --symbols 600519.SH --start-date 2026-03-01 --end-date 2026-04-01 --output json
+```
+
+表格输出：
+
+```bash
+cargo run -- data bars --symbols 600519.SH --start-date 2026-03-01 --end-date 2026-04-01 --output table
+```
+
+图表输出（单标的）：
+
+```bash
+cargo run -- data bars --symbols 600519.SH --timeframe 1d --output chart
+```
+
+TUI 输出（全屏趋势图）：
+
+```bash
+cargo run -- data bars --symbols 600519.SH --timeframe 1d --output tui
+```
+
 提示：
 
-- `--output` 支持 `json|table|chart|tui`
-- `--no-benchmark` 在 `chart/tui` 下关闭大盘对比线
-- `--verbose` 仅在 `--output table` 下追加诊断列
+- `data bars` 对应 `GET /v1/market-data/bars`。
+- `chart` 模式要求 `--symbols` 只传一个股票。
+- `tui` 模式支持键盘交互（`↑/↓`、`←/→`、`a/d`、`+/-`、`0`、`b`、`q/Esc/Enter`）。
+- `--output` 支持 `json|table|chart|tui`（仅 `data bars`）。
+- `--no-benchmark` 在 `chart/tui` 下关闭大盘对比线（默认基准 `000300.SH`）。
+- `--verbose` 仅在 `--output table` 下追加诊断列。
 - `--timeout-ms` 可覆盖 `~/.hiveflow/config.toml` 中的 `timeout_ms`
 - `--timeframe` 默认是 `1m`（分钟级），可显式传 `1d` 切换日频
 - `symbols` 参数使用逗号分隔（如 `600519.SH,000001.SZ`）

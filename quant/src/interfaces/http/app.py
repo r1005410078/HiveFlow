@@ -13,7 +13,7 @@ def create_app() -> FastAPI:
             "HiveFlow 量化核心服务 API。\n\n"
             "提供日频策略流水线（因子计算、候选排名、执行计划）"
             "与行情数据管理（同步、查询、K 线）两大模块。\n\n"
-            "所有响应遵循统一 CLI Output Schema v1.0.0，"
+            "已纳入统一 envelope 管理的输出遵循 CLI Output Schema v1.0.0，"
             "字段含义参见 `docs/CLI_OUTPUT_SCHEMA.json`。"
         ),
         contact={"name": "HiveFlow", "email": ""},

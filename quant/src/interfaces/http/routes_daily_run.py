@@ -35,7 +35,7 @@ router = APIRouter(prefix="/api/v1/pipeline", tags=["pipeline"])
                 "application/json": {
                     "example": {
                         "schema_version": "1.0.0",
-                        "command": "hf run daily",
+                        "command": "hf pipeline daily",
                         "run_id": "550e8400-e29b-41d4-a716-446655440000",
                         "status": "ok",
                         "generated_at": "2026-04-01T09:00:00+08:00",

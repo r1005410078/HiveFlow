@@ -9,6 +9,11 @@
 - `quant` 服务端通过 HTTP 生成这些 JSON 契约输出。
 - `cli` 作为客户端调用服务端，并将返回结果原样输出给终端与自动化工具。
 
+说明：
+
+- 第 1~3 节（`signal snapshot` / `news-snapshot` / `market web-brief`）用于说明 envelope 语义，不代表当前 CLI 已提供对应子命令。
+- 当前已实现命令面请以 `cargo run -- --help`（或安装后二进制 `hf --help`）为准。
+
 ---
 
 ## 1. system（主决策分支）

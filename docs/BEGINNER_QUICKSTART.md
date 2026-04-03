@@ -106,7 +106,8 @@ cargo run -- data sync --days 30 --end-date 2026-04-01 --universe csi300
 
 - `--output table`：人工看结果时优先用它。
 - `--output json`：写脚本、做回归、接自动化时用它。
-- `data query`、`data bars` 支持 `chart`，`data bars` 还支持 `tui`。
+- `data query` 支持 `json|table`（同步任务元数据查询）。
+- `data bars` 支持 `json|table|chart|tui`（K 线明细查询）。
 
 ## 4. 常见错误与处理
 

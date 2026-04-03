@@ -8,7 +8,7 @@
 
 1. 系统端（Quant Core）采用 **Python**。
 2. CLI 客户端采用 **Rust**。
-3. 两者通过稳定的 **HTTP/JSON** 契约协作，CLI 输出统一遵循 `CLI_OUTPUT_SCHEMA.json`。
+3. 两者通过稳定的 **HTTP/JSON** 契约协作，已纳入统一 envelope 管理的 CLI 输出遵循 `CLI_OUTPUT_SCHEMA.json`（命令覆盖范围以当前实现与文档说明为准）。
 
 ## 2. 适用范围（Scope）
 
