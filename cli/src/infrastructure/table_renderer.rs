@@ -374,10 +374,110 @@ pub fn render_pipeline_compare_table(payload: &Value) -> String {
         }
     }
 
-    format!(
-        "版本对比回放\n版本对比汇总\n{}\n逐日明细\n{}\n",
-        summary, daily
-    )
+    let mut out = format!("版本对比回放\n版本对比汇总\n{}\n逐日明细\n{}\n", summary, daily);
+
+    if let Some(analytics) = data.and_then(|d| d.get("analytics")) {
+        if let Some(return_metrics) = analytics.get("return_metrics") {
+            let mut metrics = Table::new();
+            metrics
+                .load_preset(UTF8_FULL)
+                .set_content_arrangement(ContentArrangement::Dynamic)
+                .set_header(vec![
+                    Cell::new("指标"),
+                    Cell::new("v1"),
+                    Cell::new("v1.1"),
+                    Cell::new("diff"),
+                ]);
+
+            metrics.add_row(vec![
+                "累计收益".to_string(),
+                as_f64(return_metrics.get("v1").and_then(|v| v.get("cumulative_return"))),
+                as_f64(return_metrics.get("v1_1").and_then(|v| v.get("cumulative_return"))),
+                as_f64(
+                    return_metrics
+                        .get("diff")
+                        .and_then(|v| v.get("excess_cumulative_return_v1_1_vs_v1")),
+                ),
+            ]);
+            metrics.add_row(vec![
+                "胜率".to_string(),
+                as_f64(return_metrics.get("v1").and_then(|v| v.get("win_rate"))),
+                as_f64(return_metrics.get("v1_1").and_then(|v| v.get("win_rate"))),
+                "".to_string(),
+            ]);
+            metrics.add_row(vec![
+                "最大回撤".to_string(),
+                as_f64(return_metrics.get("v1").and_then(|v| v.get("max_drawdown"))),
+                as_f64(return_metrics.get("v1_1").and_then(|v| v.get("max_drawdown"))),
+                "".to_string(),
+            ]);
+            metrics.add_row(vec![
+                "年化波动".to_string(),
+                as_f64(
+                    return_metrics
+                        .get("v1")
+                        .and_then(|v| v.get("annualized_volatility")),
+                ),
+                as_f64(
+                    return_metrics
+                        .get("v1_1")
+                        .and_then(|v| v.get("annualized_volatility")),
+                ),
+                "".to_string(),
+            ]);
+            metrics.add_row(vec![
+                "夏普".to_string(),
+                as_f64(return_metrics.get("v1").and_then(|v| v.get("sharpe"))),
+                as_f64(return_metrics.get("v1_1").and_then(|v| v.get("sharpe"))),
+                as_f64(
+                    return_metrics
+                        .get("diff")
+                        .and_then(|v| v.get("excess_sharpe_v1_1_vs_v1")),
+                ),
+            ]);
+
+            out.push_str(&format!("收益与风险统计\n{}\n", metrics));
+        }
+
+        if let Some(items) = analytics
+            .get("group_stability")
+            .and_then(|g| g.get("items"))
+            .and_then(Value::as_array)
+        {
+            let mut groups = Table::new();
+            groups
+                .load_preset(UTF8_FULL)
+                .set_content_arrangement(ContentArrangement::Dynamic)
+                .set_header(vec![
+                    Cell::new("industry"),
+                    Cell::new("cap_bucket"),
+                    Cell::new("sample_days"),
+                    Cell::new("v1_cum"),
+                    Cell::new("v1.1_cum"),
+                    Cell::new("diff_cum"),
+                    Cell::new("flag"),
+                ]);
+
+            for item in items {
+                groups.add_row(vec![
+                    as_str(item.get("industry")),
+                    as_str(item.get("market_cap_bucket")),
+                    as_i64(item.get("sample_days")),
+                    as_f64(item.get("v1").and_then(|v| v.get("cumulative_return"))),
+                    as_f64(item.get("v1_1").and_then(|v| v.get("cumulative_return"))),
+                    as_f64(item.get("diff").and_then(|v| v.get("excess_cumulative_return"))),
+                    as_str(item.get("stability_flag")),
+                ]);
+            }
+
+            out.push_str(&format!(
+                "分组稳定性（industry + market_cap_bucket）\n{}\n",
+                groups
+            ));
+        }
+    }
+
+    out
 }
 
 pub fn render_factor_optimize_table(payload: &Value) -> Result<String, AppError> {
