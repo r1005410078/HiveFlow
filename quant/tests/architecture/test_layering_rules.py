@@ -78,3 +78,26 @@ def test_domain_models_do_not_import_application_or_interfaces():
                 violations.append(f"{py.relative_to(ROOT)}: imports {name}")
 
     assert not violations, f"domain.models must not import application or interfaces: {violations}"
+
+
+def test_application_signal_does_not_import_interfaces():
+    """application.signal 禁止依赖 interfaces 层"""
+    signal_dir = APP_DIR / "signal"
+    if not signal_dir.exists():
+        return
+    violations: list[str] = []
+    for py in signal_dir.rglob("*.py"):
+        imports = _imports(py)
+        if any(name == "interfaces" or name.startswith("interfaces.") for name in imports):
+            violations.append(str(py.relative_to(ROOT)))
+    assert not violations, f"application.signal must not import interfaces: {violations}"
+
+
+def test_domain_signal_does_not_import_application():
+    """domain.models.signal 禁止依赖 application"""
+    signal_file = SRC / "domain" / "models" / "signal.py"
+    if not signal_file.exists():
+        return
+    imports = _imports(signal_file)
+    violations = [name for name in imports if name == "application" or name.startswith("application.")]
+    assert not violations, f"domain.models.signal must not import application: {violations}"
