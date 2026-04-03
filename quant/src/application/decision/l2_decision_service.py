@@ -114,7 +114,7 @@ def compute_l2_decision_from_snapshot(factor_snapshot: dict, top_n: int = 5, sco
 
             if is_missing:
                 # Fill with 0.0 (conservative: treated as lowest possible value).
-                # Assumption: all three factors have non-negative values in practice.
+                # Assumption: normalized factors are higher-is-better with floor at 0 after transforms.
                 # Revisit when real missing-data patterns are observed.
                 raw_value = 0.0
                 anomaly_flags = [f"missing_factor:{factor_name}"]

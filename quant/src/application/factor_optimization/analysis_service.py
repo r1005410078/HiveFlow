@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from math import sqrt
 
-from application.factor.basic_factor_service import compute_basic_factor_snapshot_from_bars
+from application.factor.basic_factor_service import compute_raw_factor_values_from_bar_rows
 
 
 def _mean(values: list[float]) -> float:
@@ -70,26 +70,38 @@ def _group_bars_by_symbol(rows: list[dict]) -> dict[str, list[dict]]:
         symbol = row.get("symbol")
         if symbol:
             grouped[symbol].append(row)
-    for symbol, bars in grouped.items():
-        grouped[symbol] = sorted(bars, key=lambda r: str(r.get("bar_time", "")))
+    for symbol, row_list in grouped.items():
+        grouped[symbol] = sorted(row_list, key=lambda r: str(r.get("bar_time", "")))
     return grouped
 
 
-def _forward_returns(grouped: dict[str, list[dict]], forward_days: int) -> dict[str, float]:
-    out: dict[str, float] = {}
-    for symbol, bars in grouped.items():
-        closes = [float(item.get("close") or 0.0) for item in bars]
-        if len(closes) <= forward_days:
-            continue
-        prev = closes[-forward_days - 1]
-        curr = closes[-1]
-        if prev == 0:
-            continue
-        out[symbol] = (curr / prev) - 1.0
-    return out
+def _pit_factor_and_forward(
+    sorted_bars: list[dict],
+    forward_days: int,
+) -> tuple[dict[str, float] | None, float | None]:
+    """锚定日 T = 倒数第 forward_days 根 K 线：因子仅用 <=T 的 bar；标签为 close[-1]/close[T]-1。"""
+    n = len(sorted_bars)
+    min_n = 61 + forward_days
+    if n < min_n:
+        return None, None
+    anchor_idx = n - 1 - forward_days
+    fac_rows = sorted_bars[: anchor_idx + 1]
+    vals = compute_raw_factor_values_from_bar_rows(fac_rows)
+    if vals is None:
+        return None, None
+    closes = [float(r.get("close") or 0.0) for r in sorted_bars]
+    denom = closes[anchor_idx]
+    if denom == 0:
+        return None, None
+    forward_ret = (closes[-1] / denom) - 1.0
+    return vals, forward_ret
 
 
 def analyze_factors(bars: list[dict], factor_names: list[str], forward_days: int = 1) -> dict:
+    """因子优化建议用分析（**advice-only**）：IC / Sharpe 基于 PIT 截面，**非**替代 L2 日频快照。
+
+    每标的至少需要 ``61 + forward_days`` 根日线；不足则跳过该标的。
+    """
     grouped = _group_bars_by_symbol(bars)
     symbols = sorted(grouped.keys())
     if not symbols:
@@ -99,11 +111,17 @@ def analyze_factors(bars: list[dict], factor_names: list[str], forward_days: int
             "coverage": {"symbols": 0, "bars": 0},
         }
 
-    as_of = max(str(row.get("bar_time", ""))[:10] for row in bars if row.get("bar_time"))
-    snapshot = compute_basic_factor_snapshot_from_bars(as_of=as_of, symbols=symbols, bar_rows=bars)
+    pit_factors: dict[str, dict[str, float]] = {}
+    pit_forwards: dict[str, float] = {}
+    for symbol in symbols:
+        vals, fwd = _pit_factor_and_forward(grouped[symbol], forward_days=forward_days)
+        if vals is not None and fwd is not None:
+            pit_factors[symbol] = vals
+            pit_forwards[symbol] = fwd
 
-    returns = _forward_returns(grouped, forward_days=forward_days)
-    if not returns:
+    pit_symbols = sorted(pit_factors.keys())
+
+    if not pit_symbols:
         return {
             "factor_health": [
                 {
@@ -121,36 +139,27 @@ def analyze_factors(bars: list[dict], factor_names: list[str], forward_days: int
             "coverage": {"symbols": len(symbols), "bars": len(bars)},
         }
 
-    factor_values_by_symbol: dict[str, dict[str, float]] = {s: {} for s in symbols}
-    for row in snapshot.get("rows", []):
-        factor_name = row.get("factor_name")
-        symbol = row.get("symbol")
-        if factor_name in factor_names and symbol in factor_values_by_symbol:
-            factor_values_by_symbol[symbol][factor_name] = float(row.get("raw_value") or 0.0)
-
     factor_health: list[dict] = []
     for factor_name in factor_names:
         xs: list[float] = []
         ys: list[float] = []
         signal_returns: list[float] = []
-        for symbol in symbols:
-            if symbol not in returns:
-                continue
-            x = factor_values_by_symbol[symbol].get(factor_name)
+        for symbol in pit_symbols:
+            x = pit_factors[symbol].get(factor_name)
             if x is None:
                 continue
-            y = returns[symbol]
-            xs.append(x)
-            ys.append(y)
-            signal_returns.append(x * y)
+            y = pit_forwards[symbol]
+            xs.append(float(x))
+            ys.append(float(y))
+            signal_returns.append(float(x) * float(y))
 
         ic = round(_spearman(xs, ys), 6) if xs else 0.0
         sharpe = 0.0
         if signal_returns:
-            denom = _std(signal_returns)
-            sharpe = round(_mean(signal_returns) / denom, 6) if denom > 0 else 0.0
+            denom_sr = _std(signal_returns)
+            sharpe = round(_mean(signal_returns) / denom_sr, 6) if denom_sr > 0 else 0.0
 
-        cum = []
+        cum: list[float] = []
         total = 1.0
         for v in signal_returns:
             total *= 1.0 + v
@@ -169,9 +178,9 @@ def analyze_factors(bars: list[dict], factor_names: list[str], forward_days: int
     correlation_matrix: dict[str, dict[str, float]] = {}
     for left in factor_names:
         correlation_matrix[left] = {}
-        left_vals = [factor_values_by_symbol[s].get(left, 0.0) for s in symbols]
+        left_vals = [float(pit_factors[s].get(left, 0.0)) for s in pit_symbols]
         for right in factor_names:
-            right_vals = [factor_values_by_symbol[s].get(right, 0.0) for s in symbols]
+            right_vals = [float(pit_factors[s].get(right, 0.0)) for s in pit_symbols]
             corr = _pearson(left_vals, right_vals)
             correlation_matrix[left][right] = round(corr, 6)
 

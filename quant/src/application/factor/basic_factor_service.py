@@ -111,8 +111,11 @@ def _max_drawdown(closes: list[float]) -> float:
     return max_dd
 
 
-def _factor_values_from_real_bars(rows: list[dict]) -> dict[str, float] | None:
-    # 使用真实 1d bars 计算 6 因子；样本不足时返回 None，让上层走回退策略。
+def compute_raw_factor_values_from_bar_rows(rows: list[dict]) -> dict[str, float] | None:
+    """单标的、按 ``bar_time`` 排序的 1d bars，计算 6 因子原始值（与快照/日频共用公式）。
+
+    不足 61 根 K 线时返回 ``None``。仅使用传入窗口内数据，适用于 PIT 与滚动计算。
+    """
     if len(rows) < 61:
         return None
     # bars 查询默认是倒序，先转为按时间正序，避免收益率/回撤方向错误。
@@ -266,7 +269,7 @@ def compute_basic_factor_snapshot_from_bars(
 
     output_rows: list[dict] = []
     for symbol in symbols:
-        real_values = _factor_values_from_real_bars(rows_by_symbol.get(symbol, []))
+        real_values = compute_raw_factor_values_from_bar_rows(rows_by_symbol.get(symbol, []))
         if real_values is None:
             # 兜底：保障日频流水线在数据空窗/历史不足时仍可产出稳定结构。
             values = _factor_values_for_symbol(symbol)

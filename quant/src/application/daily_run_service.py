@@ -1,3 +1,4 @@
+import logging
 from datetime import date, timedelta
 from uuid import uuid4
 
@@ -11,6 +12,8 @@ from application.factor.basic_factor_service import (
 
 _FACTOR_AVAILABILITY_WARN_THRESHOLD = 0.8
 _BENCHMARK_SYMBOL = "000300.SH"
+
+_logger = logging.getLogger(__name__)
 
 
 def _build_factor_quality_warnings(l2_decision: dict) -> list[dict]:
@@ -79,7 +82,10 @@ def run_daily(
             )
         except Exception:
             # 保持流水线韧性：任何读取/计算异常都降级到 deterministic 快照，不阻断 daily。
-            pass
+            _logger.warning(
+                "daily run: bar_store path failed; using deterministic factor snapshot",
+                exc_info=True,
+            )
     l2_decision = compute_l2_decision_from_snapshot(
         factor_snapshot=factor_snapshot,
         top_n=top_n,
