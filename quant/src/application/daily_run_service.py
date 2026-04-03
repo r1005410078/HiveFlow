@@ -8,6 +8,7 @@ from application.factor.basic_factor_service import (
     compute_basic_factor_snapshot,
     compute_basic_factor_snapshot_from_bars,
 )
+from application.signal.signal_engineering_service import compute_signal_matrix
 
 
 _FACTOR_AVAILABILITY_WARN_THRESHOLD = 0.8
@@ -92,6 +93,18 @@ def run_daily(
         score_version=score_version,
     )
     warnings = _build_factor_quality_warnings(l2_decision)
+    signal_matrix = None
+    try:
+        signal_matrix = compute_signal_matrix(factor_snapshot)
+    except Exception:
+        _logger.warning(
+            "daily run: signal_matrix computation failed",
+            exc_info=True,
+        )
+        warnings.append({
+            "code": "SIGNAL_MATRIX_FAILED",
+            "message": "L3 signal matrix computation failed; signal_matrix set to null",
+        })
     return ok_output(
         command="hf pipeline daily",
         run_id=run_id,
@@ -101,6 +114,7 @@ def run_daily(
             "factor_snapshot": factor_snapshot,
             "execution_plan": {"orders": []},
             "l2_decision": l2_decision,
+            "signal_matrix": signal_matrix,
         },
         warnings=warnings,
     )
