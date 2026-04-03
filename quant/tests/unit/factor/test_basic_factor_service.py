@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 
 from application.factor.basic_factor_service import (
+    FACTOR_METADATA,
     compute_basic_factor_snapshot,
     compute_basic_factor_snapshot_from_bars,
 )
@@ -24,7 +25,7 @@ def test_compute_basic_factor_snapshot_shape() -> None:
     assert out["coverage_rate"] == 1.0
     assert len(out["rows"]) == 12
     assert out["rows"][0]["as_of"] == "2026-04-01"
-    assert out["rows"][0]["factor_version"] == "l2-basic-v1.1"
+    assert out["rows"][0]["factor_version"] in {m["version"] for m in FACTOR_METADATA.values()}
 
 
 def _build_monotonic_bars(symbol: str, start: date, days: int, base_close: float) -> list[dict]:
@@ -71,3 +72,14 @@ def test_compute_basic_factor_snapshot_from_bars_prefers_real_data() -> None:
     assert trend["raw_value"] == 1.0
     assert mdd["raw_value"] == 1.0
     assert rs["raw_value"] > 1.0
+
+
+def test_per_factor_version_in_deterministic_snapshot() -> None:
+    out = compute_basic_factor_snapshot(as_of="2026-04-01", symbols=["000001.SZ"])
+    versions = {r["factor_name"]: r["factor_version"] for r in out["rows"]}
+    assert versions["momentum_20"] == "l2-momentum-v1.0"
+    assert versions["inv_volatility_20"] == "l2-inv-vol-v1.0"
+    assert versions["turnover_rate"] == "l2-turnover-v1.0"
+    assert versions["max_drawdown_60"] == "l2-mdd-v1.0"
+    assert versions["trend_stability_20"] == "l2-trend-stab-v1.0"
+    assert versions["relative_strength_vs_index"] == "l2-rsi-v1.1"

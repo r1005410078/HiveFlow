@@ -4,15 +4,46 @@ from collections import defaultdict
 from math import sqrt
 
 
-_FACTOR_VERSION = "l2-basic-v1.1"
-_FACTOR_NAMES = (
-    "momentum_20",
-    "inv_volatility_20",
-    "turnover_rate",
-    "max_drawdown_60",
-    "trend_stability_20",
-    "relative_strength_vs_index",
-)
+FACTOR_METADATA: dict[str, dict] = {
+    "momentum_20": {
+        "version": "l2-momentum-v1.0",
+        "direction": 1,
+        "unit": "return",
+        "missing_strategy": "deterministic_fallback",
+    },
+    "inv_volatility_20": {
+        "version": "l2-inv-vol-v1.0",
+        "direction": 1,
+        "unit": "1/return_std",
+        "missing_strategy": "deterministic_fallback",
+    },
+    "turnover_rate": {
+        "version": "l2-turnover-v1.0",
+        "direction": 1,
+        "unit": "ratio",
+        "missing_strategy": "deterministic_fallback",
+    },
+    "max_drawdown_60": {
+        "version": "l2-mdd-v1.0",
+        "direction": 1,
+        "unit": "ratio",
+        "missing_strategy": "deterministic_fallback",
+    },
+    "trend_stability_20": {
+        "version": "l2-trend-stab-v1.0",
+        "direction": 1,
+        "unit": "ratio",
+        "missing_strategy": "deterministic_fallback",
+    },
+    "relative_strength_vs_index": {
+        "version": "l2-rsi-v1.1",
+        "direction": 1,
+        "unit": "ratio",
+        "missing_strategy": "benchmark_proxy_fallback",
+    },
+}
+
+_FACTOR_NAMES = tuple(FACTOR_METADATA.keys())
 
 
 def _base_seed(symbol: str) -> int:
@@ -134,12 +165,13 @@ def compute_basic_factor_snapshot_from_bars(as_of: str, symbols: list[str], bar_
             # 兜底：保障日频流水线在数据空窗/历史不足时仍可产出稳定结构。
             values = _factor_values_for_symbol(symbol)
         for factor_name, raw_value in values.items():
+            meta = FACTOR_METADATA[factor_name]
             output_rows.append(
                 {
                     "as_of": as_of,
                     "symbol": symbol,
                     "factor_name": factor_name,
-                    "factor_version": _FACTOR_VERSION,
+                    "factor_version": meta["version"],
                     "raw_value": raw_value,
                 }
             )
@@ -148,7 +180,7 @@ def compute_basic_factor_snapshot_from_bars(as_of: str, symbols: list[str], bar_
     if symbols:
         coverage_rate = round(len(output_rows) / (len(symbols) * len(_FACTOR_NAMES)), 4)
     return {
-        "factor_version": _FACTOR_VERSION,
+        "factor_version": "l2-basic-v1.1",
         "factor_names": list(_FACTOR_NAMES),
         "coverage_rate": coverage_rate,
         "rows": output_rows,
@@ -161,12 +193,13 @@ def compute_basic_factor_snapshot(as_of: str, symbols: list[str]) -> dict:
     for symbol in symbols:
         values = _factor_values_for_symbol(symbol)
         for factor_name, raw_value in values.items():
+            meta = FACTOR_METADATA[factor_name]
             rows.append(
                 {
                     "as_of": as_of,
                     "symbol": symbol,
                     "factor_name": factor_name,
-                    "factor_version": _FACTOR_VERSION,
+                    "factor_version": meta["version"],
                     "raw_value": raw_value,
                 }
             )
@@ -176,7 +209,7 @@ def compute_basic_factor_snapshot(as_of: str, symbols: list[str]) -> dict:
         coverage_rate = round(len(rows) / (len(symbols) * len(_FACTOR_NAMES)), 4)
 
     return {
-        "factor_version": _FACTOR_VERSION,
+        "factor_version": "l2-basic-v1.1",
         "factor_names": list(_FACTOR_NAMES),
         "coverage_rate": coverage_rate,
         "rows": rows,
