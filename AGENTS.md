@@ -2,6 +2,8 @@
 
 本文件是 HiveFlow 所有 agent 的权威规范与上下文。修改代码前必须先阅读并遵守。
 
+**Superpowers**：本仓库 **必须严格遵守** §8 所载 Superpowers 工作流（含 spec/plan 落库、worktree、技能判定与验证）。不得以「任务简单」「对话里已聊过」为由默认豁免；**仅当用户在同一次对话中书面写明豁免范围** 时，方可偏离对应条款。
+
 Claude Code 用户另见 [CLAUDE.md](./CLAUDE.md)（仅含 Claude Code CLI 专属命令）。
 
 ---
@@ -68,6 +70,7 @@ Claude Code 用户另见 [CLAUDE.md](./CLAUDE.md)（仅含 Claude Code CLI 专�
 - **G3 闸门**：参数变更、阈值变更、实盘发布必须走审批流——AI 提出的变更不得自动生效。
 - **审计可追溯**：每次 Skill 运行、每个 proposal、每个实盘操作，必须能追溯到数据版本 + 代码版本 + 操作人身份。
 - **不提交**：本地数据文件（`data/`）、本地 CSV 样例、API Key。
+- **Superpowers 严格遵守**：任何改动须符合 §8；流程技能（如 `brainstorming`、`systematic-debugging`）与实现前 **spec / plan / worktree** 要求 **不得擅自跳过**（豁免规则见 §8 文首与 §8.3）。
 
 ## 5. 代码评审检查项（强约束）
 
@@ -77,6 +80,8 @@ Claude Code 用户另见 [CLAUDE.md](./CLAUDE.md)（仅含 Claude Code CLI 专�
 - 是否在 `cli/src/cmd` 直接调用 `infrastructure`
 - 是否在 `cli/src/domain` 引入外部 IO/网络依赖
 - 是否补充了对应契约或架构测试
+- **Superpowers 文档**：非琐碎的多步骤/新能力是否已先有 `docs/superpowers/specs/` 设计经确认，并有 `docs/superpowers/plans/` 实现计划再改代码（见 §8.4）
+- **Git worktree**：§8.4 同类范围的多步骤实现是否已在**独立 worktree** 中进行（见 §8.5），或 PR 说明中已记载豁免理由
 
 ## 6. 约定式提交规范（强约束）
 
@@ -141,7 +146,8 @@ cd cli && cargo run -- factor replay --start-date YYYY-MM-DD --end-date YYYY-MM-
 1. `make db-init-env`（如需要） + `make db-up`
 2. `make run-server`
 3. 准备 `~/.hiveflow/config.toml`：`server_url = "http://127.0.0.1:8000"` / `timeout_ms = 10000` / `retry = 1`
-4. `make run-pipeline AS_OF=2026-04-01`
+4. `make run-pipeline AS_OF=2026-04-01`  
+5. 首次联调 DB 相关能力时执行 `make db-migrate`（应用 `quant/db/migrations/*.sql`）
 
 ### 7.6 主要 HTTP 接口
 
@@ -155,7 +161,7 @@ cd cli && cargo run -- factor replay --start-date YYYY-MM-DD --end-date YYYY-MM-
 
 ### 7.7 当前健康状态
 
-- `make check`：通过（Python tests: 105 passed，architecture: 5 passed，CLI fixtures: pass=11 fail=0，Rust tests: 通过）
+- `make check`：通过（Python tests 与 CLI fixtures、Rust tests 以本机最新 `make check` 输出为准）
 - 已知非阻塞警告：CLI 存在少量 `dead_code` 警告（`retry` 字段、部分合同类型未使用），不影响门禁。
 
 ### 7.8 各层完成度（2026-04-03）
@@ -167,7 +173,7 @@ cd cli && cargo run -- factor replay --start-date YYYY-MM-DD --end-date YYYY-MM-
 | L0 | 标的池 | ✅ Phase 1 完成 | A 股 universe，静态快照 |
 | L1 | 数据层 | ✅ Phase 1 完成 | TimescaleDB + bars 同步，180 天窗口 |
 | L2 | 因子层 | ✅ Phase 2 完成 | 6 因子，per-factor 独立版本（FactorMeta TypedDict）、rows 含 direction/unit/missing_strategy/source、真实基准计算（000300.SH）、per-factor stability_metrics（coverage_rate/drift 检测）、FactorValue domain model 对齐、Pydantic schema 同步（FactorStabilityMetric） |
-| L3 | 信号工程 | 🔲 未开始 | **下一步** |
+| L3 | 信号工程 | 🔲 未开始 | **下一步**；需求与契约尚未定型，暂不实现 HTTP/CLI/落库 |
 | L4 | 组合优化 | 🔲 未开始 | — |
 | L5 | 风险门控 | 🔲 未开始 | — |
 | L5.5 | 预交易模拟 | 🔲 未开始 | — |
@@ -178,7 +184,7 @@ cd cli && cargo run -- factor replay --start-date YYYY-MM-DD --end-date YYYY-MM-
 | G2 | 实验治理 | 🔲 未开始 | — |
 | G3 | 执行安全 | 🚧 部分完成 | advice_only/decision_weight 框架已建，审批流未实现 |
 
-**当前工作位置**：L2 完成 → 准备进入 L3 信号工程。
+**当前工作位置**：L2 完成 → L3 暂停，先理清需求与 spec 后再开工（须遵守 §8）。
 
 ### 7.9 已交付能力摘要
 
@@ -191,20 +197,23 @@ cd cli && cargo run -- factor replay --start-date YYYY-MM-DD --end-date YYYY-MM-
 
 ## 8. Superpowers 工作流（强约束）
 
-本仓库默认启用 `using-superpowers`。收到任何需求后，先做技能判定，再执行代码动作。
+本仓库 **默认且强制** 启用 `using-superpowers`：agent **必须**按技能定义执行，与上文导言「严格遵守」一致。收到任何需求后，**先** 完成技能加载与判定，**再** 允许编辑代码或运行破坏性命令。
+
+**技能来源**：以当前环境已配置的 Superpowers / Cursor skills 为准；相关 **skill 文件须在动作前读取并遵循**（禁止凭记忆省略 checklist）。
 
 ### 8.1 执行顺序
 
 1. 判定任务类型（功能 / 缺陷 / 仅执行已有计划）
-2. 先调用流程技能（process skill），后调用实现技能（implementation skill）
-3. 在回复中明确说明"当前使用的 skill 与目的"
-4. 按 skill 清单逐项执行，不跳步骤
+2. 先调用**流程技能**（如 `brainstorming`、`systematic-debugging`），再调用**实现技能**（如 `executing-plans`、`test-driven-development`）
+3. 在回复中**显式说明**当前使用的 skill 名称与目的（一句即可）
+4. 按该 skill 的 checklist **逐项执行**，禁止跳步或用「快速实现」替代
+5. 宣称完成前执行 `verification-before-completion`（或同等核验），见 §3 `make check` 门禁
 
 ### 8.2 任务到技能映射
 
-- 新功能、需求不完整、方案未定：先 `brainstorming` → 产出设计后 `writing-plans` → 再实现
+- 新功能、需求不完整、方案未定：先 `brainstorming` → **spec 落库** `docs/superpowers/specs/` 并经确认 → `writing-plans` → **plan 落库** `docs/superpowers/plans/` → **`using-git-worktrees` 建隔离目录**（§8.5）→ 再实现（细则 §8.4）
 - 缺陷、性能异常、测试失败：先 `systematic-debugging` → 找到根因再改代码
-- 已有明确实现计划，直接落地：`executing-plans`
+- 已有明确实现计划，直接落地：`executing-plans`（**优先在 §8.5 所述独立 worktree 中**执行计划内改动）
 - 准备提交前：`verification-before-completion` 核验，需要时 `requesting-code-review` 收口
 
 ### 8.3 禁止事项
@@ -212,3 +221,46 @@ cd cli && cargo run -- factor replay --start-date YYYY-MM-DD --end-date YYYY-MM-
 - 未完成技能判定就直接改代码
 - 在 `systematic-debugging` 前先尝试"拍脑袋修复"
 - 跳过验证就声称"已完成/已修复"
+- **跳过 §8.4** 的设计与计划落库就交付多步骤新功能（除非用户**在同一段对话中书面写明**：「豁免 spec/plan，范围：…」，且 agent 仅在所写范围内偏离）
+- **跳过 §8.5** 的 worktree 隔离，在主工作区直接堆积多步骤新功能改动（除非用户**书面写明**：「豁免 worktree，范围：…」）
+- **agent 自行认定**「无需 brainstorming / 无需 spec / 无需 worktree」——即使任务看似简单，亦属违规；须 User 明示豁免或任务属于 §8.4/§8.5 已列明的**不适用**情形
+
+### 8.4 设计与实现计划落库（强约束）
+
+适用：**新功能、跨多文件/多层的实现、或方案未定即可能影响契约/存储/对外 API 的改动**。不适用：单测点 typo、纯文档笔误等**显而易见的微型修改**；若范围是否「微型」存疑，**按适用处理**（先 spec/plan），不得由 agent 单方归类为微型以绕过本条。
+
+用户 **书面豁免** 须明确写出豁免的是 spec、plan 还是两者，以及**本次对话内**有效的范围边界。
+
+1. **设计（spec）**  
+   - 使用 Superpowers `brainstorming` 收口需求与 trade-off，形成设计说明。  
+   - **写入** `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`（命名与仓库内既有 specs 一致）。  
+   - **用户或维护者确认**设计后再进入计划与编码；不得仅口头对齐就默认「已批准」。
+
+2. **实现计划（plan）**  
+   - 使用 Superpowers `writing-plans` 产出可执行任务拆解。  
+   - **写入** `docs/superpowers/plans/YYYY-MM-DD-<topic>-implementation-plan.md`（或与该任务域一致的命名）。  
+   - 计划中须含：目标、架构一句概述、须改文件路径、测试与验证命令（如 `make check` 或子集）。
+
+3. **追溯补写**  
+   - 仅在**事先未能执行**本条且已实现代码时，允许补写 spec/plan，且必须在文档中**显式标注**为追溯文档、与实现对齐；不得替代常规「先设计后实现」流程作为默认做法。
+
+4. **意图优先**  
+   - 若用户说明 **「须严格按 Superpowers：先 spec/plan 再写代码」**，agent 必须遵守，不得以「赶进度」为由跳过 §8.4。
+   - 若用户说明 **「须用 worktree / 独立工作区」**，agent 必须遵守 §8.5。
+
+### 8.5 Git worktree（强约束）
+
+与 **§8.4 适用情形相同**：新功能、跨多文件/多层改动、或按 `docs/superpowers/plans/` 执行的实现任务。agent 应使用 Superpowers **`using-git-worktrees`** 建立隔离工作区后再改代码。
+
+1. **目录**  
+   - 本仓库已在根目录 `.gitignore` 中忽略 **`.worktrees/`**；优先在此目录下创建 worktree（具体命令与分支命名见技能说明）。  
+   - 若使用其他目录，须先 `git check-ignore` 确认已被忽略，避免把 worktree 内容误提交进主干。
+
+2. **时机**  
+   - 通常在 **spec/plan 已写入且将开始编码** 时创建；与「只在主目录打补丁」相比，便于并行分支、减少与本地未提交试验混杂。
+
+3. **不适用**  
+   - 单测点 typo、单文件明显一行修复、或用户在该次对话中**书面申明**「仅在当前 workspace 操作、不开 worktree」。
+
+4. **追溯**  
+   - 未开 worktree 已完成的多步骤合并，不追溯强制重拆；后续增量须按本条执行。

@@ -19,6 +19,7 @@ pub enum Commands {
     Pipeline(pipeline::PipelineArgs),
     Factor(factor::FactorArgs),
     Data(data::DataArgs),
+    /// L3 信号工程：因子截面 → signal_matrix（需 quant 服务与 ~/.hiveflow/config.toml）
     Signal(signal::SignalArgs),
 }
 

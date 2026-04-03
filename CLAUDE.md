@@ -42,8 +42,12 @@ cd cli && cargo build --release                # release 构建
 
 # 直接运行（dev 构建后）
 ./cli/target/debug/hf --help
-./cli/target/debug/hf signal snapshot --as-of 2026-01-01 --run-id run_001
-./cli/target/debug/hf factor health --factor momentum
+./cli/target/debug/hf pipeline daily --as-of 2026-01-01
+
+# L3 信号快照（需服务端；完整说明见 `hf signal snapshot --help`）
+./cli/target/debug/hf signal snapshot --as-of 2026-04-01
+./cli/target/debug/hf signal snapshot --as-of 2026-04-01 --output table
+cargo run -p hf-cli -- signal snapshot --as-of 2026-04-01 --output json
 
 # ── CLI 输出校验（CI 必过项）────────────────────────────
 make validate-cli-output                       # 批量校验所有 fixtures
