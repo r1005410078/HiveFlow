@@ -100,6 +100,12 @@ cargo run -- factor optimize \
 - `alerts_inside`
 - `explanations`
 
+`data.release_gate`（P3 补充）：
+
+- `status`：发布门禁状态，枚举 `pass|watch|fail`
+- `blocking_reasons`：阻断原因列表；非空时通常不可放行
+- `watch_items`：关注项列表；用于人工复核与跟踪
+
 ## 5. 评分口径（首版）
 
 组合评分采用平衡模型：

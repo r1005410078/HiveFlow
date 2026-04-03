@@ -43,7 +43,7 @@
 - Modify: `quant/tests/unit/factor_optimization/test_report_service.py`
 - Modify: `quant/tests/contract/test_http_factor_optimization_endpoint.py`
 
-- [ ] **Step 1: 写 unit 失败测试（门禁分级）**
+- [x] **Step 1: 写 unit 失败测试（门禁分级）**
 
 ```python
 from application.factor_optimization.release_gate_service import build_release_gate
@@ -59,7 +59,7 @@ def test_build_release_gate_returns_pass_when_metrics_healthy() -> None:
     assert out["blocking_reasons"] == []
 ```
 
-- [ ] **Step 2: 写 unit 失败测试（高告警触发 fail）**
+- [x] **Step 2: 写 unit 失败测试（高告警触发 fail）**
 
 ```python
 def test_build_release_gate_returns_fail_when_alerts_too_high() -> None:
@@ -72,7 +72,7 @@ def test_build_release_gate_returns_fail_when_alerts_too_high() -> None:
     assert any("alert_count" in reason for reason in out["blocking_reasons"])
 ```
 
-- [ ] **Step 3: 扩展 report_service 测试（输出含 release_gate）**
+- [x] **Step 3: 扩展 report_service 测试（输出含 release_gate）**
 
 ```python
 def test_build_factor_optimization_report_contains_release_gate() -> None:
@@ -86,19 +86,19 @@ def test_build_factor_optimization_report_contains_release_gate() -> None:
     assert {"status", "blocking_reasons", "watch_items"} <= set(report["data"]["release_gate"].keys())
 ```
 
-- [ ] **Step 4: 扩展 contract 测试（接口结构）**
+- [x] **Step 4: 扩展 contract 测试（接口结构）**
 
 ```python
 assert {"status", "blocking_reasons", "watch_items"} <= set(payload["data"]["release_gate"].keys())
 assert payload["data"]["release_gate"]["status"] in {"pass", "watch", "fail"}
 ```
 
-- [ ] **Step 5: 运行失败测试确认 RED**
+- [x] **Step 5: 运行失败测试确认 RED**
 
 Run: `cd quant && uv run pytest tests/unit/factor_optimization/test_release_gate_service.py tests/unit/factor_optimization/test_report_service.py tests/contract/test_http_factor_optimization_endpoint.py -q`  
 Expected: FAIL（`release_gate_service` 不存在）。
 
-- [ ] **Step 6: 提交失败测试**
+- [x] **Step 6: 提交失败测试**
 
 ```bash
 git add quant/tests/unit/factor_optimization/test_release_gate_service.py \
@@ -119,7 +119,7 @@ git commit -m "test: add failing tests for factor optimization release gate"
 - Test: `quant/tests/unit/factor_optimization/test_report_service.py`
 - Test: `quant/tests/contract/test_http_factor_optimization_endpoint.py`
 
-- [ ] **Step 1: 实现 release_gate_service（最小规则）**
+- [x] **Step 1: 实现 release_gate_service（最小规则）**
 
 ```python
 def build_release_gate(coverage: dict, correlation_analysis: dict, top_combinations: dict) -> dict:
@@ -149,7 +149,7 @@ def build_release_gate(coverage: dict, correlation_analysis: dict, top_combinati
     return {"status": status, "blocking_reasons": blocking_reasons, "watch_items": watch_items}
 ```
 
-- [ ] **Step 2: 在 report_service 中接入 release_gate**
+- [x] **Step 2: 在 report_service 中接入 release_gate**
 
 ```python
 release_gate = build_release_gate(
@@ -165,18 +165,18 @@ release_gate = build_release_gate(
 "release_gate": release_gate,
 ```
 
-- [ ] **Step 3: 导出新服务**
+- [x] **Step 3: 导出新服务**
 
 ```python
 from application.factor_optimization.release_gate_service import build_release_gate
 ```
 
-- [ ] **Step 4: 跑测试确认 GREEN**
+- [x] **Step 4: 跑测试确认 GREEN**
 
 Run: `cd quant && uv run pytest tests/unit/factor_optimization tests/contract/test_http_factor_optimization_endpoint.py -q`  
 Expected: PASS。
 
-- [ ] **Step 5: 提交实现**
+- [x] **Step 5: 提交实现**
 
 ```bash
 git add quant/src/application/factor_optimization/release_gate_service.py \
@@ -198,7 +198,7 @@ git commit -m "feat: add release gate status to factor optimization evaluate"
 - Create: `quant/tests/fixtures/cli_output/valid/factor_optimize_ok.json`
 - Create: `quant/tests/fixtures/cli_output/invalid/factor_optimize_missing_release_gate.json`
 
-- [ ] **Step 1: 先加 fixtures（让校验先失败）**
+- [x] **Step 1: 先加 fixtures（让校验先失败）**
 
 `valid/factor_optimize_ok.json` 关键字段：
 
@@ -226,7 +226,7 @@ git commit -m "feat: add release gate status to factor optimization evaluate"
 }
 ```
 
-- [ ] **Step 2: 在 schema 增加 `hf factor optimize` 条件约束**
+- [x] **Step 2: 在 schema 增加 `hf factor optimize` 条件约束**
 
 在 `allOf` 增加：
 
@@ -244,7 +244,7 @@ git commit -m "feat: add release gate status to factor optimization evaluate"
 }
 ```
 
-- [ ] **Step 3: 在示例文档追加 `hf factor optimize` JSON 示例**
+- [x] **Step 3: 在示例文档追加 `hf factor optimize` JSON 示例**
 
 追加章节标题：
 
@@ -252,12 +252,12 @@ git commit -m "feat: add release gate status to factor optimization evaluate"
 ## 8. hf factor optimize（JSON 示例，含 Top5 与 release_gate）
 ```
 
-- [ ] **Step 4: 跑合同校验**
+- [x] **Step 4: 跑合同校验**
 
 Run: `./scripts/validate_cli_output_fixtures.sh`  
 Expected: PASS，新增 valid/invalid 均被正确识别。
 
-- [ ] **Step 5: 提交合同固化**
+- [x] **Step 5: 提交合同固化**
 
 ```bash
 git add docs/CLI_OUTPUT_SCHEMA.json \
@@ -275,7 +275,7 @@ git commit -m "test: harden factor optimize cli output contract with schema and 
 - Create: `scripts/factor_optimize_replay.py`
 - Create: `docs/analysis/factor_optimization/replay/README.md`
 
-- [ ] **Step 1: 写脚本最小接口**
+- [x] **Step 1: 写脚本最小接口**
 
 ```python
 #!/usr/bin/env python3
@@ -293,7 +293,7 @@ import requests
 - `--factors`
 - `--output-dir`（默认 `docs/analysis/factor_optimization/replay`）
 
-- [ ] **Step 2: 实现逐日调用 evaluate + 汇总**
+- [x] **Step 2: 实现逐日调用 evaluate + 汇总**
 
 输出结构示例：
 
@@ -312,7 +312,7 @@ import requests
 }
 ```
 
-- [ ] **Step 3: 生成 Markdown 报告**
+- [x] **Step 3: 生成 Markdown 报告**
 
 报告文件：`docs/analysis/factor_optimization/replay/replay_<start>_<end>.md`  
 包含：
@@ -320,7 +320,7 @@ import requests
 - `fail/watch` 日期列表
 - Top1 组合变更天数
 
-- [ ] **Step 4: 增加 README（使用方式）**
+- [x] **Step 4: 增加 README（使用方式）**
 
 命令示例：
 
@@ -332,12 +332,12 @@ python scripts/factor_optimize_replay.py \
   --factors momentum_20,inv_volatility_20,turnover_rate,max_drawdown_60,trend_stability_20,relative_strength_vs_index
 ```
 
-- [ ] **Step 5: 手工执行一次并检查产物**
+- [x] **Step 5: 手工执行一次并检查产物**
 
 Run: 上述命令  
 Expected: 生成 `.json` 与 `.md` 报告文件。
 
-- [ ] **Step 6: 提交回放工具**
+- [x] **Step 6: 提交回放工具**
 
 ```bash
 git add scripts/factor_optimize_replay.py docs/analysis/factor_optimization/replay/README.md
@@ -352,20 +352,20 @@ git commit -m "feat: add factor optimize replay report generator"
 - Modify: `docs/DOCUMENTATION_INDEX.md`
 - Modify: `docs/FACTOR_OPTIMIZATION_P2_USAGE.md`
 
-- [ ] **Step 1: 更新文档导航**
+- [x] **Step 1: 更新文档导航**
 
 新增入口：
 - P3 回放与门禁说明
 - 回放报告目录入口
 
-- [ ] **Step 2: 更新 P2 使用文档（追加 P3 门禁字段）**
+- [x] **Step 2: 更新 P2 使用文档（追加 P3 门禁字段）**
 
 追加字段说明：
 - `data.release_gate.status`
 - `data.release_gate.blocking_reasons`
 - `data.release_gate.watch_items`
 
-- [ ] **Step 3: 跑门禁**
+- [x] **Step 3: 跑门禁**
 
 Run:
 - `make architecture-check`
@@ -373,7 +373,7 @@ Run:
 
 Expected: 全部 PASS。
 
-- [ ] **Step 4: 最终提交**
+- [x] **Step 4: 最终提交**
 
 ```bash
 git add docs/DOCUMENTATION_INDEX.md docs/FACTOR_OPTIMIZATION_P2_USAGE.md
@@ -394,4 +394,3 @@ git commit -m "docs: add p3 rollout readiness and replay guidance"
 - 回放验证：Task 4 覆盖（批量 evaluate + 报告）
 - 输出合同固化：Task 3 覆盖（schema + fixtures + examples）
 - 发布门禁：Task 1/2 覆盖（`release_gate` pass/watch/fail）
-
