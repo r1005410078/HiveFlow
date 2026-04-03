@@ -47,24 +47,38 @@ def _extract_top1_candidate(version_result: dict) -> dict | None:
     return candidates[0]
 
 
+def _coerce_finite_float(value) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
 def _extract_top1_next_day_return(version_result: dict) -> float | None:
     top_candidate = _extract_top1_candidate(version_result)
     if top_candidate is None:
         return None
     value = top_candidate.get("next_day_return")
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+    return _coerce_finite_float(value)
 
 
 def _round_metric(value: float) -> float:
-    return round(float(value), 6)
+    finite_value = _coerce_finite_float(value)
+    return round(finite_value, 6) if finite_value is not None else 0.0
+
+
+def _filter_finite_returns(returns: list[float]) -> list[float]:
+    filtered: list[float] = []
+    for value in returns:
+        finite_value = _coerce_finite_float(value)
+        if finite_value is not None:
+            filtered.append(finite_value)
+    return filtered
 
 
 def _build_return_metrics(returns: list[float]) -> dict:
+    returns = _filter_finite_returns(returns)
     if not returns:
         return {
             "cumulative_return": 0.0,
@@ -121,6 +135,19 @@ def _build_daily_return_series(daily_items: list[dict]) -> dict:
     return series
 
 
+def _align_return_points(
+    left_points: list[dict],
+    right_points: list[dict],
+) -> tuple[list[float], list[float]]:
+    left_by_date = {item["as_of"]: item["top1_next_day_return"] for item in left_points}
+    right_by_date = {item["as_of"]: item["top1_next_day_return"] for item in right_points}
+    aligned_dates = sorted(set(left_by_date) & set(right_by_date))
+    return (
+        [left_by_date[as_of] for as_of in aligned_dates],
+        [right_by_date[as_of] for as_of in aligned_dates],
+    )
+
+
 def _build_group_metric_summary(returns: list[float]) -> dict:
     metrics = _build_return_metrics(returns)
     return {
@@ -134,25 +161,35 @@ def _build_group_stability(daily_items: list[dict]) -> dict:
     grouped: dict[tuple[str, str], dict] = {}
 
     for daily_item in daily_items:
-        as_of = daily_item["as_of"]
-        for version_key in ("v1", "v1_1"):
-            top_candidate = _extract_top1_candidate(daily_item[version_key])
-            top1_next_day_return = _extract_top1_next_day_return(daily_item[version_key])
-            if top_candidate is None or top1_next_day_return is None:
-                continue
+        v1_candidate = _extract_top1_candidate(daily_item["v1"])
+        v1_1_candidate = _extract_top1_candidate(daily_item["v1_1"])
+        v1_return = _extract_top1_next_day_return(daily_item["v1"])
+        v1_1_return = _extract_top1_next_day_return(daily_item["v1_1"])
+        if v1_candidate is None or v1_1_candidate is None or v1_return is None or v1_1_return is None:
+            continue
 
-            industry = str(top_candidate.get("industry") or "UNKNOWN")
-            market_cap_bucket = str(top_candidate.get("market_cap_bucket") or "UNKNOWN")
-            group = grouped.setdefault(
-                (industry, market_cap_bucket),
-                {"sample_days": set(), "v1": [], "v1_1": []},
-            )
-            group["sample_days"].add(as_of)
-            group[version_key].append(top1_next_day_return)
+        v1_group_key = (
+            str(v1_candidate.get("industry") or "UNKNOWN"),
+            str(v1_candidate.get("market_cap_bucket") or "UNKNOWN"),
+        )
+        v1_1_group_key = (
+            str(v1_1_candidate.get("industry") or "UNKNOWN"),
+            str(v1_1_candidate.get("market_cap_bucket") or "UNKNOWN"),
+        )
+        if v1_group_key != v1_1_group_key:
+            continue
+
+        group = grouped.setdefault(
+            v1_group_key,
+            {"sample_days": 0, "v1": [], "v1_1": []},
+        )
+        group["sample_days"] += 1
+        group["v1"].append(v1_return)
+        group["v1_1"].append(v1_1_return)
 
     items = []
     for (industry, market_cap_bucket), group in grouped.items():
-        sample_days = len(group["sample_days"])
+        sample_days = group["sample_days"]
         v1_metrics = _build_group_metric_summary(group["v1"])
         v1_1_metrics = _build_group_metric_summary(group["v1_1"])
         diff = {
@@ -187,16 +224,26 @@ def _build_group_stability(daily_items: list[dict]) -> dict:
 
 def _build_analytics(daily_items: list[dict]) -> dict:
     daily_return_series = _build_daily_return_series(daily_items)
-    v1_metrics = _build_return_metrics([item["top1_next_day_return"] for item in daily_return_series["v1"]])
-    v1_1_metrics = _build_return_metrics([item["top1_next_day_return"] for item in daily_return_series["v1_1"]])
+    v1_returns = [item["top1_next_day_return"] for item in daily_return_series["v1"]]
+    v1_1_returns = [item["top1_next_day_return"] for item in daily_return_series["v1_1"]]
+    aligned_v1_returns, aligned_v1_1_returns = _align_return_points(
+        daily_return_series["v1"],
+        daily_return_series["v1_1"],
+    )
+    v1_metrics = _build_return_metrics(v1_returns)
+    v1_1_metrics = _build_return_metrics(v1_1_returns)
+    aligned_v1_metrics = _build_return_metrics(aligned_v1_returns)
+    aligned_v1_1_metrics = _build_return_metrics(aligned_v1_1_returns)
     return_metrics = {
         "v1": v1_metrics,
         "v1_1": v1_1_metrics,
         "diff": {
             "excess_cumulative_return_v1_1_vs_v1": _round_metric(
-                v1_1_metrics["cumulative_return"] - v1_metrics["cumulative_return"]
+                aligned_v1_1_metrics["cumulative_return"] - aligned_v1_metrics["cumulative_return"]
             ),
-            "excess_sharpe_v1_1_vs_v1": _round_metric(v1_1_metrics["sharpe"] - v1_metrics["sharpe"]),
+            "excess_sharpe_v1_1_vs_v1": _round_metric(
+                aligned_v1_1_metrics["sharpe"] - aligned_v1_metrics["sharpe"]
+            ),
         },
     }
     return {

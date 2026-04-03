@@ -1,3 +1,5 @@
+import math
+
 import pytest
 
 from application.pipeline_compare_service import run_pipeline_compare
@@ -217,6 +219,26 @@ def test_compare_service_builds_group_stability_by_industry_and_market_cap_bucke
                     "next_day_return": 0.03,
                 }
             ],
+            ("2026-04-03", "l2-score-v1"): [
+                {
+                    "symbol": "688111.SH",
+                    "score": 0.5,
+                    "rank": 1,
+                    "industry": "Tech",
+                    "market_cap_bucket": "MID",
+                    "next_day_return": 0.02,
+                }
+            ],
+            ("2026-04-03", "l2-score-v1.1"): [
+                {
+                    "symbol": "601398.SH",
+                    "score": 0.66,
+                    "rank": 1,
+                    "industry": "Bank",
+                    "market_cap_bucket": "LARGE",
+                    "next_day_return": 0.01,
+                }
+            ],
         }
         return _daily_run(
             as_of,
@@ -228,7 +250,7 @@ def test_compare_service_builds_group_stability_by_industry_and_market_cap_bucke
 
     monkeypatch.setattr("application.pipeline_compare_service.run_daily", fake_run_daily)
 
-    out = run_pipeline_compare(start_date="2026-04-01", end_date="2026-04-02", top_n=5, root=None, bar_store=None)
+    out = run_pipeline_compare(start_date="2026-04-01", end_date="2026-04-03", top_n=5, root=None, bar_store=None)
 
     group_stability = out["data"]["analytics"]["group_stability"]
 
@@ -237,8 +259,18 @@ def test_compare_service_builds_group_stability_by_industry_and_market_cap_bucke
     assert isinstance(group_stability["items"], list)
     assert len(group_stability["items"]) == 2
     expected = {
-        ("Bank", "LARGE"): {"sample_days": 1, "stability_flag": "LOW_SAMPLE"},
-        ("Tech", "MID"): {"sample_days": 1, "stability_flag": "LOW_SAMPLE"},
+        ("Bank", "LARGE"): {
+            "sample_days": 1,
+            "stability_flag": "LOW_SAMPLE",
+            "v1_cumulative_return": 0.02,
+            "v1_1_cumulative_return": 0.01,
+        },
+        ("Tech", "MID"): {
+            "sample_days": 1,
+            "stability_flag": "LOW_SAMPLE",
+            "v1_cumulative_return": -0.01,
+            "v1_1_cumulative_return": 0.03,
+        },
     }
     for item in group_stability["items"]:
         assert {
@@ -254,6 +286,59 @@ def test_compare_service_builds_group_stability_by_industry_and_market_cap_bucke
         assert key in expected
         assert item["sample_days"] == expected[key]["sample_days"]
         assert item["stability_flag"] == expected[key]["stability_flag"]
+        assert item["v1"]["cumulative_return"] == pytest.approx(expected[key]["v1_cumulative_return"])
+        assert item["v1_1"]["cumulative_return"] == pytest.approx(expected[key]["v1_1_cumulative_return"])
+
+
+def test_compare_service_filters_non_finite_returns_and_aligns_diff_metrics(monkeypatch) -> None:
+    def fake_run_daily(as_of: str, root, bar_store=None, score_version: str = "l2-score-v1.1", top_n: int = 5) -> dict:
+        del root, bar_store, top_n
+        top_candidates_by_day = {
+            ("2026-04-01", "l2-score-v1"): [
+                {"symbol": "000001.SZ", "score": 0.4, "rank": 1, "next_day_return": float("nan")}
+            ],
+            ("2026-04-01", "l2-score-v1.1"): [
+                {"symbol": "600519.SH", "score": 0.6, "rank": 1, "next_day_return": 0.05}
+            ],
+            ("2026-04-02", "l2-score-v1"): [
+                {"symbol": "000001.SZ", "score": 0.45, "rank": 1, "next_day_return": 0.02}
+            ],
+            ("2026-04-02", "l2-score-v1.1"): [
+                {"symbol": "600519.SH", "score": 0.65, "rank": 1, "next_day_return": float("inf")}
+            ],
+            ("2026-04-03", "l2-score-v1"): [
+                {"symbol": "000001.SZ", "score": 0.5, "rank": 1, "next_day_return": 0.01}
+            ],
+            ("2026-04-03", "l2-score-v1.1"): [
+                {"symbol": "600519.SH", "score": 0.7, "rank": 1, "next_day_return": 0.03}
+            ],
+        }
+        return _daily_run(
+            as_of,
+            score_version,
+            top_candidates=top_candidates_by_day[(as_of, score_version)],
+            warnings=[],
+            availability=[{"factor_name": "momentum_20", "present_count": 1, "missing_count": 0, "availability_rate": 1.0}],
+        )
+
+    monkeypatch.setattr("application.pipeline_compare_service.run_daily", fake_run_daily)
+
+    out = run_pipeline_compare(start_date="2026-04-01", end_date="2026-04-03", top_n=5, root=None, bar_store=None)
+
+    analytics = out["data"]["analytics"]
+    daily_return_series = analytics["daily_return_series"]
+    return_metrics = analytics["return_metrics"]
+
+    assert [item["as_of"] for item in daily_return_series["v1"]] == ["2026-04-02", "2026-04-03"]
+    assert [item["as_of"] for item in daily_return_series["v1_1"]] == ["2026-04-01", "2026-04-03"]
+    assert return_metrics["v1"]["cumulative_return"] == pytest.approx(0.0302)
+    assert return_metrics["v1_1"]["cumulative_return"] == pytest.approx(0.0815)
+    assert return_metrics["diff"]["excess_cumulative_return_v1_1_vs_v1"] == pytest.approx(0.02)
+    assert return_metrics["diff"]["excess_sharpe_v1_1_vs_v1"] == pytest.approx(0.0)
+
+    for metric_group in (return_metrics["v1"], return_metrics["v1_1"], return_metrics["diff"]):
+        for value in metric_group.values():
+            assert math.isfinite(value)
 
 
 def test_compare_service_records_failed_day_and_continues(monkeypatch) -> None:
