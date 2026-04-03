@@ -112,6 +112,67 @@ class PipelineCompareSummary(BaseModel):
     top1_symbol_change_days: int
 
 
+class PipelineCompareReturnMetricValue(BaseModel):
+    cumulative_return: float
+    win_rate: float
+    max_drawdown: float
+    annualized_volatility: float
+    sharpe: float
+
+
+class PipelineCompareReturnMetricDiff(BaseModel):
+    excess_cumulative_return_v1_1_vs_v1: float
+    excess_sharpe_v1_1_vs_v1: float
+
+
+class PipelineCompareReturnMetrics(BaseModel):
+    v1: PipelineCompareReturnMetricValue
+    v1_1: PipelineCompareReturnMetricValue
+    diff: PipelineCompareReturnMetricDiff
+
+
+class PipelineCompareDailyReturnPoint(BaseModel):
+    as_of: str
+    top1_next_day_return: float
+
+
+class PipelineCompareDailyReturnSeries(BaseModel):
+    v1: list[PipelineCompareDailyReturnPoint]
+    v1_1: list[PipelineCompareDailyReturnPoint]
+
+
+class PipelineCompareGroupMetricValue(BaseModel):
+    cumulative_return: float
+    win_rate: float
+    sharpe: float
+
+
+class PipelineCompareGroupMetricDiff(BaseModel):
+    excess_cumulative_return: float
+    excess_sharpe: float
+
+
+class PipelineCompareGroupStabilityItem(BaseModel):
+    industry: str
+    market_cap_bucket: str
+    sample_days: int
+    v1: PipelineCompareGroupMetricValue
+    v1_1: PipelineCompareGroupMetricValue
+    diff: PipelineCompareGroupMetricDiff
+    stability_flag: Literal["OK", "LOW_SAMPLE"]
+
+
+class PipelineCompareGroupStability(BaseModel):
+    group_key: Literal["industry_market_cap_bucket"]
+    items: list[PipelineCompareGroupStabilityItem]
+
+
+class PipelineCompareAnalytics(BaseModel):
+    return_metrics: PipelineCompareReturnMetrics
+    daily_return_series: PipelineCompareDailyReturnSeries
+    group_stability: PipelineCompareGroupStability
+
+
 class PipelineCompareData(BaseModel):
     start_date: str
     end_date: str
@@ -119,6 +180,7 @@ class PipelineCompareData(BaseModel):
     score_versions: list[str]
     daily_items: list[PipelineCompareDailyItem]
     summary: PipelineCompareSummary
+    analytics: PipelineCompareAnalytics
 
 
 class DailyRunData(BaseModel):

@@ -44,6 +44,57 @@ def _stub_compare_service(start_date: str, end_date: str, top_n: int) -> dict:
                 "avg_min_availability_v1_1": 0.5,
                 "top1_symbol_change_days": 1,
             },
+            "analytics": {
+                "return_metrics": {
+                    "v1": {
+                        "cumulative_return": 0.02,
+                        "win_rate": 1.0,
+                        "max_drawdown": 0.0,
+                        "annualized_volatility": 0.0,
+                        "sharpe": 0.0,
+                    },
+                    "v1_1": {
+                        "cumulative_return": 0.01,
+                        "win_rate": 1.0,
+                        "max_drawdown": 0.0,
+                        "annualized_volatility": 0.0,
+                        "sharpe": 0.0,
+                    },
+                    "diff": {
+                        "excess_cumulative_return_v1_1_vs_v1": -0.01,
+                        "excess_sharpe_v1_1_vs_v1": 0.0,
+                    },
+                },
+                "daily_return_series": {
+                    "v1": [{"as_of": start_date, "top1_next_day_return": 0.02}],
+                    "v1_1": [{"as_of": start_date, "top1_next_day_return": 0.01}],
+                },
+                "group_stability": {
+                    "group_key": "industry_market_cap_bucket",
+                    "items": [
+                        {
+                            "industry": "Bank",
+                            "market_cap_bucket": "LARGE",
+                            "sample_days": 1,
+                            "v1": {
+                                "cumulative_return": 0.02,
+                                "win_rate": 1.0,
+                                "sharpe": 0.0,
+                            },
+                            "v1_1": {
+                                "cumulative_return": 0.01,
+                                "win_rate": 1.0,
+                                "sharpe": 0.0,
+                            },
+                            "diff": {
+                                "excess_cumulative_return": -0.01,
+                                "excess_sharpe": 0.0,
+                            },
+                            "stability_flag": "LOW_SAMPLE",
+                        }
+                    ],
+                },
+            },
         },
         "warnings": [],
         "errors": [],
