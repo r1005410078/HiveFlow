@@ -52,6 +52,9 @@ impl From<Cli> for AppCommand {
                 signal::SignalSubcommand::Snapshot(snapshot) => {
                     AppCommand::SignalSnapshot(snapshot.into())
                 }
+                signal::SignalSubcommand::Evaluate(evaluate) => {
+                    AppCommand::SignalEvaluate(evaluate.into())
+                }
             },
         }
     }

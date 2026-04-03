@@ -1,4 +1,4 @@
-use crate::application::requests::SignalSnapshotRequest;
+use crate::application::requests::{SignalEvaluateRequest, SignalSnapshotRequest};
 use clap::{Args, Subcommand};
 
 #[derive(Debug, Args)]
@@ -20,6 +20,14 @@ transform_stats（去极值前后诊断）。\
 l2_decision / 排序逻辑不受影响，本命令仅用于观测与联调。"
     )]
     Snapshot(SnapshotArgs),
+
+    #[command(
+        about = "评估 L3 信号质量：Rank IC（per-factor + composite）+ 漂移检测",
+        long_about = "调用 POST /api/v1/signal/evaluate。\
+遍历日期范围逐日重算信号并计算 T+N 收益的 Spearman Rank IC，\
+同时检测信号分布漂移。需要 DB 中的真实 bar 数据。"
+    )]
+    Evaluate(EvaluateArgs),
 }
 
 const SNAPSHOT_AFTER_HELP: &str = "\
@@ -52,10 +60,46 @@ pub struct SnapshotArgs {
     pub output: String,
 }
 
+const EVALUATE_AFTER_HELP: &str = "\
+示例:
+  hf signal evaluate --start-date 2026-03-01 --end-date 2026-04-01
+  hf signal evaluate --start-date 2026-03-01 --end-date 2026-04-01 --forward-days 3 --output table
+
+  仓库内开发（包名 hf-cli）:
+  cargo run -p hf-cli -- signal evaluate --start-date 2026-03-01 --end-date 2026-04-01
+
+前置:
+  ~/.hiveflow/config.toml 中 server_url 指向已启动的 quant 服务；
+  需要 DB 中有真实 bar 数据（make db-up && make run-server）";
+
+#[derive(Debug, Args)]
+#[command(after_long_help = EVALUATE_AFTER_HELP)]
+pub struct EvaluateArgs {
+    #[arg(long, value_name = "YYYY-MM-DD", help = "评估起始日期")]
+    pub start_date: String,
+    #[arg(long, value_name = "YYYY-MM-DD", help = "评估结束日期")]
+    pub end_date: String,
+    #[arg(long, default_value = "1", help = "前瞻天数（默认 1）")]
+    pub forward_days: u32,
+    #[arg(long, default_value = "json", value_name = "MODE", help = "输出形式：json | table")]
+    pub output: String,
+}
+
 impl From<SnapshotArgs> for SignalSnapshotRequest {
     fn from(args: SnapshotArgs) -> Self {
         Self {
             as_of: args.as_of,
+            output: args.output,
+        }
+    }
+}
+
+impl From<EvaluateArgs> for SignalEvaluateRequest {
+    fn from(args: EvaluateArgs) -> Self {
+        Self {
+            start_date: args.start_date,
+            end_date: args.end_date,
+            forward_days: args.forward_days,
             output: args.output,
         }
     }

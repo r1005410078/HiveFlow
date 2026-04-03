@@ -883,3 +883,123 @@ pub fn render_signal_snapshot_table(payload: &Value) -> String {
         header, rows_table, composite
     )
 }
+
+fn ic_rating(ic_ir: f64) -> &'static str {
+    if ic_ir >= 0.5 {
+        "良好"
+    } else if ic_ir >= 0.2 {
+        "中等"
+    } else {
+        "偏弱"
+    }
+}
+
+pub fn render_signal_evaluate_table(payload: &Value) -> String {
+    let data = payload.get("data");
+    let start = as_str(data.and_then(|d| d.get("start_date")));
+    let end = as_str(data.and_then(|d| d.get("end_date")));
+    let fwd = as_i64(data.and_then(|d| d.get("forward_days")));
+    let days = as_i64(data.and_then(|d| d.get("trading_days_evaluated")));
+
+    let mut header = Table::new();
+    header
+        .load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec![
+            Cell::new("区间"),
+            Cell::new("前瞻"),
+            Cell::new("评估天数"),
+        ]);
+    header.add_row(vec![
+        format!("{start} → {end}"),
+        format!("T+{fwd}"),
+        days,
+    ]);
+
+    let mut ic_table = Table::new();
+    ic_table
+        .load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec![
+            Cell::new("因子"),
+            Cell::new("均值IC"),
+            Cell::new("IC_IR"),
+            Cell::new("命中率"),
+            Cell::new("评级"),
+        ]);
+
+    if let Some(ic_report) = data.and_then(|d| d.get("ic_report")) {
+        if let Some(factors) = ic_report.get("per_factor").and_then(Value::as_array) {
+            for f in factors {
+                let ir_val = f.get("ic_ir").and_then(Value::as_f64).unwrap_or(0.0);
+                ic_table.add_row(vec![
+                    as_str(f.get("factor_name")),
+                    as_f64(f.get("mean_ic")),
+                    as_f64(f.get("ic_ir")),
+                    format!(
+                        "{:.1}%",
+                        f.get("hit_rate").and_then(Value::as_f64).unwrap_or(0.0) * 100.0
+                    ),
+                    ic_rating(ir_val).to_string(),
+                ]);
+            }
+        }
+        if let Some(comp) = ic_report.get("composite") {
+            let ir_val = comp.get("ic_ir").and_then(Value::as_f64).unwrap_or(0.0);
+            ic_table.add_row(vec![
+                "★ 综合信号".to_string(),
+                as_f64(comp.get("mean_ic")),
+                as_f64(comp.get("ic_ir")),
+                format!(
+                    "{:.1}%",
+                    comp.get("hit_rate").and_then(Value::as_f64).unwrap_or(0.0) * 100.0
+                ),
+                ic_rating(ir_val).to_string(),
+            ]);
+        }
+    }
+
+    let mut drift_table = Table::new();
+    drift_table
+        .load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec![
+            Cell::new("指标"),
+            Cell::new("漂移Z"),
+            Cell::new("状态"),
+        ]);
+
+    if let Some(drift) = data.and_then(|d| d.get("drift_diagnostics")) {
+        if let Some(factors) = drift.get("factor_drift").and_then(Value::as_array) {
+            for f in factors {
+                let flag = f.get("drift_flag").and_then(Value::as_bool).unwrap_or(false);
+                drift_table.add_row(vec![
+                    as_str(f.get("factor_name")),
+                    as_f64(f.get("drift_z")),
+                    if flag { "⚠ 漂移" } else { "✓ 正常" }.to_string(),
+                ]);
+            }
+        }
+        if let Some(cov) = drift.get("coverage_drift") {
+            let flag = cov.get("drift_flag").and_then(Value::as_bool).unwrap_or(false);
+            drift_table.add_row(vec![
+                "覆盖率".to_string(),
+                as_f64(cov.get("drift_z")),
+                if flag { "⚠ 漂移" } else { "✓ 正常" }.to_string(),
+            ]);
+        }
+        if let Some(rt) = drift.get("rank_turnover") {
+            let stable = rt.get("stable").and_then(Value::as_bool).unwrap_or(true);
+            drift_table.add_row(vec![
+                "排名周转率".to_string(),
+                as_f64(rt.get("mean_turnover")),
+                if stable { "✓ 稳定" } else { "⚠ 不稳定" }.to_string(),
+            ]);
+        }
+    }
+
+    format!(
+        "L3 信号评估\n{}\nIC 报告\n{}\n漂移诊断\n{}\n",
+        header, ic_table, drift_table
+    )
+}

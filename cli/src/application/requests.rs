@@ -79,6 +79,14 @@ pub struct SignalSnapshotRequest {
     pub output: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct SignalEvaluateRequest {
+    pub start_date: String,
+    pub end_date: String,
+    pub forward_days: u32,
+    pub output: String,
+}
+
 #[derive(Debug)]
 pub enum AppCommand {
     PipelineDaily(PipelineDailyRequest),
@@ -90,4 +98,5 @@ pub enum AppCommand {
     DataQuery(DataQueryRequest),
     DataBars(DataBarsRequest),
     SignalSnapshot(SignalSnapshotRequest),
+    SignalEvaluate(SignalEvaluateRequest),
 }

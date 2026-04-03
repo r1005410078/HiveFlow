@@ -282,3 +282,34 @@ pub fn post_signal_snapshot(
 
     parse_json(&body_text)
 }
+
+pub fn post_signal_evaluate(
+    server_url: &str,
+    start_date: &str,
+    end_date: &str,
+    forward_days: u32,
+    timeout_ms: u64,
+) -> Result<Value, AppError> {
+    let url = format!("{}/api/v1/signal/evaluate", server_url.trim_end_matches('/'));
+    let client = build_client(server_url, timeout_ms)?;
+
+    let response = client
+        .post(url)
+        .json(&json!({
+            "start_date": start_date,
+            "end_date": end_date,
+            "forward_days": forward_days,
+        }))
+        .send()
+        .map_err(AppError::HttpClient)?;
+
+    let status = response.status();
+    let body_text = response.text().map_err(AppError::HttpClient)?;
+    if !status.is_success() {
+        let body =
+            serde_json::from_str(&body_text).unwrap_or_else(|_| json!({ "raw_body": body_text }));
+        return Err(AppError::Upstream(status.as_u16(), body));
+    }
+
+    parse_json(&body_text)
+}
