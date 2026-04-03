@@ -9,13 +9,16 @@ fn factor_replay_runs_daily_evaluate_and_builds_summary() {
     let _m1 = server
         .mock("POST", "/api/v1/factor-optimization/evaluate")
         .match_header("content-type", "application/json")
-        .match_body(mockito::Matcher::PartialJson(serde_json::json!({
+        .match_body(mockito::Matcher::JsonString(
+            serde_json::json!({
             "start_date": "2026-04-01",
             "end_date": "2026-04-01",
             "factor_names": ["momentum_20", "inv_volatility_20"],
             "constraints": {},
             "correlation_threshold": 0.7
-        })))
+        })
+            .to_string(),
+        ))
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(r#"{"status":"ok","data":{"release_gate":{"status":"pass","blocking_reasons":[],"watch_items":[]},"correlation_analysis":{"alert_count":0},"top_combinations":{"items":[{"factors":["momentum_20","inv_volatility_20"]}]}}}"#)
@@ -24,13 +27,16 @@ fn factor_replay_runs_daily_evaluate_and_builds_summary() {
     let _m2 = server
         .mock("POST", "/api/v1/factor-optimization/evaluate")
         .match_header("content-type", "application/json")
-        .match_body(mockito::Matcher::PartialJson(serde_json::json!({
+        .match_body(mockito::Matcher::JsonString(
+            serde_json::json!({
             "start_date": "2026-04-02",
             "end_date": "2026-04-02",
             "factor_names": ["momentum_20", "inv_volatility_20"],
             "constraints": {},
             "correlation_threshold": 0.7
-        })))
+        })
+            .to_string(),
+        ))
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(r#"{"status":"ok","data":{"release_gate":{"status":"watch","blocking_reasons":[],"watch_items":["alert_count_watch:2"]},"correlation_analysis":{"alert_count":2},"top_combinations":{"items":[{"factors":["momentum_20","max_drawdown_60"]}]}}}"#)
@@ -51,8 +57,12 @@ fn factor_replay_runs_daily_evaluate_and_builds_summary() {
     assert_eq!(out["summary"]["pass_days"], 1);
     assert_eq!(out["summary"]["watch_days"], 1);
     assert_eq!(out["summary"]["fail_days"], 0);
+    assert_eq!(out["summary"]["avg_alert_count"], 1.0);
     assert_eq!(out["summary"]["top1_change_days"], 1);
-    assert_eq!(out["daily_items"].as_array().unwrap().len(), 2);
+    let daily_items = out["daily_items"]
+        .as_array()
+        .expect("daily_items should be an array");
+    assert_eq!(daily_items.len(), 2);
 }
 
 #[test]
@@ -61,6 +71,16 @@ fn factor_replay_counts_fetch_errors_separately() {
 
     let _m1 = server
         .mock("POST", "/api/v1/factor-optimization/evaluate")
+        .match_header("content-type", "application/json")
+        .match_body(mockito::Matcher::JsonString(
+            serde_json::json!({
+                "start_date": "2026-04-01",
+                "end_date": "2026-04-01",
+                "factor_names": ["momentum_20"],
+                "constraints": {},
+            })
+            .to_string(),
+        ))
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(r#"{"status":"ok","data":{"release_gate":{"status":"fail","blocking_reasons":["no_top_combinations"],"watch_items":[]},"correlation_analysis":{"alert_count":0},"top_combinations":{"items":[]}}}"#)
@@ -68,6 +88,16 @@ fn factor_replay_counts_fetch_errors_separately() {
 
     let _m2 = server
         .mock("POST", "/api/v1/factor-optimization/evaluate")
+        .match_header("content-type", "application/json")
+        .match_body(mockito::Matcher::JsonString(
+            serde_json::json!({
+                "start_date": "2026-04-02",
+                "end_date": "2026-04-02",
+                "factor_names": ["momentum_20"],
+                "constraints": {},
+            })
+            .to_string(),
+        ))
         .with_status(502)
         .with_header("content-type", "text/plain")
         .with_body("bad gateway")
