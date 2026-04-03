@@ -818,3 +818,68 @@ pub fn render_factor_replay_table(payload: &Value) -> String {
 
     format!("因子回放汇总\n{}\n逐日回放明细\n{}\n", summary, daily)
 }
+
+pub fn render_signal_snapshot_table(payload: &Value) -> String {
+    let data = payload.get("data");
+    let signal_version = as_str(data.and_then(|d| d.get("signal_version")));
+    let coverage = as_f64(data.and_then(|d| d.get("coverage_rate")));
+
+    let mut header = Table::new();
+    header
+        .load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec![Cell::new("信号版本"), Cell::new("覆盖率")]);
+    header.add_row(vec![signal_version, coverage]);
+
+    let mut rows_table = Table::new();
+    rows_table
+        .load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec![
+            Cell::new("标的"),
+            Cell::new("因子"),
+            Cell::new("原始值"),
+            Cell::new("信号值"),
+            Cell::new("方向"),
+        ]);
+
+    if let Some(items) = data.and_then(|d| d.get("rows")).and_then(Value::as_array) {
+        for item in items {
+            rows_table.add_row(vec![
+                as_str(item.get("symbol")),
+                as_str(item.get("factor_name")),
+                as_f64(item.get("raw_value")),
+                as_f64(item.get("signal_value")),
+                as_i64(item.get("direction")),
+            ]);
+        }
+    }
+
+    let mut composite = Table::new();
+    composite
+        .load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec![
+            Cell::new("标的"),
+            Cell::new("综合分"),
+            Cell::new("参与因子数"),
+        ]);
+
+    if let Some(items) = data
+        .and_then(|d| d.get("composite_scores"))
+        .and_then(Value::as_array)
+    {
+        for item in items {
+            composite.add_row(vec![
+                as_str(item.get("symbol")),
+                as_f64(item.get("composite_score")),
+                as_i64(item.get("factor_count")),
+            ]);
+        }
+    }
+
+    format!(
+        "L3 信号快照\n{}\n信号明细\n{}\n综合分排名\n{}\n",
+        header, rows_table, composite
+    )
+}

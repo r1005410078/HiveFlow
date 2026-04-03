@@ -1,6 +1,7 @@
 pub mod data;
 pub mod factor;
 pub mod pipeline;
+pub mod signal;
 
 use crate::application::requests::AppCommand;
 use clap::{Parser, Subcommand};
@@ -18,6 +19,7 @@ pub enum Commands {
     Pipeline(pipeline::PipelineArgs),
     Factor(factor::FactorArgs),
     Data(data::DataArgs),
+    Signal(signal::SignalArgs),
 }
 
 impl From<Cli> for AppCommand {
@@ -44,6 +46,11 @@ impl From<Cli> for AppCommand {
                 }
                 data::DataSubcommand::Query(query_args) => AppCommand::DataQuery(query_args.into()),
                 data::DataSubcommand::Bars(bars_args) => AppCommand::DataBars(bars_args.into()),
+            },
+            Commands::Signal(args) => match args.command {
+                signal::SignalSubcommand::Snapshot(snapshot) => {
+                    AppCommand::SignalSnapshot(snapshot.into())
+                }
             },
         }
     }

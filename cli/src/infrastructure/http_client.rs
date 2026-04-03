@@ -257,3 +257,28 @@ pub fn get_market_data_bars(
     }
     parse_json(&body_text)
 }
+
+pub fn post_signal_snapshot(
+    server_url: &str,
+    as_of: &str,
+    timeout_ms: u64,
+) -> Result<Value, AppError> {
+    let url = format!("{}/api/v1/signal/snapshot", server_url.trim_end_matches('/'));
+    let client = build_client(server_url, timeout_ms)?;
+
+    let response = client
+        .post(url)
+        .json(&json!({"as_of": as_of}))
+        .send()
+        .map_err(AppError::HttpClient)?;
+
+    let status = response.status();
+    let body_text = response.text().map_err(AppError::HttpClient)?;
+    if !status.is_success() {
+        let body =
+            serde_json::from_str(&body_text).unwrap_or_else(|_| json!({ "raw_body": body_text }));
+        return Err(AppError::Upstream(status.as_u16(), body));
+    }
+
+    parse_json(&body_text)
+}

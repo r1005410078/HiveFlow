@@ -73,6 +73,12 @@ pub struct DataBarsRequest {
     pub timeout_ms: Option<u64>,
 }
 
+#[derive(Debug, Clone)]
+pub struct SignalSnapshotRequest {
+    pub as_of: String,
+    pub output: String,
+}
+
 #[derive(Debug)]
 pub enum AppCommand {
     PipelineDaily(PipelineDailyRequest),
@@ -83,4 +89,5 @@ pub enum AppCommand {
     DataUniverseSync(DataUniverseSyncRequest),
     DataQuery(DataQueryRequest),
     DataBars(DataBarsRequest),
+    SignalSnapshot(SignalSnapshotRequest),
 }

@@ -6,3 +6,4 @@ pub mod factor_optimize;
 pub mod factor_replay;
 pub mod pipeline_compare;
 pub mod pipeline_daily;
+pub mod signal_snapshot;
