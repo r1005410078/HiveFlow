@@ -112,8 +112,6 @@ def test_bars_row_source_is_real_when_data_sufficient() -> None:
 
 
 def test_relative_strength_uses_real_benchmark_when_provided() -> None:
-    from datetime import date
-
     symbol_bars = _build_monotonic_bars("600519.SH", date(2026, 1, 1), 80, 100.0)
     # 基准 base_close=200，绝对增幅相同（+1/day），但比例更小；个股涨幅相对更高
     benchmark_bars = _build_monotonic_bars("000300.SH", date(2026, 1, 1), 80, 200.0)
@@ -131,8 +129,6 @@ def test_relative_strength_uses_real_benchmark_when_provided() -> None:
 
 
 def test_relative_strength_falls_back_to_proxy_without_benchmark() -> None:
-    from datetime import date
-
     symbol_bars = _build_monotonic_bars("600519.SH", date(2026, 1, 1), 80, 100.0)
     out = compute_basic_factor_snapshot_from_bars(
         as_of="2026-04-01",

@@ -161,7 +161,9 @@ def _relative_strength_from_benchmark(
     symbol_closes: list[float],
     benchmark_rows: list[dict],
 ) -> float | None:
-    """Returns real relative strength vs benchmark. Returns None if benchmark has < 21 bars."""
+    """Returns real relative strength vs benchmark. Returns None if symbol or benchmark has < 21 bars."""
+    if len(symbol_closes) < 21:
+        return None
     ordered = sorted(benchmark_rows, key=lambda r: str(r.get("bar_time", "")))
     b_closes = [float(r["close"]) for r in ordered]
     if len(b_closes) < 21:
@@ -184,7 +186,7 @@ def compute_basic_factor_snapshot_from_bars(
     symbols: list[str],
     bar_rows: list[dict],
     benchmark_rows: list[dict] | None = None,
-    historical_baselines: dict[str, dict] | None = None,
+    historical_baselines: dict[str, dict] | None = None,  # used in Task 4: stability metrics
 ) -> dict:
     # 按 symbol 聚合 bars，再逐标的计算因子；若单标的数据不足则回退到 deterministic 因子。
     rows_by_symbol: dict[str, list[dict]] = defaultdict(list)
