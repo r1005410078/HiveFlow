@@ -110,9 +110,7 @@ pub fn handle(args: DataBarsRequest) -> Result<(), AppError> {
                             }
                         }
                     } else {
-                        eprintln!(
-                            "warning: tui output unavailable ({reason}), fallback to table"
-                        );
+                        eprintln!("warning: tui output unavailable ({reason}), fallback to table");
                         let table = render_market_data_bars_table(&out, args.verbose);
                         print!("{table}");
                     }

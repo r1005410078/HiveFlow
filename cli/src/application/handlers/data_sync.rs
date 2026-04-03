@@ -1,5 +1,5 @@
-use crate::error::AppError;
 use crate::application::requests::DataSyncRequest;
+use crate::error::AppError;
 use crate::infrastructure::config_loader::load_default_config;
 use crate::infrastructure::http_client::post_data_sync;
 

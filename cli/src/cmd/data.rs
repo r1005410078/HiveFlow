@@ -1,5 +1,5 @@
-use clap::{Args, Subcommand};
 use crate::application::requests::{DataBarsRequest, DataQueryRequest, DataSyncRequest};
+use clap::{Args, Subcommand};
 
 #[derive(Debug, Args)]
 pub struct DataArgs {
