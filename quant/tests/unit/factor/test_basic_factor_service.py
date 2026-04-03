@@ -83,3 +83,24 @@ def test_per_factor_version_in_deterministic_snapshot() -> None:
     assert versions["max_drawdown_60"] == "l2-mdd-v1.0"
     assert versions["trend_stability_20"] == "l2-trend-stab-v1.0"
     assert versions["relative_strength_vs_index"] == "l2-rsi-v1.1"
+
+
+def test_row_schema_contains_metadata_fields() -> None:
+    out = compute_basic_factor_snapshot(as_of="2026-04-01", symbols=["600519.SH"])
+    row = out["rows"][0]
+    assert "direction" in row
+    assert "unit" in row
+    assert "missing_strategy" in row
+    assert "source" in row
+    assert row["direction"] == 1
+    assert row["source"] == "deterministic_fallback"
+
+
+def test_bars_row_source_is_real_when_data_sufficient() -> None:
+    bars = _build_monotonic_bars("600519.SH", date(2026, 1, 1), 80, 100.0)
+    out = compute_basic_factor_snapshot_from_bars(
+        as_of="2026-04-01", symbols=["600519.SH"], bar_rows=bars
+    )
+    for row in out["rows"]:
+        if row["symbol"] == "600519.SH" and row["factor_name"] != "relative_strength_vs_index":
+            assert row["source"] == "real", f"{row['factor_name']} should be real"

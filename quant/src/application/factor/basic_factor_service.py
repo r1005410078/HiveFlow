@@ -168,10 +168,14 @@ def compute_basic_factor_snapshot_from_bars(as_of: str, symbols: list[str], bar_
 
     output_rows: list[dict] = []
     for symbol in symbols:
-        values = _factor_values_from_real_bars(rows_by_symbol.get(symbol, []))
-        if values is None:
+        real_values = _factor_values_from_real_bars(rows_by_symbol.get(symbol, []))
+        if real_values is None:
             # 兜底：保障日频流水线在数据空窗/历史不足时仍可产出稳定结构。
             values = _factor_values_for_symbol(symbol)
+            default_source = "deterministic_fallback"
+        else:
+            values = real_values
+            default_source = "real"
         for factor_name, raw_value in values.items():
             meta = FACTOR_METADATA[factor_name]
             output_rows.append(
@@ -181,6 +185,10 @@ def compute_basic_factor_snapshot_from_bars(as_of: str, symbols: list[str], bar_
                     "factor_name": factor_name,
                     "factor_version": meta["version"],
                     "raw_value": raw_value,
+                    "direction": meta["direction"],
+                    "unit": meta["unit"],
+                    "missing_strategy": meta["missing_strategy"],
+                    "source": default_source,
                 }
             )
 
@@ -209,6 +217,10 @@ def compute_basic_factor_snapshot(as_of: str, symbols: list[str]) -> dict:
                     "factor_name": factor_name,
                     "factor_version": meta["version"],
                     "raw_value": raw_value,
+                    "direction": meta["direction"],
+                    "unit": meta["unit"],
+                    "missing_strategy": meta["missing_strategy"],
+                    "source": "deterministic_fallback",
                 }
             )
 
