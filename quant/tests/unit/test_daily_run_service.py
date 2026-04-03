@@ -20,4 +20,4 @@ def test_run_daily_passes_benchmark_rows_to_factor_service(monkeypatch) -> None:
     monkeypatch.setattr(daily_svc, "compute_basic_factor_snapshot_from_bars", patched)
 
     run_daily(as_of="2026-04-01", root=None, bar_store=FakeBarStore())
-    assert "benchmark_rows" in captured
+    assert captured.get("benchmark_rows") == []

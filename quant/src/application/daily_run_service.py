@@ -61,7 +61,7 @@ def run_daily(
             )
             # Query benchmark bars (need >= 21 bars; query 40 days to be safe)
             try:
-                benchmark_start = (date.fromisoformat(as_of) - timedelta(days=40)).isoformat()
+                benchmark_start = (date.fromisoformat(as_of) - timedelta(days=60)).isoformat()
                 benchmark_rows = bar_store.list_bars(
                     symbols=[_BENCHMARK_SYMBOL],
                     timeframe="1d",
