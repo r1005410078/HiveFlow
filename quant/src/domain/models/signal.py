@@ -31,3 +31,36 @@ class CompositeScore:
     symbol: str
     composite_score: float
     factor_count: int
+
+
+@dataclass(frozen=True)
+class DailyICEntry:
+    date: str
+    ic: float
+
+
+@dataclass(frozen=True)
+class FactorICResult:
+    factor_name: str
+    mean_ic: float
+    ic_std: float
+    ic_ir: float
+    hit_rate: float
+    daily_ic: tuple[DailyICEntry, ...]
+
+
+@dataclass(frozen=True)
+class FactorDriftResult:
+    factor_name: str
+    baseline_mean: float
+    baseline_std: float
+    recent_mean: float
+    drift_z: float
+    drift_flag: bool
+
+
+@dataclass(frozen=True)
+class RankTurnoverResult:
+    mean_turnover: float
+    max_turnover: float
+    stable: bool
