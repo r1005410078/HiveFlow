@@ -25,7 +25,7 @@ def _daily_run(
             "as_of": as_of,
             "data_manifest_id": f"dm_{as_of}",
             "factor_snapshot": {
-                "factor_version": "l2-basic-v1.1",
+                "snapshot_version": "l2-basic-v1.1",
                 "factor_names": ["momentum_20"],
                 "coverage_rate": 1.0,
                 "rows": [],

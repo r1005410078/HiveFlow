@@ -35,13 +35,30 @@ class FactorRow(BaseModel):
     factor_name: str
     factor_version: str
     raw_value: float
+    direction: int
+    unit: str
+    missing_strategy: str
+    source: str
+
+
+class FactorStabilityMetric(BaseModel):
+    factor_name: str
+    factor_version: str
+    coverage_rate: float
+    real_count: int
+    fallback_count: int
+    mean_value: float
+    std_value: float
+    drift_flag: bool | None = None
+    drift_z_score: float | None = None
 
 
 class FactorSnapshot(BaseModel):
-    factor_version: str
+    snapshot_version: str
     factor_names: list[str]
     coverage_rate: float
     rows: list[FactorRow]
+    stability_metrics: list[FactorStabilityMetric] = []
 
 
 class ExecutionPlan(BaseModel):

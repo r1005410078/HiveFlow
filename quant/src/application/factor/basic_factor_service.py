@@ -1,18 +1,60 @@
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from math import sqrt
+from typing import TypedDict
 
 
-_FACTOR_VERSION = "l2-basic-v1.1"
-_FACTOR_NAMES = (
-    "momentum_20",
-    "inv_volatility_20",
-    "turnover_rate",
-    "max_drawdown_60",
-    "trend_stability_20",
-    "relative_strength_vs_index",
-)
+class FactorMeta(TypedDict):
+    version: str
+    direction: int
+    unit: str
+    missing_strategy: str
+
+
+FACTOR_METADATA: dict[str, FactorMeta] = {
+    "momentum_20": {
+        "version": "l2-momentum-v1.0",
+        "direction": 1,
+        "unit": "return",
+        "missing_strategy": "deterministic_fallback",
+    },
+    "inv_volatility_20": {
+        "version": "l2-inv-vol-v1.0",
+        "direction": 1,
+        "unit": "1/return_std",
+        "missing_strategy": "deterministic_fallback",
+    },
+    "turnover_rate": {
+        "version": "l2-turnover-v1.0",
+        "direction": 1,
+        "unit": "ratio",
+        "missing_strategy": "deterministic_fallback",
+    },
+    "max_drawdown_60": {
+        "version": "l2-mdd-v1.0",
+        "direction": 1,  # encoded as 1.0 - raw_drawdown, so higher = less drawdown
+        "unit": "ratio",
+        "missing_strategy": "deterministic_fallback",
+    },
+    "trend_stability_20": {
+        "version": "l2-trend-stab-v1.0",
+        "direction": 1,
+        "unit": "ratio",
+        "missing_strategy": "deterministic_fallback",
+    },
+    "relative_strength_vs_index": {
+        "version": "l2-rsi-v1.1",
+        "direction": 1,
+        "unit": "ratio",
+        "missing_strategy": "benchmark_proxy_fallback",
+    },
+}
+
+_FACTOR_NAMES = tuple(FACTOR_METADATA.keys())
+
+_logger = logging.getLogger(__name__)
 
 
 def _base_seed(symbol: str) -> int:
@@ -118,7 +160,102 @@ def _factor_values_from_real_bars(rows: list[dict]) -> dict[str, float] | None:
     }
 
 
-def compute_basic_factor_snapshot_from_bars(as_of: str, symbols: list[str], bar_rows: list[dict]) -> dict:
+def _relative_strength_from_benchmark(
+    symbol_closes: list[float],
+    benchmark_rows: list[dict],
+) -> float | None:
+    """Returns real relative strength vs benchmark. Returns None if symbol or benchmark has < 21 bars."""
+    if len(symbol_closes) < 21:
+        return None
+    ordered = sorted(benchmark_rows, key=lambda r: str(r.get("bar_time", "")))
+    b_closes = [float(r["close"]) for r in ordered]
+    if len(b_closes) < 21:
+        return None
+    b_t = b_closes[-1]
+    b_t20 = b_closes[-21]
+    if b_t20 == 0:
+        return None
+    benchmark_ret_20 = (b_t / b_t20) - 1.0
+    symbol_t = symbol_closes[-1]
+    symbol_t20 = symbol_closes[-21]
+    if symbol_t20 == 0:
+        return None
+    symbol_ret_20 = (symbol_t / symbol_t20) - 1.0
+    return (1.0 + symbol_ret_20) / (1.0 + benchmark_ret_20) - 1.0
+
+
+def _compute_stability_metrics(
+    rows: list[dict],
+    factor_names: tuple,
+    historical_baselines: dict[str, dict] | None,
+) -> list[dict]:
+    values_by_factor: dict[str, list[float]] = defaultdict(list)
+    real_count_by_factor: dict[str, int] = defaultdict(int)
+    fallback_count_by_factor: dict[str, int] = defaultdict(int)
+
+    for row in rows:
+        fn = row["factor_name"]
+        values_by_factor[fn].append(row["raw_value"])
+        if row.get("source") == "real":
+            real_count_by_factor[fn] += 1
+        else:
+            fallback_count_by_factor[fn] += 1
+
+    total_symbols = (
+        (real_count_by_factor.get(factor_names[0], 0) + fallback_count_by_factor.get(factor_names[0], 0))
+        if factor_names
+        else 0
+    )
+
+    if historical_baselines:
+        known_factor_set = set(factor_names)
+        for key in historical_baselines:
+            if key not in known_factor_set:
+                _logger.warning(
+                    "historical_baselines contains unknown factor key %r; skipping drift for it", key
+                )
+
+    result = []
+    for fn in factor_names:
+        vals = values_by_factor.get(fn, [])
+        real_c = real_count_by_factor.get(fn, 0)
+        fallback_c = fallback_count_by_factor.get(fn, 0)
+        coverage = round(real_c / total_symbols, 4) if total_symbols > 0 else 0.0
+        mean_v = round(_mean(vals), 6) if vals else 0.0
+        std_v = round(_std(vals), 6) if vals else 0.0
+
+        drift_flag = None
+        drift_z = None
+        if historical_baselines and fn in historical_baselines:
+            baseline = historical_baselines[fn]
+            b_mean = float(baseline.get("mean", 0.0))
+            b_std = float(baseline.get("std", 1e-6))
+            drift_z = round((mean_v - b_mean) / max(b_std, 1e-6), 4)
+            drift_flag = abs(drift_z) > 2.0
+
+        result.append(
+            {
+                "factor_name": fn,
+                "factor_version": FACTOR_METADATA[fn]["version"],
+                "coverage_rate": coverage,
+                "real_count": real_c,
+                "fallback_count": fallback_c,
+                "mean_value": mean_v,
+                "std_value": std_v,
+                "drift_flag": drift_flag,
+                "drift_z_score": drift_z,
+            }
+        )
+    return result
+
+
+def compute_basic_factor_snapshot_from_bars(
+    as_of: str,
+    symbols: list[str],
+    bar_rows: list[dict],
+    benchmark_rows: list[dict] | None = None,
+    historical_baselines: dict[str, dict] | None = None,  # used in Task 4: stability metrics
+) -> dict:
     # 按 symbol 聚合 bars，再逐标的计算因子；若单标的数据不足则回退到 deterministic 因子。
     rows_by_symbol: dict[str, list[dict]] = defaultdict(list)
     for row in bar_rows:
@@ -129,29 +266,62 @@ def compute_basic_factor_snapshot_from_bars(as_of: str, symbols: list[str], bar_
 
     output_rows: list[dict] = []
     for symbol in symbols:
-        values = _factor_values_from_real_bars(rows_by_symbol.get(symbol, []))
-        if values is None:
+        real_values = _factor_values_from_real_bars(rows_by_symbol.get(symbol, []))
+        if real_values is None:
             # 兜底：保障日频流水线在数据空窗/历史不足时仍可产出稳定结构。
             values = _factor_values_for_symbol(symbol)
+            default_source = "deterministic_fallback"
+            rs_used_real_benchmark = False
+        else:
+            values = real_values
+            default_source = "real"
+            # Try to compute real relative strength vs benchmark
+            rs_used_real_benchmark = False
+            if benchmark_rows is not None:
+                ordered_sym = sorted(
+                    rows_by_symbol.get(symbol, []),
+                    key=lambda r: str(r.get("bar_time", "")),
+                )
+                sym_closes = [float(r["close"]) for r in ordered_sym]
+                rs_real = _relative_strength_from_benchmark(sym_closes, benchmark_rows)
+                if rs_real is not None:
+                    values["relative_strength_vs_index"] = round(rs_real, 6)
+                    rs_used_real_benchmark = True
+
         for factor_name, raw_value in values.items():
+            meta = FACTOR_METADATA[factor_name]
+            if factor_name == "relative_strength_vs_index" and default_source == "real" and not rs_used_real_benchmark:
+                row_source = "benchmark_proxy_fallback"
+            else:
+                row_source = default_source
             output_rows.append(
                 {
                     "as_of": as_of,
                     "symbol": symbol,
                     "factor_name": factor_name,
-                    "factor_version": _FACTOR_VERSION,
+                    "factor_version": meta["version"],
                     "raw_value": raw_value,
+                    "direction": meta["direction"],
+                    "unit": meta["unit"],
+                    "missing_strategy": meta["missing_strategy"],
+                    "source": row_source,
                 }
             )
 
     coverage_rate = 0.0
     if symbols:
         coverage_rate = round(len(output_rows) / (len(symbols) * len(_FACTOR_NAMES)), 4)
+    stability_metrics = _compute_stability_metrics(
+        rows=output_rows,
+        factor_names=_FACTOR_NAMES,
+        historical_baselines=historical_baselines,
+    )
     return {
-        "factor_version": _FACTOR_VERSION,
+        "snapshot_version": "l2-basic-v1.1",
         "factor_names": list(_FACTOR_NAMES),
         "coverage_rate": coverage_rate,
         "rows": output_rows,
+        "stability_metrics": stability_metrics,
     }
 
 
@@ -161,13 +331,18 @@ def compute_basic_factor_snapshot(as_of: str, symbols: list[str]) -> dict:
     for symbol in symbols:
         values = _factor_values_for_symbol(symbol)
         for factor_name, raw_value in values.items():
+            meta = FACTOR_METADATA[factor_name]
             rows.append(
                 {
                     "as_of": as_of,
                     "symbol": symbol,
                     "factor_name": factor_name,
-                    "factor_version": _FACTOR_VERSION,
+                    "factor_version": meta["version"],
                     "raw_value": raw_value,
+                    "direction": meta["direction"],
+                    "unit": meta["unit"],
+                    "missing_strategy": meta["missing_strategy"],
+                    "source": "deterministic_fallback",
                 }
             )
 
@@ -175,9 +350,15 @@ def compute_basic_factor_snapshot(as_of: str, symbols: list[str]) -> dict:
     if symbols:
         coverage_rate = round(len(rows) / (len(symbols) * len(_FACTOR_NAMES)), 4)
 
+    stability_metrics = _compute_stability_metrics(
+        rows=rows,
+        factor_names=_FACTOR_NAMES,
+        historical_baselines=None,
+    )
     return {
-        "factor_version": _FACTOR_VERSION,
+        "snapshot_version": "l2-basic-v1.1",
         "factor_names": list(_FACTOR_NAMES),
         "coverage_rate": coverage_rate,
         "rows": rows,
+        "stability_metrics": stability_metrics,
     }

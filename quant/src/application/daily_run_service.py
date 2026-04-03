@@ -10,6 +10,7 @@ from application.factor.basic_factor_service import (
 
 
 _FACTOR_AVAILABILITY_WARN_THRESHOLD = 0.8
+_BENCHMARK_SYMBOL = "000300.SH"
 
 
 def _build_factor_quality_warnings(l2_decision: dict) -> list[dict]:
@@ -58,10 +59,23 @@ def run_daily(
                 end_date=as_of,
                 limit=10000,
             )
+            # Query benchmark bars (need >= 21 bars; query 40 days to be safe)
+            try:
+                benchmark_start = (date.fromisoformat(as_of) - timedelta(days=60)).isoformat()
+                benchmark_rows = bar_store.list_bars(
+                    symbols=[_BENCHMARK_SYMBOL],
+                    timeframe="1d",
+                    start_date=benchmark_start,
+                    end_date=as_of,
+                    limit=60,
+                )
+            except Exception:
+                benchmark_rows = None
             factor_snapshot = compute_basic_factor_snapshot_from_bars(
                 as_of=as_of,
                 symbols=symbols,
                 bar_rows=bar_rows,
+                benchmark_rows=benchmark_rows,
             )
         except Exception:
             # 保持流水线韧性：任何读取/计算异常都降级到 deterministic 快照，不阻断 daily。
