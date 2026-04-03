@@ -158,6 +158,8 @@ cd cli && cargo run -- factor replay --start-date YYYY-MM-DD --end-date YYYY-MM-
 - `POST /v1/market-data/universes/sync`：标的池同步（写入 `quant/config/universes/*.txt`）
 - `GET /v1/market-data/sync-runs`：行情查询
 - `GET /v1/market-data/bars`：行情 K 线查询
+- `POST /api/v1/signal/snapshot`：L3 信号快照
+- `POST /api/v1/signal/evaluate`：L3 信号质量评估（IC + 漂移检测，需 DB）
 
 ### 7.7 当前健康状态
 
@@ -173,7 +175,7 @@ cd cli && cargo run -- factor replay --start-date YYYY-MM-DD --end-date YYYY-MM-
 | L0 | 标的池 | ✅ Phase 1 完成 | A 股 universe，静态快照 |
 | L1 | 数据层 | ✅ Phase 1 完成 | TimescaleDB + bars 同步，180 天窗口 |
 | L2 | 因子层 | ✅ Phase 2 完成 | 6 因子，per-factor 独立版本（FactorMeta TypedDict）、rows 含 direction/unit/missing_strategy/source、真实基准计算（000300.SH）、per-factor stability_metrics（coverage_rate/drift 检测）、FactorValue domain model 对齐、Pydantic schema 同步（FactorStabilityMetric） |
-| L3 | 信号工程 | ✅ Phase 1 完成 | winsorize+zscore+等权 composite；daily `signal_matrix` 并行输出；`POST /api/v1/signal/snapshot` + `hf signal snapshot`；不改 l2_decision 排序 |
+| L3 | 信号工程 | ✅ Phase 2a 完成 | Phase 1: winsorize+zscore+等权 composite、signal_matrix、snapshot CLI；Phase 2a: Rank IC（per-factor+composite）、信号分布漂移检测、`POST /api/v1/signal/evaluate` + `hf signal evaluate` |
 | L4 | 组合优化 | 🔲 未开始 | — |
 | L5 | 风险门控 | 🔲 未开始 | — |
 | L5.5 | 预交易模拟 | 🔲 未开始 | — |
@@ -184,7 +186,7 @@ cd cli && cargo run -- factor replay --start-date YYYY-MM-DD --end-date YYYY-MM-
 | G2 | 实验治理 | 🔲 未开始 | — |
 | G3 | 执行安全 | 🚧 部分完成 | advice_only/decision_weight 框架已建，审批流未实现 |
 
-**当前工作位置**：L3 Phase 1 已合入 master → Phase 2（缺失值/中性化/与 L4 衔接等）待 spec。
+**当前工作位置**：L3 Phase 2a（IC + drift）已合入 master → Phase 2b（缺失值处理/行业中性化/与 L4 衔接）待 spec；或可开始 L4 组合优化。
 
 ### 7.9 已交付能力摘要
 
@@ -194,7 +196,7 @@ cd cli && cargo run -- factor replay --start-date YYYY-MM-DD --end-date YYYY-MM-
 - **Factor 优化建议**：`POST /api/v1/factor-optimization/evaluate` + `hf factor optimize`，含 correlation_analysis、report、g3_checklist，固定 advice_only
 - **Factor 回放**：`hf factor replay`，summary + daily_items，区分 fetch_status/release_gate_status
 - **CLI 可读性**：`--output table` 中文标题，top 候选最多 5 条
-- **L3 信号**：`signal_matrix`（coverage_rate、transform_stats）；`hf signal snapshot --as-of ... [--output json|table]`；详见 `--help` 与 `docs/CLI_OUTPUT_EXAMPLES.md` 第 1 节
+- **L3 信号**：`signal_matrix`（coverage_rate、transform_stats）；`hf signal snapshot --as-of ... [--output json|table]`；信号评估 `hf signal evaluate --start-date ... --end-date ... [--forward-days N] [--output json|table]`（Rank IC + drift diagnostics）；详见 `--help` 与 `docs/CLI_OUTPUT_EXAMPLES.md`
 
 ## 8. Superpowers 工作流（强约束）
 
