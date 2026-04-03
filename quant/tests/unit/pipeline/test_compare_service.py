@@ -156,20 +156,21 @@ def test_compare_service_builds_return_metrics(monkeypatch) -> None:
         "annualized_volatility",
         "sharpe",
     } <= set(return_metrics["v1"].keys())
-    assert isinstance(daily_return_series, list)
-    assert len(daily_return_series) == 2
-    for item in daily_return_series:
-        assert {"as_of", "v1", "v1_1"} <= set(item.keys())
-        assert {"as_of", "top1_next_day_return"} <= set(item["v1"].keys())
-        assert {"as_of", "top1_next_day_return"} <= set(item["v1_1"].keys())
+    assert {"v1", "v1_1"} <= set(daily_return_series.keys())
+    assert isinstance(daily_return_series["v1"], list)
+    assert isinstance(daily_return_series["v1_1"], list)
+    assert len(daily_return_series["v1"]) == 2
+    assert len(daily_return_series["v1_1"]) == 2
+    for series_key in ("v1", "v1_1"):
+        for item in daily_return_series[series_key]:
+            assert {"as_of", "top1_next_day_return"} <= set(item.keys())
     assert return_metrics["v1"]["cumulative_return"] == pytest.approx(0.0098)
     assert return_metrics["v1"]["win_rate"] == pytest.approx(0.5)
     assert return_metrics["v1_1"]["cumulative_return"] == pytest.approx(0.0403)
     assert return_metrics["v1_1"]["win_rate"] == pytest.approx(1.0)
-    assert return_metrics["diff"]["cumulative_return"] == pytest.approx(0.0305)
-    assert isinstance(return_metrics["diff"]["max_drawdown"], float)
-    assert isinstance(return_metrics["diff"]["annualized_volatility"], float)
-    assert isinstance(return_metrics["diff"]["sharpe"], float)
+    assert {"excess_cumulative_return_v1_1_vs_v1", "excess_sharpe_v1_1_vs_v1"} <= set(return_metrics["diff"].keys())
+    assert return_metrics["diff"]["excess_cumulative_return_v1_1_vs_v1"] == pytest.approx(0.0305)
+    assert isinstance(return_metrics["diff"]["excess_sharpe_v1_1_vs_v1"], float)
 
 
 def test_compare_service_builds_group_stability_by_industry_and_market_cap_bucket(monkeypatch) -> None:
@@ -232,9 +233,13 @@ def test_compare_service_builds_group_stability_by_industry_and_market_cap_bucke
     group_stability = out["data"]["analytics"]["group_stability"]
 
     assert group_stability["group_key"] == "industry_market_cap_bucket"
+    assert {"group_key", "items"} <= set(group_stability.keys())
     assert isinstance(group_stability["items"], list)
     assert len(group_stability["items"]) == 2
-    assert {"group_key", "items"} <= set(group_stability.keys())
+    expected = {
+        ("Bank", "Large"): {"sample_days": 1, "stability_flag": "LOW_SAMPLE"},
+        ("Tech", "Mid"): {"sample_days": 1, "stability_flag": "LOW_SAMPLE"},
+    }
     for item in group_stability["items"]:
         assert {
             "industry",
@@ -245,8 +250,10 @@ def test_compare_service_builds_group_stability_by_industry_and_market_cap_bucke
             "diff",
             "stability_flag",
         } <= set(item.keys())
-        assert item["stability_flag"] in {"OK", "LOW_SAMPLE"}
-        assert item["sample_days"] in {1, 2}
+        key = (item["industry"], item["market_cap_bucket"])
+        assert key in expected
+        assert item["sample_days"] == expected[key]["sample_days"]
+        assert item["stability_flag"] == expected[key]["stability_flag"]
 
 
 def test_compare_service_records_failed_day_and_continues(monkeypatch) -> None:
@@ -274,7 +281,5 @@ def test_compare_service_records_failed_day_and_continues(monkeypatch) -> None:
 
 
 def test_compare_service_rejects_inverted_date_range() -> None:
-    import pytest
-
     with pytest.raises(ValueError, match="start_date must be on or before end_date"):
         run_pipeline_compare(start_date="2026-04-02", end_date="2026-04-01", top_n=5, root=None, bar_store=None)

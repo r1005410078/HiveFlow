@@ -68,7 +68,7 @@ def test_post_pipeline_compare_contract() -> None:
     assert payload["data"]["end_date"] == "2026-04-01"
     assert payload["data"]["top_n"] == 5
     assert payload["data"]["score_versions"] == ["l2-score-v1", "l2-score-v1.1"]
-    assert "analytics" in payload["data"]
-    assert {"return_metrics", "daily_return_series", "group_stability"} <= set(payload["data"]["analytics"].keys())
+    analytics = payload["data"]["analytics"]
+    assert {"return_metrics", "daily_return_series", "group_stability"} <= set(analytics.keys())
     assert payload["data"]["daily_items"][0]["v1"]["warning_count"] == 1
     assert payload["data"]["summary"]["top1_symbol_change_days"] == 1
