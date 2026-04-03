@@ -94,6 +94,8 @@ def test_row_schema_contains_metadata_fields() -> None:
     assert "source" in row
     assert row["direction"] == 1
     assert row["source"] == "deterministic_fallback"
+    assert row["unit"] == "return"
+    assert row["missing_strategy"] == "deterministic_fallback"
 
 
 def test_bars_row_source_is_real_when_data_sufficient() -> None:
@@ -102,5 +104,5 @@ def test_bars_row_source_is_real_when_data_sufficient() -> None:
         as_of="2026-04-01", symbols=["600519.SH"], bar_rows=bars
     )
     for row in out["rows"]:
-        if row["symbol"] == "600519.SH" and row["factor_name"] != "relative_strength_vs_index":
+        if row["symbol"] == "600519.SH":
             assert row["source"] == "real", f"{row['factor_name']} should be real"
