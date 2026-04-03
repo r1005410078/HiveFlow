@@ -12,6 +12,7 @@ dependencies = [
     "pyarrow>=16.0.0",
     "pytest>=8.3.0",
     "ruff>=0.6.0",
+    "scipy>=1.17.1",
     "uvicorn>=0.32.0",
 ]
 
