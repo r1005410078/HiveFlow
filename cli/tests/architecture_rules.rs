@@ -23,7 +23,7 @@ fn visit_rs_files(dir: &Path, files: &mut Vec<PathBuf>) {
 
 #[test]
 fn cmd_layer_must_not_import_infrastructure() {
-    let cmd_files = ["cmd/data.rs", "cmd/pipeline.rs", "cmd/factor.rs"];
+    let cmd_files = ["cmd/data.rs", "cmd/pipeline.rs", "cmd/factor.rs", "cmd/signal.rs"];
     for file in cmd_files {
         let content = read(&src_path(file));
         assert!(

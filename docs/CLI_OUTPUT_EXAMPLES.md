@@ -11,7 +11,7 @@
 
 说明：
 
-- 第 1~3 节（`signal snapshot` / `news-snapshot` / `market web-brief`）用于说明 envelope 语义，不代表当前 CLI 已提供对应子命令。
+- 第 1 节（`signal snapshot`）已在 L3 Phase 1 实装。第 2~3 节（`news-snapshot` / `market web-brief`）仍为 envelope 语义示例，不代表当前 CLI 已提供对应子命令。
 - 当前已实现命令面请以 `cargo run -- --help`（或安装后二进制 `hf --help`）为准。
 
 ---
@@ -22,17 +22,34 @@
 {
   "schema_version": "1.0.0",
   "command": "hf signal snapshot",
-  "run_id": "run_20260401_001",
+  "run_id": "run_20260401_abcd1234",
   "status": "ok",
-  "generated_at": "2026-04-01T09:00:00+08:00",
+  "generated_at": "2026-04-01T09:00:00+00:00",
   "source": "system",
   "advice_only": false,
   "decision_weight": 1,
   "data": {
-    "strategy_id": "strategy_A",
-    "as_of": "2026-04-01",
-    "signal": -0.73,
-    "regime": "warning"
+    "schema_version": "1.0",
+    "generated_at": "2026-04-01T09:00:00+00:00",
+    "producer_version": "quant-l3",
+    "signal_version": "l3-signal-v1.0",
+    "factor_names": ["momentum_20", "inv_volatility_20", "turnover_rate", "max_drawdown_60", "trend_stability_20", "relative_strength_vs_index"],
+    "coverage_rate": 1.0,
+    "rows": [
+      {"symbol": "600519.SH", "factor_name": "momentum_20", "raw_value": 0.02, "signal_value": 1.23, "direction": 1},
+      {"symbol": "600519.SH", "factor_name": "inv_volatility_20", "raw_value": 2.9, "signal_value": 0.87, "direction": 1}
+    ],
+    "composite_scores": [
+      {"symbol": "600519.SH", "composite_score": 0.54, "factor_count": 6},
+      {"symbol": "000001.SZ", "composite_score": -0.12, "factor_count": 6}
+    ],
+    "transform_stats": [
+      {
+        "factor_name": "momentum_20",
+        "pre_winsorize": {"count": 5, "mean": 0.03, "std": 0.02, "min": -0.01, "max": 0.08},
+        "post_zscore": {"count": 5, "mean": 0.0, "std": 1.0, "min": -1.5, "max": 1.8}
+      }
+    ]
   },
   "warnings": [],
   "errors": []
@@ -260,6 +277,27 @@ jq -e 'if .source=="web_search" then (.advice_only==true and .decision_weight==0
     },
     "execution_plan": {
       "orders": []
+    },
+    "signal_matrix": {
+      "schema_version": "1.0",
+      "generated_at": "2026-04-02T09:00:00+00:00",
+      "producer_version": "quant-l3",
+      "signal_version": "l3-signal-v1.0",
+      "factor_names": ["momentum_20", "inv_volatility_20", "turnover_rate"],
+      "coverage_rate": 1.0,
+      "rows": [
+        {"symbol": "600519.SH", "factor_name": "momentum_20", "raw_value": 0.02, "signal_value": 1.23, "direction": 1}
+      ],
+      "composite_scores": [
+        {"symbol": "600519.SH", "composite_score": 0.54, "factor_count": 3}
+      ],
+      "transform_stats": [
+        {
+          "factor_name": "momentum_20",
+          "pre_winsorize": {"count": 5, "mean": 0.03, "std": 0.02, "min": -0.01, "max": 0.08},
+          "post_zscore": {"count": 5, "mean": 0.0, "std": 1.0, "min": -1.5, "max": 1.8}
+        }
+      ]
     }
   },
   "warnings": [],
