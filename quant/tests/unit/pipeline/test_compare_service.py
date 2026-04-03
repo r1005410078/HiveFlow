@@ -183,7 +183,7 @@ def test_compare_service_builds_group_stability_by_industry_and_market_cap_bucke
                     "score": 0.4,
                     "rank": 1,
                     "industry": "Bank",
-                    "market_cap_bucket": "Large",
+                    "market_cap_bucket": "LARGE",
                     "next_day_return": 0.02,
                 }
             ],
@@ -193,7 +193,7 @@ def test_compare_service_builds_group_stability_by_industry_and_market_cap_bucke
                     "score": 0.6,
                     "rank": 1,
                     "industry": "Bank",
-                    "market_cap_bucket": "Large",
+                    "market_cap_bucket": "LARGE",
                     "next_day_return": 0.01,
                 }
             ],
@@ -203,7 +203,7 @@ def test_compare_service_builds_group_stability_by_industry_and_market_cap_bucke
                     "score": 0.45,
                     "rank": 1,
                     "industry": "Tech",
-                    "market_cap_bucket": "Mid",
+                    "market_cap_bucket": "MID",
                     "next_day_return": -0.01,
                 }
             ],
@@ -213,7 +213,7 @@ def test_compare_service_builds_group_stability_by_industry_and_market_cap_bucke
                     "score": 0.65,
                     "rank": 1,
                     "industry": "Tech",
-                    "market_cap_bucket": "Mid",
+                    "market_cap_bucket": "MID",
                     "next_day_return": 0.03,
                 }
             ],
@@ -237,8 +237,8 @@ def test_compare_service_builds_group_stability_by_industry_and_market_cap_bucke
     assert isinstance(group_stability["items"], list)
     assert len(group_stability["items"]) == 2
     expected = {
-        ("Bank", "Large"): {"sample_days": 1, "stability_flag": "LOW_SAMPLE"},
-        ("Tech", "Mid"): {"sample_days": 1, "stability_flag": "LOW_SAMPLE"},
+        ("Bank", "LARGE"): {"sample_days": 1, "stability_flag": "LOW_SAMPLE"},
+        ("Tech", "MID"): {"sample_days": 1, "stability_flag": "LOW_SAMPLE"},
     }
     for item in group_stability["items"]:
         assert {
