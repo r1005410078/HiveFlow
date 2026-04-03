@@ -1,10 +1,14 @@
 from fastapi import APIRouter, Depends
 
 from interfaces.http.dependencies import (
+    SignalEvaluateService,
     SignalSnapshotService,
+    get_signal_evaluate_service,
     get_signal_snapshot_service,
 )
 from interfaces.http.schemas import (
+    SignalEvaluateRequest,
+    SignalEvaluateResponse,
     SignalSnapshotRequest,
     SignalSnapshotResponse,
 )
@@ -26,3 +30,21 @@ def post_signal_snapshot(
     service: SignalSnapshotService = Depends(get_signal_snapshot_service),
 ) -> SignalSnapshotResponse:
     return SignalSnapshotResponse.model_validate(service(req.as_of))
+
+
+@router.post(
+    "/evaluate",
+    summary="L3 信号质量评估（IC + 漂移检测）",
+    description=(
+        "对指定日期范围逐日重算 L3 信号，计算 Rank IC（per-factor + composite）"
+        "和信号分布漂移诊断。需要 DB 中的真实 bar 数据。"
+    ),
+    response_description="IC 报告 + 漂移诊断",
+)
+def post_signal_evaluate(
+    req: SignalEvaluateRequest,
+    service: SignalEvaluateService = Depends(get_signal_evaluate_service),
+) -> SignalEvaluateResponse:
+    return SignalEvaluateResponse.model_validate(
+        service(req.start_date, req.end_date, req.forward_days)
+    )

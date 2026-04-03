@@ -26,6 +26,19 @@ _FACTOR_BAR_LOOKBACK_DAYS = 180
 _logger = logging.getLogger(__name__)
 
 
+def _empty_eval_data(start_date: str, end_date: str, forward_days: int) -> dict:
+    return {
+        "eval_version": _EVAL_VERSION,
+        "start_date": start_date,
+        "end_date": end_date,
+        "forward_days": forward_days,
+        "trading_days_evaluated": 0,
+        "symbols": list(_DEFAULT_SYMBOLS),
+        "ic_report": None,
+        "drift_diagnostics": None,
+    }
+
+
 def _compute_daily_ic(signal_matrix: dict, forward_returns: dict[str, float]) -> dict:
     result: dict[str, float] = {}
     fwd_series = pd.Series(forward_returns)
@@ -202,7 +215,7 @@ def run_signal_evaluation(
             "source": "system",
             "advice_only": False,
             "decision_weight": 1,
-            "data": {},
+            "data": _empty_eval_data(start_date, end_date, forward_days),
             "warnings": [],
             "errors": [{"code": "BAR_STORE_REQUIRED", "message": "Signal evaluation requires database with real bar data"}],
         }
@@ -221,7 +234,7 @@ def run_signal_evaluation(
             "source": "system",
             "advice_only": False,
             "decision_weight": 1,
-            "data": {},
+            "data": _empty_eval_data(start_date, end_date, forward_days),
             "warnings": [],
             "errors": [{"code": "INVALID_DATE_RANGE", "message": f"start_date ({start_date}) must be before end_date ({end_date})"}],
         }

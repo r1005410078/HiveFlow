@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from application.daily_run_service import run_daily
 from application.factor_optimization import run_factor_optimization
 from application.pipeline_compare_service import run_pipeline_compare
+from application.signal.signal_evaluate_service import run_signal_evaluation
 from application.signal.signal_engineering_service import run_signal_snapshot
 from application.market_data.bars_query_service import BarsQueryService
 from application.market_data.query_service import QueryService
@@ -26,6 +27,7 @@ MarketDataUniverseSyncService = Callable[..., dict]
 MarketDataQueryService = Callable[..., dict]
 MarketDataBarsQueryService = Callable[..., dict]
 SignalSnapshotService = Callable[[str], dict]
+SignalEvaluateService = Callable[[str, str, int], dict]
 
 
 def get_daily_run_service() -> DailyRunService:
@@ -81,6 +83,30 @@ def get_signal_snapshot_service() -> SignalSnapshotService:
         except Exception:
             bar_store = None
     return lambda as_of: run_signal_snapshot(as_of=as_of, bar_store=bar_store)
+
+
+def get_signal_evaluate_service() -> SignalEvaluateService:
+    if not has_db_config():
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "BAR_STORE_REQUIRED",
+                "message": "Signal evaluation requires database with real bar data",
+            },
+        )
+    try:
+        bar_store = TimescaleBarStore(open_db_connection_from_env())
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "BAR_STORE_REQUIRED",
+                "message": f"Signal evaluation requires database: {exc}",
+            },
+        ) from exc
+    return lambda start, end, fwd: run_signal_evaluation(
+        start_date=start, end_date=end, forward_days=fwd, bar_store=bar_store,
+    )
 
 
 class _NoopQuoteRepo:
