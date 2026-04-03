@@ -28,6 +28,10 @@ def _stub_daily_run_service(as_of: str) -> dict:
                         "factor_name": "momentum_20",
                         "factor_version": "l2-basic-v1.1",
                         "raw_value": 0.02,
+                        "direction": 1,
+                        "unit": "return",
+                        "missing_strategy": "deterministic_fallback",
+                        "source": "real",
                     }
                 ],
             },

@@ -57,7 +57,10 @@ router = APIRouter(prefix="/api/v1/pipeline", tags=["pipeline"])
                                 ],
                                 "coverage_rate": 1.0,
                                 "rows": [
-                                    {"as_of": "2026-04-01", "symbol": "600519.SH", "factor_name": "momentum_20", "factor_version": "l2-basic-v1.1", "raw_value": 0.024},
+                                    {"as_of": "2026-04-01", "symbol": "600519.SH", "factor_name": "momentum_20",
+                                     "factor_version": "l2-momentum-v1.0", "raw_value": 0.024,
+                                     "direction": 1, "unit": "return", "missing_strategy": "deterministic_fallback",
+                                     "source": "real"},
                                 ],
                             },
                             "l2_decision": {
