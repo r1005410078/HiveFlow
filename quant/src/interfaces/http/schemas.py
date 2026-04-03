@@ -106,6 +106,64 @@ class L2Decision(BaseModel):
     factor_availability: list[L2FactorAvailability]
 
 
+class SignalSnapshotRequest(BaseModel):
+    as_of: str = Field(description="计算基准日期，格式 YYYY-MM-DD（PIT 语义）")
+
+
+class SignalRowSchema(BaseModel):
+    symbol: str
+    factor_name: str
+    raw_value: float
+    signal_value: float
+    direction: int
+
+
+class SignalCompositeScore(BaseModel):
+    symbol: str
+    composite_score: float
+    factor_count: int
+
+
+class SignalTransformStatsDetail(BaseModel):
+    count: int
+    mean: float
+    std: float
+    min: float
+    max: float
+
+
+class SignalTransformStats(BaseModel):
+    factor_name: str
+    pre_winsorize: SignalTransformStatsDetail
+    post_zscore: SignalTransformStatsDetail
+
+
+class SignalMatrix(BaseModel):
+    schema_version: str
+    generated_at: str
+    producer_version: str
+    signal_version: str
+    factor_names: list[str]
+    coverage_rate: float
+    rows: list[SignalRowSchema]
+    composite_scores: list[SignalCompositeScore]
+    transform_stats: list[SignalTransformStats]
+
+
+class SignalSnapshotResponse(BaseModel):
+    schema_version: str
+    command: str
+    run_id: str
+    status: str
+    generated_at: str
+    source: str
+    advice_only: bool
+    decision_weight: int
+    data: SignalMatrix
+    warnings: list[dict]
+    errors: list[dict]
+
+
 class PipelineCompareVersion(BaseModel):
     score_version: Literal["l2-score-v1", "l2-score-v1.1"]
     top_candidates: list[L2TopCandidate]
@@ -206,6 +264,7 @@ class DailyRunData(BaseModel):
     factor_snapshot: FactorSnapshot
     execution_plan: ExecutionPlan
     l2_decision: L2Decision
+    signal_matrix: SignalMatrix | None = None
 
 
 class PipelineCompareResponse(BaseModel):
