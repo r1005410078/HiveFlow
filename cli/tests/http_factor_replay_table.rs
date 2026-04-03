@@ -44,6 +44,7 @@ fn factor_replay_table_renders_summary_and_daily_rows() {
     assert!(table.contains("逐日回放明细"));
     assert!(table.contains("error_days"));
     assert!(table.contains("release_gate_status"));
+    assert!(table.contains("momentum_20+inv_volatility_20"));
     assert!(table.contains("2026-04-03"));
     assert!(table.contains("unknown"));
 }

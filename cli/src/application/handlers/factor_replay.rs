@@ -5,6 +5,7 @@ use crate::application::requests::FactorReplayRequest;
 use crate::error::AppError;
 use crate::infrastructure::config_loader::load_default_config;
 use crate::infrastructure::http_client::post_factor_optimize;
+use crate::infrastructure::table_renderer::render_factor_replay_table;
 
 fn parse_date(label: &str, value: &str) -> Result<NaiveDate, AppError> {
     NaiveDate::parse_from_str(value, "%Y-%m-%d").map_err(|err| {
@@ -154,11 +155,7 @@ pub fn handle(args: FactorReplayRequest) -> Result<(), AppError> {
 
     match args.output.as_str() {
         "json" => print!("{out}"),
-        "table" => {
-            return Err(AppError::InvalidArgs(
-                "factor replay table output not implemented yet".to_string(),
-            ));
-        }
+        "table" => print!("{}", render_factor_replay_table(&out)),
         other => {
             return Err(AppError::InvalidArgs(format!(
                 "unsupported --output value for factor replay: {other} (expected: json|table)"
