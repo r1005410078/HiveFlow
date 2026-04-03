@@ -1,3 +1,4 @@
+use crate::contracts::error_codes::ErrorCode;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -16,4 +17,16 @@ pub enum AppError {
     InvalidJson(serde_json::Error),
     #[error("invalid args: {0}")]
     InvalidArgs(String),
+}
+
+impl AppError {
+    pub fn code(&self) -> ErrorCode {
+        match self {
+            Self::Config(_) | Self::ConfigIo(_) | Self::ConfigParse(_) => ErrorCode::ConfigError,
+            Self::HttpClient(_) => ErrorCode::TransportError,
+            Self::Upstream(_, _) => ErrorCode::UpstreamError,
+            Self::InvalidJson(_) => ErrorCode::InvalidJson,
+            Self::InvalidArgs(_) => ErrorCode::InvalidArgs,
+        }
+    }
 }

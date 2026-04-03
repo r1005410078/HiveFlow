@@ -18,5 +18,8 @@ pub fn load_default_config() -> Result<CliConfig, AppError> {
         .ok_or_else(|| AppError::Config("home directory is unavailable".to_string()))?;
     let path = home.join(".hiveflow").join("config.toml");
     let raw = std::fs::read_to_string(path).map_err(AppError::ConfigIo)?;
-    load_config_from(&raw).map_err(AppError::ConfigParse)
+    let cfg = load_config_from(&raw).map_err(AppError::ConfigParse)?;
+    // Keep retry in the runtime contract even if handlers do not yet apply retry policy.
+    let _configured_retry = cfg.retry;
+    Ok(cfg)
 }

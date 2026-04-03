@@ -11,7 +11,7 @@ use clap::Parser;
 fn main() {
     let command = Cli::parse();
     if let Err(err) = application::dispatch::run(command.into()) {
-        eprintln!("{err}");
+        eprintln!("{}: {err}", err.code().as_str());
         std::process::exit(1);
     }
 }

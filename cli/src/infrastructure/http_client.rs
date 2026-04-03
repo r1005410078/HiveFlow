@@ -2,6 +2,7 @@ use reqwest::blocking::Client;
 use serde_json::{json, Value};
 
 use crate::error::AppError;
+use crate::infrastructure::stdout_parser::parse_json;
 
 fn build_client(server_url: &str, timeout_ms: u64) -> Result<Client, AppError> {
     let mut builder = Client::builder().timeout(std::time::Duration::from_millis(timeout_ms));
@@ -31,7 +32,7 @@ pub fn post_daily(server_url: &str, as_of: &str, timeout_ms: u64) -> Result<Valu
         return Err(AppError::Upstream(status.as_u16(), body));
     }
 
-    serde_json::from_str(&body_text).map_err(AppError::InvalidJson)
+    parse_json(&body_text)
 }
 
 pub fn post_pipeline_compare(
@@ -65,7 +66,7 @@ pub fn post_pipeline_compare(
         return Err(AppError::Upstream(status.as_u16(), body));
     }
 
-    serde_json::from_str(&body_text).map_err(AppError::InvalidJson)
+    parse_json(&body_text)
 }
 
 pub fn post_factor_optimize(
@@ -105,7 +106,7 @@ pub fn post_factor_optimize(
             serde_json::from_str(&body_text).unwrap_or_else(|_| json!({ "raw_body": body_text }));
         return Err(AppError::Upstream(status.as_u16(), body));
     }
-    serde_json::from_str(&body_text).map_err(AppError::InvalidJson)
+    parse_json(&body_text)
 }
 
 pub fn post_data_sync(
@@ -141,7 +142,7 @@ pub fn post_data_sync(
             serde_json::from_str(&body_text).unwrap_or_else(|_| json!({ "raw_body": body_text }));
         return Err(AppError::Upstream(status.as_u16(), body));
     }
-    serde_json::from_str(&body_text).map_err(AppError::InvalidJson)
+    parse_json(&body_text)
 }
 
 pub fn post_data_universe_sync(
@@ -172,7 +173,7 @@ pub fn post_data_universe_sync(
             serde_json::from_str(&body_text).unwrap_or_else(|_| json!({ "raw_body": body_text }));
         return Err(AppError::Upstream(status.as_u16(), body));
     }
-    serde_json::from_str(&body_text).map_err(AppError::InvalidJson)
+    parse_json(&body_text)
 }
 
 pub fn get_market_data_sync_runs(
@@ -212,7 +213,7 @@ pub fn get_market_data_sync_runs(
             serde_json::from_str(&body_text).unwrap_or_else(|_| json!({ "raw_body": body_text }));
         return Err(AppError::Upstream(status_code.as_u16(), body));
     }
-    serde_json::from_str(&body_text).map_err(AppError::InvalidJson)
+    parse_json(&body_text)
 }
 
 pub fn get_market_data_bars(
@@ -254,5 +255,5 @@ pub fn get_market_data_bars(
             serde_json::from_str(&body_text).unwrap_or_else(|_| json!({ "raw_body": body_text }));
         return Err(AppError::Upstream(status_code.as_u16(), body));
     }
-    serde_json::from_str(&body_text).map_err(AppError::InvalidJson)
+    parse_json(&body_text)
 }
