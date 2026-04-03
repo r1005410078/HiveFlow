@@ -22,6 +22,15 @@ pub struct FactorOptimizeRequest {
 }
 
 #[derive(Debug, Clone)]
+pub struct FactorReplayRequest {
+    pub start_date: String,
+    pub end_date: String,
+    pub factor_names: Vec<String>,
+    pub correlation_threshold: Option<f64>,
+    pub output: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct DataSyncRequest {
     pub days: i32,
     pub end_date: String,
@@ -62,6 +71,7 @@ pub enum AppCommand {
     PipelineDaily(PipelineDailyRequest),
     PipelineCompare(PipelineCompareRequest),
     FactorOptimize(FactorOptimizeRequest),
+    FactorReplay(FactorReplayRequest),
     DataSync(DataSyncRequest),
     DataQuery(DataQueryRequest),
     DataBars(DataBarsRequest),

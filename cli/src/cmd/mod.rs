@@ -35,6 +35,7 @@ impl From<Cli> for AppCommand {
                 factor::FactorSubcommand::Optimize(optimize) => {
                     AppCommand::FactorOptimize(optimize.into())
                 }
+                factor::FactorSubcommand::Replay(replay) => AppCommand::FactorReplay(replay.into()),
             },
             Commands::Data(args) => match args.command {
                 data::DataSubcommand::Sync(sync_args) => AppCommand::DataSync(sync_args.into()),
