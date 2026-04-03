@@ -56,6 +56,104 @@
 }
 ```
 
+### hf signal evaluate
+
+`hf signal evaluate --start-date 2026-03-01 --end-date 2026-04-01 --output json`
+
+In this example, `daily_ic` arrays are truncated for brevity; in production they contain one entry per evaluation day.
+
+```json
+{
+  "schema_version": "1.0.0",
+  "command": "hf signal evaluate",
+  "run_id": "run_eval_20260301_20260401_a1b2c3d4",
+  "status": "ok",
+  "generated_at": "2026-04-03T12:00:00+00:00",
+  "source": "system",
+  "advice_only": false,
+  "decision_weight": 1,
+  "data": {
+    "eval_version": "l3-eval-v1.0",
+    "start_date": "2026-03-01",
+    "end_date": "2026-04-01",
+    "forward_days": 1,
+    "trading_days_evaluated": 20,
+    "symbols": ["000001.SZ", "600519.SH", "300750.SZ", "601318.SH", "000333.SZ"],
+    "ic_report": {
+      "per_factor": [
+        {
+          "factor_name": "momentum_20",
+          "mean_ic": 0.062,
+          "ic_std": 0.15,
+          "ic_ir": 0.413333,
+          "hit_rate": 0.65,
+          "daily_ic": [
+            {"date": "2026-03-03", "ic": 0.12},
+            {"date": "2026-03-04", "ic": -0.05}
+          ]
+        },
+        {
+          "factor_name": "inv_volatility_20",
+          "mean_ic": 0.035,
+          "ic_std": 0.18,
+          "ic_ir": 0.194444,
+          "hit_rate": 0.55,
+          "daily_ic": [
+            {"date": "2026-03-03", "ic": 0.08},
+            {"date": "2026-03-04", "ic": -0.02}
+          ]
+        }
+      ],
+      "composite": {
+        "mean_ic": 0.085,
+        "ic_std": 0.12,
+        "ic_ir": 0.708333,
+        "hit_rate": 0.70,
+        "daily_ic": [
+          {"date": "2026-03-03", "ic": 0.15},
+          {"date": "2026-03-04", "ic": 0.02}
+        ]
+      }
+    },
+    "drift_diagnostics": {
+      "drift_window": 5,
+      "baseline_days": 15,
+      "factor_drift": [
+        {
+          "factor_name": "momentum_20",
+          "baseline_mean": 0.042,
+          "baseline_std": 0.008,
+          "recent_mean": 0.039,
+          "drift_z": -0.375,
+          "drift_flag": false
+        },
+        {
+          "factor_name": "inv_volatility_20",
+          "baseline_mean": 1.25,
+          "baseline_std": 0.15,
+          "recent_mean": 1.28,
+          "drift_z": 0.2,
+          "drift_flag": false
+        }
+      ],
+      "coverage_drift": {
+        "baseline_mean": 1.0,
+        "recent_mean": 1.0,
+        "drift_z": 0.0,
+        "drift_flag": false
+      },
+      "rank_turnover": {
+        "mean_turnover": 0.2,
+        "max_turnover": 0.4,
+        "stable": true
+      }
+    }
+  },
+  "warnings": [],
+  "errors": []
+}
+```
+
 ---
 
 ---
