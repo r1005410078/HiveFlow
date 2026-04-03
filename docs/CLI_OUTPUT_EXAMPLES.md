@@ -437,3 +437,97 @@ jq -e 'if .source=="web_search" then (.advice_only==true and .decision_weight==0
   ]
 }
 ```
+
+---
+
+## 10. hf pipeline compare（JSON 示例，含 Phase2 analytics）
+
+```json
+{
+  "schema_version": "1.0.0",
+  "command": "hf pipeline compare",
+  "run_id": "run_compare_001",
+  "status": "ok",
+  "generated_at": "2026-04-03T09:00:00+08:00",
+  "source": "system",
+  "advice_only": false,
+  "decision_weight": 1,
+  "data": {
+    "start_date": "2026-03-01",
+    "end_date": "2026-03-30",
+    "top_n": 5,
+    "daily_items": [],
+    "summary": {
+      "days": 20,
+      "avg_warning_count_v1": 0.2,
+      "avg_warning_count_v1_1": 0.1,
+      "avg_min_availability_v1": 0.93,
+      "avg_min_availability_v1_1": 0.96,
+      "top1_symbol_change_days": 7
+    },
+    "analytics": {
+      "return_metrics": {
+        "v1": {
+          "cumulative_return": 0.042,
+          "win_rate": 0.53,
+          "max_drawdown": 0.081,
+          "annualized_volatility": 0.19,
+          "sharpe": 0.88
+        },
+        "v1_1": {
+          "cumulative_return": 0.067,
+          "win_rate": 0.58,
+          "max_drawdown": 0.073,
+          "annualized_volatility": 0.18,
+          "sharpe": 1.07
+        },
+        "diff": {
+          "excess_cumulative_return_v1_1_vs_v1": 0.025,
+          "excess_sharpe_v1_1_vs_v1": 0.19
+        }
+      },
+      "daily_return_series": {
+        "v1": [
+          {
+            "as_of": "2026-03-01",
+            "top1_next_day_return": 0.0042
+          }
+        ],
+        "v1_1": [
+          {
+            "as_of": "2026-03-01",
+            "top1_next_day_return": 0.0061
+          }
+        ]
+      },
+      "group_stability": {
+        "group_key": "industry_market_cap_bucket",
+        "items": [
+          {
+            "industry": "Bank",
+            "market_cap_bucket": "LARGE",
+            "sample_days": 8,
+            "v1": {
+              "cumulative_return": 0.012,
+              "win_rate": 0.5,
+              "sharpe": 0.42
+            },
+            "v1_1": {
+              "cumulative_return": 0.021,
+              "win_rate": 0.63,
+              "sharpe": 0.71
+            },
+            "diff": {
+              "excess_cumulative_return": 0.009,
+              "excess_sharpe": 0.29
+            },
+            "stability_flag": "OK"
+          }
+        ]
+      }
+    }
+  },
+  "warnings": [],
+  "errors": []
+}
+```

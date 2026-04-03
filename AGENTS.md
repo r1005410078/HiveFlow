@@ -161,6 +161,10 @@ retry = 1
   - `quant`：新增 `POST /api/v1/pipeline/compare`
   - `cli`：新增 `hf pipeline compare --start-date --end-date --top-n --output json|table`
   - compare 输出含逐日 `daily_items` 与汇总 `summary`，并统计 `top1_symbol_change_days`
+- Compare 回放 Phase2 analytics（本轮新增）：
+  - compare 输出新增 `analytics.return_metrics`：`cumulative_return`、`win_rate`、`max_drawdown`、`annualized_volatility`、`sharpe`
+  - compare 输出新增 `analytics.daily_return_series`：按版本输出 `top1_next_day_return` 日序列
+  - compare 输出新增 `analytics.group_stability`：按 `industry + market_cap_bucket` 聚合，包含 `sample_days`、`v1/v1_1/diff`、`stability_flag`
 - Factor 优化建议能力（本轮新增）：
   - `quant`：新增 `POST /api/v1/factor-optimization/evaluate`
   - `cli`：新增 `hf factor optimize --start-date --end-date --factors --output json|table`
