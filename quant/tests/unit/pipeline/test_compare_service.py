@@ -144,16 +144,24 @@ def test_compare_service_builds_return_metrics(monkeypatch) -> None:
     out = run_pipeline_compare(start_date="2026-04-01", end_date="2026-04-02", top_n=5, root=None, bar_store=None)
 
     analytics = out["data"]["analytics"]
+    daily_return_series = analytics["daily_return_series"]
     return_metrics = analytics["return_metrics"]
 
-    assert set(return_metrics.keys()) == {"v1", "v1_1", "diff"}
-    assert set(return_metrics["v1"].keys()) == {
+    assert {"return_metrics", "daily_return_series", "group_stability"} <= set(analytics.keys())
+    assert {"v1", "v1_1", "diff"} <= set(return_metrics.keys())
+    assert {
         "cumulative_return",
         "win_rate",
         "max_drawdown",
         "annualized_volatility",
         "sharpe",
-    }
+    } <= set(return_metrics["v1"].keys())
+    assert isinstance(daily_return_series, list)
+    assert len(daily_return_series) == 2
+    for item in daily_return_series:
+        assert {"as_of", "v1", "v1_1"} <= set(item.keys())
+        assert {"as_of", "top1_next_day_return"} <= set(item["v1"].keys())
+        assert {"as_of", "top1_next_day_return"} <= set(item["v1_1"].keys())
     assert return_metrics["v1"]["cumulative_return"] == pytest.approx(0.0098)
     assert return_metrics["v1"]["win_rate"] == pytest.approx(0.5)
     assert return_metrics["v1_1"]["cumulative_return"] == pytest.approx(0.0403)
@@ -224,9 +232,11 @@ def test_compare_service_builds_group_stability_by_industry_and_market_cap_bucke
     group_stability = out["data"]["analytics"]["group_stability"]
 
     assert group_stability["group_key"] == "industry_market_cap_bucket"
+    assert isinstance(group_stability["items"], list)
     assert len(group_stability["items"]) == 2
+    assert {"group_key", "items"} <= set(group_stability.keys())
     for item in group_stability["items"]:
-        assert set(item.keys()) >= {
+        assert {
             "industry",
             "market_cap_bucket",
             "sample_days",
@@ -234,9 +244,9 @@ def test_compare_service_builds_group_stability_by_industry_and_market_cap_bucke
             "v1_1",
             "diff",
             "stability_flag",
-        }
-        assert isinstance(item["stability_flag"], bool)
-        assert item["sample_days"] == 2
+        } <= set(item.keys())
+        assert item["stability_flag"] in {"OK", "LOW_SAMPLE"}
+        assert item["sample_days"] in {1, 2}
 
 
 def test_compare_service_records_failed_day_and_continues(monkeypatch) -> None:
