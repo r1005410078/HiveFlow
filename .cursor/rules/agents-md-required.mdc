@@ -1,0 +1,12 @@
+---
+description: 修改代码或讨论架构前必读仓库根目录 AGENTS.md
+alwaysApply: true
+---
+
+# 必读 AGENTS.md
+
+在**任何**涉及本仓库的代码修改、分层/依赖讨论、测试与 CI、或评审标准之前：
+
+1. **必读**仓库根目录的 `AGENTS.md`（路径：`AGENTS.md`），并严格按其「强约束」执行。
+2. 若上下文未包含 `AGENTS.md` 全文，先用工具 **Read** 读取该文件再改动或下结论。
+3. Claude Code 用户另见根目录 `CLAUDE.md`；与 `AGENTS.md` 冲突时以 `AGENTS.md` 为准（另有明确用户指令时从其指令）。
