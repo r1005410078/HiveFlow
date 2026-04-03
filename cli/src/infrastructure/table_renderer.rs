@@ -86,6 +86,19 @@ fn render_matrix_row(item: &Value) -> (String, String) {
     (dimension, details.join(" | "))
 }
 
+fn join_factor_names(value: Option<&Value>) -> String {
+    value
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join("+")
+        })
+        .unwrap_or_default()
+}
+
 pub fn render_sync_runs_table(payload: &Value, verbose: bool) -> String {
     let mut table = Table::new();
     table
@@ -627,4 +640,68 @@ pub fn render_factor_optimize_table(payload: &Value) -> Result<String, AppError>
         "因子优化建议\n{}\n相关性告警\n{}\n10维评估摘要\n{}\n{}\nG3 checklist\n{}\nTop5 组合推荐\n组合空间\n{}\n{}\n方案明细\n{}\n",
         summary, alerts, report_summary, matrix, checklist, combo_summary, combo_items, schemes
     ))
+}
+
+pub fn render_factor_replay_table(payload: &Value) -> String {
+    let mut summary = Table::new();
+    summary
+        .load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec![Cell::new("指标"), Cell::new("值")]);
+
+    let summary_data = payload.get("summary");
+    summary.add_row(vec![
+        "days".to_string(),
+        as_i64(summary_data.and_then(|value| value.get("days"))),
+    ]);
+    summary.add_row(vec![
+        "error_days".to_string(),
+        as_i64(summary_data.and_then(|value| value.get("error_days"))),
+    ]);
+    summary.add_row(vec![
+        "pass_days".to_string(),
+        as_i64(summary_data.and_then(|value| value.get("pass_days"))),
+    ]);
+    summary.add_row(vec![
+        "watch_days".to_string(),
+        as_i64(summary_data.and_then(|value| value.get("watch_days"))),
+    ]);
+    summary.add_row(vec![
+        "fail_days".to_string(),
+        as_i64(summary_data.and_then(|value| value.get("fail_days"))),
+    ]);
+    summary.add_row(vec![
+        "avg_alert_count".to_string(),
+        as_f64(summary_data.and_then(|value| value.get("avg_alert_count"))),
+    ]);
+    summary.add_row(vec![
+        "top1_change_days".to_string(),
+        as_i64(summary_data.and_then(|value| value.get("top1_change_days"))),
+    ]);
+
+    let mut daily = Table::new();
+    daily
+        .load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec![
+            Cell::new("as_of"),
+            Cell::new("fetch_status"),
+            Cell::new("release_gate_status"),
+            Cell::new("alert_count"),
+            Cell::new("top1_factors"),
+        ]);
+
+    if let Some(items) = payload.get("daily_items").and_then(Value::as_array) {
+        for item in items {
+            daily.add_row(vec![
+                as_str(item.get("as_of")),
+                as_str(item.get("fetch_status")),
+                as_str(item.get("release_gate_status")),
+                as_i64(item.get("alert_count")),
+                join_factor_names(item.get("top1_factors")),
+            ]);
+        }
+    }
+
+    format!("因子回放汇总\n{}\n逐日回放明细\n{}\n", summary, daily)
 }
