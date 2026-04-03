@@ -164,6 +164,94 @@ class SignalSnapshotResponse(BaseModel):
     errors: list[dict]
 
 
+class SignalEvaluateRequest(BaseModel):
+    start_date: str = Field(description="评估起始日期，YYYY-MM-DD")
+    end_date: str = Field(description="评估结束日期，YYYY-MM-DD")
+    forward_days: int = Field(default=1, ge=1, le=10, description="前瞻天数")
+
+
+class DailyIC(BaseModel):
+    date: str
+    ic: float
+
+
+class FactorICReport(BaseModel):
+    factor_name: str
+    mean_ic: float
+    ic_std: float
+    ic_ir: float
+    hit_rate: float
+    daily_ic: list[DailyIC]
+
+
+class CompositeICReport(BaseModel):
+    mean_ic: float
+    ic_std: float
+    ic_ir: float
+    hit_rate: float
+    daily_ic: list[DailyIC]
+
+
+class ICReport(BaseModel):
+    per_factor: list[FactorICReport]
+    composite: CompositeICReport
+
+
+class FactorDrift(BaseModel):
+    factor_name: str
+    baseline_mean: float
+    baseline_std: float
+    recent_mean: float
+    drift_z: float
+    drift_flag: bool
+
+
+class CoverageDrift(BaseModel):
+    baseline_mean: float
+    recent_mean: float
+    drift_z: float
+    drift_flag: bool
+
+
+class RankTurnover(BaseModel):
+    mean_turnover: float
+    max_turnover: float
+    stable: bool
+
+
+class DriftDiagnostics(BaseModel):
+    drift_window: int
+    baseline_days: int
+    factor_drift: list[FactorDrift]
+    coverage_drift: CoverageDrift
+    rank_turnover: RankTurnover
+
+
+class SignalEvaluation(BaseModel):
+    eval_version: str
+    start_date: str
+    end_date: str
+    forward_days: int
+    trading_days_evaluated: int
+    symbols: list[str]
+    ic_report: ICReport | None
+    drift_diagnostics: DriftDiagnostics | None
+
+
+class SignalEvaluateResponse(BaseModel):
+    schema_version: str
+    command: str
+    run_id: str
+    status: str
+    generated_at: str
+    source: str
+    advice_only: bool
+    decision_weight: int
+    data: SignalEvaluation
+    warnings: list[dict]
+    errors: list[dict]
+
+
 class PipelineCompareVersion(BaseModel):
     score_version: Literal["l2-score-v1", "l2-score-v1.1"]
     top_candidates: list[L2TopCandidate]
