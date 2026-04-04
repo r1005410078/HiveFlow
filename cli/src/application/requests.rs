@@ -39,6 +39,21 @@ pub struct DataSyncRequest {
     pub universe: Option<String>,
     pub request_id: Option<String>,
     pub timeout_ms: Option<u64>,
+    pub no_wait: bool,
+    pub poll_interval_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DataSyncCancelRequest {
+    pub run_id: String,
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DataSyncRetryFailedRequest {
+    pub from_run_id: String,
+    pub timeout_ms: Option<u64>,
+    pub no_wait: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -94,6 +109,8 @@ pub enum AppCommand {
     FactorOptimize(FactorOptimizeRequest),
     FactorReplay(FactorReplayRequest),
     DataSync(DataSyncRequest),
+    DataSyncCancel(DataSyncCancelRequest),
+    DataSyncRetryFailed(DataSyncRetryFailedRequest),
     DataUniverseSync(DataUniverseSyncRequest),
     DataQuery(DataQueryRequest),
     DataBars(DataBarsRequest),

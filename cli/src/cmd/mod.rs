@@ -42,6 +42,10 @@ impl From<Cli> for AppCommand {
             },
             Commands::Data(args) => match args.command {
                 data::DataSubcommand::Sync(sync_args) => AppCommand::DataSync(sync_args.into()),
+                data::DataSubcommand::SyncCancel(args) => AppCommand::DataSyncCancel(args.into()),
+                data::DataSubcommand::SyncRetryFailed(args) => {
+                    AppCommand::DataSyncRetryFailed(args.into())
+                }
                 data::DataSubcommand::UniverseSync(sync_args) => {
                     AppCommand::DataUniverseSync(sync_args.into())
                 }

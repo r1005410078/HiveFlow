@@ -1,6 +1,8 @@
 pub mod data_bars;
 pub mod data_query;
 pub mod data_sync;
+pub mod data_sync_cancel;
+pub mod data_sync_retry_failed;
 pub mod data_universe_sync;
 pub mod factor_optimize;
 pub mod factor_replay;

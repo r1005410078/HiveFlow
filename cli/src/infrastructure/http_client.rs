@@ -283,6 +283,85 @@ pub fn post_signal_snapshot(
     parse_json(&body_text)
 }
 
+pub fn get_sync_run_detail(
+    server_url: &str,
+    run_id: &str,
+    timeout_ms: u64,
+) -> Result<Value, AppError> {
+    let url = format!(
+        "{}/v1/market-data/sync-runs/{}",
+        server_url.trim_end_matches('/'),
+        run_id
+    );
+    let client = build_client(server_url, timeout_ms)?;
+
+    let response = client.get(url).send().map_err(AppError::HttpClient)?;
+    let status = response.status();
+    let body_text = response.text().map_err(AppError::HttpClient)?;
+    if !status.is_success() {
+        let body =
+            serde_json::from_str(&body_text).unwrap_or_else(|_| json!({ "raw_body": body_text }));
+        return Err(AppError::Upstream(status.as_u16(), body));
+    }
+    parse_json(&body_text)
+}
+
+pub fn post_sync_run_cancel(
+    server_url: &str,
+    run_id: &str,
+    timeout_ms: u64,
+) -> Result<Value, AppError> {
+    let url = format!(
+        "{}/v1/market-data/sync-runs/{}/cancel",
+        server_url.trim_end_matches('/'),
+        run_id
+    );
+    let client = build_client(server_url, timeout_ms)?;
+
+    let response = client
+        .post(url)
+        .json(&json!({}))
+        .send()
+        .map_err(AppError::HttpClient)?;
+
+    let status = response.status();
+    let body_text = response.text().map_err(AppError::HttpClient)?;
+    if !status.is_success() {
+        let body =
+            serde_json::from_str(&body_text).unwrap_or_else(|_| json!({ "raw_body": body_text }));
+        return Err(AppError::Upstream(status.as_u16(), body));
+    }
+    parse_json(&body_text)
+}
+
+pub fn post_sync_run_retry_failed(
+    server_url: &str,
+    run_id: &str,
+    timeout_ms: u64,
+) -> Result<Value, AppError> {
+    let url = format!(
+        "{}/v1/market-data/sync-runs/{}/retry-failed",
+        server_url.trim_end_matches('/'),
+        run_id
+    );
+    let client = build_client(server_url, timeout_ms)?;
+
+    let response = client
+        .post(url)
+        .json(&json!({}))
+        .send()
+        .map_err(AppError::HttpClient)?;
+
+    let status = response.status();
+    let body_text = response.text().map_err(AppError::HttpClient)?;
+    if !status.is_success() {
+        let body =
+            serde_json::from_str(&body_text).unwrap_or_else(|_| json!({ "raw_body": body_text }));
+        return Err(AppError::Upstream(status.as_u16(), body));
+    }
+    parse_json(&body_text)
+}
+
 pub fn post_signal_evaluate(
     server_url: &str,
     start_date: &str,

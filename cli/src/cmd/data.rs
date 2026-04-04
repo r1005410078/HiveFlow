@@ -1,5 +1,6 @@
 use crate::application::requests::{
-    DataBarsRequest, DataQueryRequest, DataSyncRequest, DataUniverseSyncRequest,
+    DataBarsRequest, DataQueryRequest, DataSyncCancelRequest, DataSyncRequest,
+    DataSyncRetryFailedRequest, DataUniverseSyncRequest,
 };
 use clap::{Args, Subcommand};
 
@@ -12,6 +13,8 @@ pub struct DataArgs {
 #[derive(Debug, Subcommand)]
 pub enum DataSubcommand {
     Sync(DataSyncArgs),
+    SyncCancel(DataSyncCancelArgs),
+    SyncRetryFailed(DataSyncRetryFailedArgs),
     UniverseSync(DataUniverseSyncArgs),
     Query(DataQueryArgs),
     Bars(DataBarsArgs),
@@ -33,6 +36,28 @@ pub struct DataSyncArgs {
     pub request_id: Option<String>,
     #[arg(long)]
     pub timeout_ms: Option<u64>,
+    #[arg(long, default_value_t = false)]
+    pub no_wait: bool,
+    #[arg(long)]
+    pub poll_interval_ms: Option<u64>,
+}
+
+#[derive(Debug, Args)]
+pub struct DataSyncCancelArgs {
+    #[arg(long)]
+    pub run_id: String,
+    #[arg(long)]
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Args)]
+pub struct DataSyncRetryFailedArgs {
+    #[arg(long)]
+    pub from_run_id: String,
+    #[arg(long)]
+    pub timeout_ms: Option<u64>,
+    #[arg(long, default_value_t = false)]
+    pub no_wait: bool,
 }
 
 #[derive(Debug, Args)]
@@ -97,6 +122,27 @@ impl From<DataSyncArgs> for DataSyncRequest {
             universe: args.universe,
             request_id: args.request_id,
             timeout_ms: args.timeout_ms,
+            no_wait: args.no_wait,
+            poll_interval_ms: args.poll_interval_ms,
+        }
+    }
+}
+
+impl From<DataSyncCancelArgs> for DataSyncCancelRequest {
+    fn from(args: DataSyncCancelArgs) -> Self {
+        Self {
+            run_id: args.run_id,
+            timeout_ms: args.timeout_ms,
+        }
+    }
+}
+
+impl From<DataSyncRetryFailedArgs> for DataSyncRetryFailedRequest {
+    fn from(args: DataSyncRetryFailedArgs) -> Self {
+        Self {
+            from_run_id: args.from_run_id,
+            timeout_ms: args.timeout_ms,
+            no_wait: args.no_wait,
         }
     }
 }
