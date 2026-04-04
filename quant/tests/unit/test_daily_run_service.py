@@ -22,6 +22,9 @@ def test_run_daily_passes_benchmark_rows_to_factor_service(monkeypatch) -> None:
             del symbols, storage_timeframe, start_date, end_date, limit, order
             return []
 
+        def list_symbols_with_min_bars_in_window(self, **kwargs):
+            return ([], False)
+
     original = svc.compute_basic_factor_snapshot_from_bars
 
     def patched(as_of, symbols, bar_rows, benchmark_rows=None, historical_baselines=None):

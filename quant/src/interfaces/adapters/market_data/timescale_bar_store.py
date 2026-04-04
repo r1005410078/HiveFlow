@@ -533,3 +533,42 @@ class TimescaleBarStore:
             }
             for row in rows
         ]
+
+    def list_symbols_with_min_bars_in_window(
+        self,
+        *,
+        storage_timeframe: str,
+        start_date: str,
+        end_date: str,
+        min_bars: int,
+        after_symbol: str | None,
+        limit: int,
+    ) -> tuple[list[str], bool]:
+        """Symbols with at least ``min_bars`` rows in window; paginate by ``symbol > after_symbol`` asc."""
+        start_ts = f"{start_date}T00:00:00+08:00"
+        end_ts = f"{end_date}T23:59:59+08:00"
+        inner = """
+        SELECT symbol
+        FROM bars
+        WHERE timeframe = %s
+          AND bar_time >= %s::timestamptz
+          AND bar_time <= %s::timestamptz
+        GROUP BY symbol
+        HAVING COUNT(*) >= %s
+        """
+        params: list[object] = [storage_timeframe, start_ts, end_ts, min_bars]
+        if after_symbol:
+            query = f"SELECT symbol FROM ({inner}) AS eligible WHERE symbol > %s ORDER BY symbol ASC LIMIT %s"
+            params.extend([after_symbol, limit + 1])
+        else:
+            query = f"SELECT symbol FROM ({inner}) AS eligible ORDER BY symbol ASC LIMIT %s"
+            params.append(limit + 1)
+
+        cur = self._conn.cursor()
+        try:
+            cur.execute(query, params)
+            sym_rows = [r[0] for r in cur.fetchall()]
+        finally:
+            cur.close()
+        has_more = len(sym_rows) > limit
+        return sym_rows[:limit], has_more

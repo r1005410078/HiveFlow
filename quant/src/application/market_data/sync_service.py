@@ -6,19 +6,16 @@ from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from pathlib import Path
-import re
 from uuid import uuid4
 
 from application.market_data.symbol_names import resolve_quant_package_root
+from application.market_data.universe_symbols import UNIVERSE_KEYS as _UNIVERSE_KEYS
+from application.market_data.universe_symbols import norm_exchange_symbol
 from domain.market_data.value_objects import validate_timeframe
-
-_UNIVERSE_KEYS = ("csi300", "zz500", "all_a", "self_select", "follow")
 # Universes that akshare can fetch with optional Chinese names (symbol_names.json merge).
 _AKSHARE_SYMBOL_NAME_UNIVERSES = ("csi300", "zz500", "all_a")
 _UNIVERSE_FILE_EXT = ".txt"
 _SYMBOL_NAMES_JSON = "symbol_names.json"
-
-_SYMBOL_PATTERN = re.compile(r"^[0-9]{6}\.(SH|SZ|BJ)$")
 
 MAX_SYMBOL_ATTEMPTS = 3
 PROGRESS_LIST_TRUNCATE_N = 200
@@ -45,12 +42,7 @@ class SyncService:
 
     @staticmethod
     def _norm_symbol(symbol: str) -> str:
-        s = symbol.strip().upper()
-        if not s:
-            return ""
-        if not _SYMBOL_PATTERN.match(s):
-            raise ValueError(f"invalid symbol format: {symbol}")
-        return s
+        return norm_exchange_symbol(symbol)
 
     def _parse_watchlist(self, path: Path) -> list[str]:
         if not path.exists():
@@ -85,21 +77,9 @@ class SyncService:
         return symbols
 
     def _parse_universe_file(self, universe: str) -> list[str]:
-        if universe not in _UNIVERSE_KEYS:
-            raise ValueError(f"unknown universe: {universe}")
-        path = self._universe_dir() / self._universe_file_name(universe)
-        if not path.exists():
-            raise ValueError(f"unknown universe: {universe}")
-        symbols: list[str] = []
-        for raw in path.read_text(encoding="utf-8").splitlines():
-            line = raw.strip()
-            if not line or line.startswith("#"):
-                continue
-            symbols.append(self._norm_symbol(line))
-        normalized = sorted(set(symbols))
-        if not normalized:
-            raise ValueError(f"universe {universe} has no symbols")
-        return normalized
+        from application.market_data.universe_symbols import list_symbols_from_universe_file
+
+        return list_symbols_from_universe_file(universe)
 
     def _write_universe_file(self, universe: str, symbols: list[str]) -> Path:
         if universe not in _UNIVERSE_KEYS:

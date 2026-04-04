@@ -5,11 +5,13 @@ from fastapi.responses import JSONResponse
 
 from interfaces.http.dependencies import (
     MarketDataBarsQueryService,
+    MarketDataInstrumentsListService,
     MarketDataQueryService,
     MarketDataSyncService,
     MarketDataSymbolNamesSyncService,
     MarketDataUniverseSyncService,
     get_market_data_bars_query_service,
+    get_market_data_instruments_list_service,
     get_market_data_query_service,
     get_market_data_sync_service,
     get_market_data_symbol_names_sync_service,
@@ -360,6 +362,64 @@ def get_sync_runs(
         request_id=request_id,
         limit=limit,
     )
+
+
+_INSTRUMENTS_QUERY_VALUE_ERRORS = frozenset(
+    {
+        "INSTRUMENTS_INVALID_MODE",
+        "INSTRUMENTS_UNIVERSE_REQUIRED",
+        "INSTRUMENTS_DATE_WINDOW_INCOMPLETE",
+    }
+)
+
+
+@router.get(
+    "/instruments",
+    summary="标的列表（universe 文件或 DB 有数据）",
+    description=(
+        "``mode=universe``：读取 ``quant/config/universes/{universe}.txt``；"
+        "``mode=db``：在日期窗内至少含 ``min_bars`` 条 ``storage_timeframe`` 的标的。"
+        "``cursor_symbol`` 为字典序游标（``symbol > cursor``）。"
+    ),
+)
+def get_instruments(
+    mode: str = Query(..., description="universe | db"),
+    universe: str | None = Query(default=None),
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    min_bars: int = Query(default=1, ge=1, le=10_000_000),
+    storage_timeframe: str = Query(default="1m"),
+    limit: int = Query(default=100, ge=1, le=2000),
+    cursor_symbol: str | None = Query(default=None),
+    service: MarketDataInstrumentsListService = Depends(get_market_data_instruments_list_service),
+) -> dict:
+    try:
+        return service(
+            mode=mode,
+            universe=universe,
+            start_date=start_date,
+            end_date=end_date,
+            min_bars=min_bars,
+            storage_timeframe=storage_timeframe,
+            limit=limit,
+            cursor_symbol=cursor_symbol,
+        )
+    except ValueError as exc:
+        code = str(exc)
+        if code == "INSTRUMENTS_DB_UNAVAILABLE":
+            raise HTTPException(
+                status_code=503,
+                detail={"code": code, "message": code},
+            ) from exc
+        if code in _INSTRUMENTS_QUERY_VALUE_ERRORS:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": code, "message": code},
+            ) from exc
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "INSTRUMENTS_INVALID_ARGUMENT", "message": code},
+        ) from exc
 
 
 _BAR_QUERY_VALUE_ERROR_CODES = frozenset(

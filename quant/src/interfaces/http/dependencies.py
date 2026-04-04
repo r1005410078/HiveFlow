@@ -12,6 +12,7 @@ from application.portfolio.portfolio_optimize_service import run_portfolio_optim
 from application.signal.signal_evaluate_service import run_signal_evaluation
 from application.signal.signal_engineering_service import run_signal_snapshot
 from application.market_data.bars_query_service import BarsQueryService
+from application.market_data.instruments_list_service import InstrumentsListService
 from application.market_data.query_service import QueryService
 from application.market_data.sync_service import SyncService
 from interfaces.adapters.market_data.akshare_quote_adapter import AkshareQuoteAdapter
@@ -29,6 +30,7 @@ MarketDataUniverseSyncService = Callable[..., dict]
 MarketDataSymbolNamesSyncService = Callable[..., dict]
 MarketDataQueryService = Callable[..., dict]
 MarketDataBarsQueryService = Callable[..., dict]
+MarketDataInstrumentsListService = Callable[..., dict]
 SignalSnapshotService = Callable[[str], dict]
 SignalEvaluateService = Callable[[str, str, int], dict]
 PortfolioOptimizeService = Callable[..., dict]
@@ -266,6 +268,19 @@ class _InMemoryBarStore:
             }
         ]
 
+    def list_symbols_with_min_bars_in_window(
+        self,
+        *,
+        storage_timeframe: str,
+        start_date: str,
+        end_date: str,
+        min_bars: int,
+        after_symbol: str | None,
+        limit: int,
+    ):
+        del storage_timeframe, start_date, end_date, min_bars, after_symbol, limit
+        return (["600519.SH"], False)
+
 
 def _build_bar_store():
     if has_db_config():
@@ -368,6 +383,20 @@ def get_market_data_query_service() -> MarketDataQueryService:
 def get_market_data_bars_query_service() -> MarketDataBarsQueryService:
     service = BarsQueryService(bar_store=_build_read_bar_store())
     return service.query
+
+
+def _try_read_bar_store_optional() -> TimescaleBarStore | None:
+    if not has_db_config():
+        return None
+    try:
+        return TimescaleBarStore(open_db_connection_from_env())
+    except Exception:
+        return None
+
+
+def get_market_data_instruments_list_service() -> MarketDataInstrumentsListService:
+    store = _try_read_bar_store_optional()
+    return InstrumentsListService(bar_store=store).list_instruments
 
 
 # ── async sync worker factories ───────────────────────────────

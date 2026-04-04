@@ -12,6 +12,9 @@ class _EmptyBarStore:
     def list_storage_bars(self, **kwargs):
         return []
 
+    def list_symbols_with_min_bars_in_window(self, **kwargs):
+        return ([], False)
+
 
 def test_get_market_data_bars_returns_items() -> None:
     app = create_app()

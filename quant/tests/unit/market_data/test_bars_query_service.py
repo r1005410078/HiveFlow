@@ -44,6 +44,19 @@ class _FakeBarStore:
         )
         return list(self.storage_rows)
 
+    def list_symbols_with_min_bars_in_window(
+        self,
+        *,
+        storage_timeframe: str,
+        start_date: str,
+        end_date: str,
+        min_bars: int,
+        after_symbol: str | None,
+        limit: int,
+    ):
+        del storage_timeframe, start_date, end_date, min_bars, after_symbol, limit
+        return ([], False)
+
 
 def _two_minutes_same_trading_day() -> list[dict]:
     return [

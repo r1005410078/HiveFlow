@@ -30,6 +30,9 @@ def _make_bar_store_with_25_bars():
             syms = symbols or []
             return [r for r in rows if r["symbol"] in syms]
 
+        def list_symbols_with_min_bars_in_window(self, **kwargs):
+            return ([], False)
+
     return _MockBarStore()
 
 

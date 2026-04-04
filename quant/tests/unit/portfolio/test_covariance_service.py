@@ -19,6 +19,9 @@ def _make_bar_store(rows: list[dict]):
             del storage_timeframe, start_date, end_date, limit, order
             syms = symbols or []
             return [r for r in rows if r["symbol"] in syms]
+
+        def list_symbols_with_min_bars_in_window(self, **kwargs):
+            return ([], False)
     return _MockBarStore()
 
 

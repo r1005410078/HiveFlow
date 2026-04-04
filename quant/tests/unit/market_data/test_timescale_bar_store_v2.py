@@ -65,6 +65,11 @@ class _FakeConnBars(_FakeConn):
         self.cursor_obj = _FakeCursorBars()
 
 
+class _FakeCursorSymbolAgg(_FakeCursorBars):
+    def fetchall(self):
+        return [("600519.SH",), ("000001.SZ",)]
+
+
 def test_upsert_bars_uses_on_conflict_and_commits():
     conn = _FakeConn()
     store = TimescaleBarStore(conn)
@@ -244,3 +249,40 @@ def test_list_storage_bars_passes_bounds_and_custom_limit():
     assert "2026-04-01T00:00:00+08:00" in params
     assert "2026-04-02T23:59:59+08:00" in params
     assert params[-1] == 100
+
+
+def test_list_symbols_with_min_bars_pagination_has_more():
+    conn = _FakeConnBars()
+    conn.cursor_obj = _FakeCursorSymbolAgg()
+    store = TimescaleBarStore(conn)
+    syms, has_more = store.list_symbols_with_min_bars_in_window(
+        storage_timeframe="1m",
+        start_date="2026-04-01",
+        end_date="2026-04-02",
+        min_bars=1,
+        after_symbol=None,
+        limit=1,
+    )
+    assert syms == ["600519.SH"]
+    assert has_more is True
+    sql_text, params = conn.cursor_obj.executed[-1]
+    assert "GROUP BY symbol" in sql_text
+    assert "HAVING COUNT(*)" in sql_text
+    assert params[-1] == 2
+
+
+def test_list_symbols_with_min_bars_after_cursor_in_sql():
+    conn = _FakeConnBars()
+    conn.cursor_obj = _FakeCursorSymbolAgg()
+    store = TimescaleBarStore(conn)
+    store.list_symbols_with_min_bars_in_window(
+        storage_timeframe="1m",
+        start_date="2026-04-01",
+        end_date="2026-04-02",
+        min_bars=1,
+        after_symbol="600000.SH",
+        limit=10,
+    )
+    sql_text, params = conn.cursor_obj.executed[-1]
+    assert "symbol > %s" in sql_text
+    assert "600000.SH" in params

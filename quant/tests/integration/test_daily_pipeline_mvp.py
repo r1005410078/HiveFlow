@@ -84,6 +84,9 @@ def test_daily_pipeline_prefers_real_bars_when_available() -> None:
             del storage_timeframe, start_date, end_date, limit, order
             return []
 
+        def list_symbols_with_min_bars_in_window(self, **kwargs):
+            return ([], False)
+
     out = run_daily(as_of="2026-04-01", root=None, bar_store=_BarStore())
     rows = out["data"]["factor_snapshot"]["rows"]
     trend_rows = [r for r in rows if r["factor_name"] == "trend_stability_20"]

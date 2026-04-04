@@ -54,3 +54,15 @@ class BarStore(Protocol):
         order: str = "asc",
     ) -> list[dict]:
         ...
+
+    def list_symbols_with_min_bars_in_window(
+        self,
+        *,
+        storage_timeframe: str,
+        start_date: str,
+        end_date: str,
+        min_bars: int,
+        after_symbol: str | None,
+        limit: int,
+    ) -> tuple[list[str], bool]:
+        ...
