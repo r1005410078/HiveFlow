@@ -1,4 +1,5 @@
 import logging
+import math
 from datetime import date, timedelta
 from uuid import uuid4
 
@@ -8,6 +9,7 @@ from application.factor.basic_factor_service import (
     compute_basic_factor_snapshot,
     compute_basic_factor_snapshot_from_bars,
 )
+from application.portfolio.portfolio_optimize_service import run_portfolio_optimize
 from application.signal.signal_engineering_service import compute_signal_matrix
 
 
@@ -105,6 +107,31 @@ def run_daily(
             "code": "SIGNAL_MATRIX_FAILED",
             "message": "L3 signal matrix computation failed; signal_matrix set to null",
         })
+    portfolio = None
+    if signal_matrix is not None:
+        try:
+            composite_scores = signal_matrix.get("composite_scores", [])
+            alpha = {
+                cs["symbol"]: float(cs["composite_score"])
+                for cs in composite_scores
+                if not math.isnan(float(cs["composite_score"]))
+            }
+            if alpha:
+                portfolio_result = run_portfolio_optimize(
+                    as_of=as_of,
+                    alpha=alpha,
+                    bar_store=bar_store,
+                )
+                portfolio = portfolio_result.get("data")
+        except Exception:
+            _logger.warning(
+                "daily run: portfolio optimization failed",
+                exc_info=True,
+            )
+            warnings.append({
+                "code": "PORTFOLIO_OPTIMIZATION_FAILED",
+                "message": "L4 portfolio optimization failed; portfolio set to null",
+            })
     return ok_output(
         command="hf pipeline daily",
         run_id=run_id,
@@ -115,6 +142,7 @@ def run_daily(
             "execution_plan": {"orders": []},
             "l2_decision": l2_decision,
             "signal_matrix": signal_matrix,
+            "portfolio": portfolio,
         },
         warnings=warnings,
     )
