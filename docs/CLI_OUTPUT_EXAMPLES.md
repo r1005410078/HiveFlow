@@ -156,6 +156,45 @@ In this example, `daily_ic` arrays are truncated for brevity; in production they
 
 ---
 
+## `hf portfolio optimize`
+
+### JSON output (`--output json`)
+
+```json
+{
+  "schema_version": "1.0.0",
+  "command": "hf portfolio optimize",
+  "run_id": "run_20260401_abc12345",
+  "status": "ok",
+  "generated_at": "2026-04-01T10:00:00+00:00",
+  "source": "system",
+  "advice_only": false,
+  "decision_weight": 1,
+  "data": {
+    "as_of": "2026-04-01",
+    "optimize_version": "l4-optimize-v1.0",
+    "optimization_status": "optimal",
+    "fallback_reason": null,
+    "target_weights": [
+      {"symbol": "600519.SH", "weight": 0.298700, "prev_weight": 0.0, "delta": 0.298700},
+      {"symbol": "000001.SZ", "weight": 0.234100, "prev_weight": 0.0, "delta": 0.234100},
+      {"symbol": "300750.SZ", "weight": 0.182300, "prev_weight": 0.0, "delta": 0.182300},
+      {"symbol": "601318.SH", "weight": 0.152100, "prev_weight": 0.0, "delta": 0.152100},
+      {"symbol": "000333.SZ", "weight": 0.132800, "prev_weight": 0.0, "delta": 0.132800}
+    ],
+    "optimization_report": {
+      "objective_value": 0.423100,
+      "risk_contribution": 0.031200,
+      "turnover_cost": 0.001800,
+      "solver": "CLARABEL",
+      "solve_time_ms": 42
+    }
+  },
+  "warnings": [],
+  "errors": []
+}
+```
+
 ---
 
 ## 2. news_system（主决策分支）
