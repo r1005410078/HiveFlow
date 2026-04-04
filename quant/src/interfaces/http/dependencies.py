@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 
 from application.daily_run_service import run_daily
 from application.factor_optimization import run_factor_optimization
+from application.market_data.sync_worker import SyncWorker
 from application.pipeline_compare_service import run_pipeline_compare
 from application.signal.signal_evaluate_service import run_signal_evaluation
 from application.signal.signal_engineering_service import run_signal_snapshot
@@ -300,3 +301,32 @@ def get_market_data_query_service() -> MarketDataQueryService:
 def get_market_data_bars_query_service() -> MarketDataBarsQueryService:
     service = BarsQueryService(bar_store=_build_read_bar_store())
     return service.query
+
+
+# ── async sync worker factories ───────────────────────────────
+
+def _bar_store_factory():
+    return TimescaleBarStore(open_db_connection_from_env())
+
+
+def _quote_repo_factory():
+    return _build_quote_repo()
+
+
+def _universe_source_factory():
+    try:
+        return AkshareUniverseAdapter()
+    except Exception:
+        return None
+
+
+def create_sync_worker() -> SyncWorker:
+    return SyncWorker(
+        bar_store_factory=_bar_store_factory,
+        quote_repo_factory=_quote_repo_factory,
+        universe_source_factory=_universe_source_factory,
+    )
+
+
+def get_sync_worker(request: Request) -> SyncWorker | None:
+    return getattr(request.app.state, "sync_worker", None)

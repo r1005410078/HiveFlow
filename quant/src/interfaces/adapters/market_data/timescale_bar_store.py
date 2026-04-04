@@ -1,5 +1,34 @@
 from __future__ import annotations
 
+import json
+
+
+_SYNC_RUN_COLUMNS = (
+    "run_id::text, request_id, status, days, end_date::text, timeframe,"
+    " selection_mode, symbols_hash, effective_symbols_count, written_rows,"
+    " manifest_ids, started_at::text, finished_at::text, error_code, error_message,"
+    " phase, progress, cancel_requested_at::text"
+)
+
+_SYNC_RUN_KEYS = (
+    "run_id", "request_id", "status", "days", "end_date", "timeframe",
+    "selection_mode", "symbols_hash", "effective_symbols_count", "written_rows",
+    "manifest_ids", "started_at", "finished_at", "error_code", "error_message",
+    "phase", "progress", "cancel_requested_at",
+)
+
+
+def _row_to_run_dict(row: tuple) -> dict:
+    d = dict(zip(_SYNC_RUN_KEYS, row))
+    d["manifest_ids"] = d.get("manifest_ids") or []
+    if isinstance(d.get("progress"), str):
+        try:
+            d["progress"] = json.loads(d["progress"])
+        except (json.JSONDecodeError, TypeError):
+            d["progress"] = {}
+    d.setdefault("progress", {})
+    return d
+
 
 class TimescaleBarStore:
     """Timescale 存储适配器（MVP：通过 DB-API 连接对象执行 SQL）。"""
@@ -42,39 +71,14 @@ class TimescaleBarStore:
         return len(rows)
 
     def get_sync_run_by_request_id(self, request_id: str) -> dict | None:
-        sql = """
-        select run_id::text, request_id, status, days, end_date::text, timeframe,
-               selection_mode, symbols_hash, effective_symbols_count, written_rows,
-               manifest_ids, started_at::text, finished_at::text, error_code, error_message
-        from sync_runs
-        where request_id = %s
-        limit 1
-        """
+        sql = f"select {_SYNC_RUN_COLUMNS} from sync_runs where request_id = %s limit 1"
         cur = self._conn.cursor()
         try:
             cur.execute(sql, [request_id])
             row = cur.fetchone()
         finally:
             cur.close()
-        if row is None:
-            return None
-        return {
-            "run_id": row[0],
-            "request_id": row[1],
-            "status": row[2],
-            "days": row[3],
-            "end_date": row[4],
-            "timeframe": row[5],
-            "selection_mode": row[6],
-            "symbols_hash": row[7],
-            "effective_symbols_count": row[8],
-            "written_rows": row[9],
-            "manifest_ids": row[10] or [],
-            "started_at": row[11],
-            "finished_at": row[12],
-            "error_code": row[13],
-            "error_message": row[14],
-        }
+        return _row_to_run_dict(row) if row else None
 
     def get_checkpoints(self, symbols: list[str], timeframe: str) -> dict[str, str]:
         if not symbols:
@@ -148,10 +152,8 @@ class TimescaleBarStore:
         request_id: str | None = None,
         limit: int | None = None,
     ) -> list[dict]:
-        query = """
-        select run_id::text, request_id, status, days, end_date::text, timeframe,
-               selection_mode, symbols_hash, effective_symbols_count, written_rows,
-               manifest_ids, started_at::text, finished_at::text, error_code, error_message
+        query = f"""
+        select {_SYNC_RUN_COLUMNS}
         from sync_runs
         where started_at >= (current_date - (%s::int - 1))::timestamptz
         """
@@ -165,10 +167,7 @@ class TimescaleBarStore:
         if request_id:
             query += " and request_id = %s"
             params.append(request_id)
-        query += """
-        order by started_at desc
-        """
-        query += " limit %s"
+        query += " order by started_at desc limit %s"
         params.append(limit or 100)
 
         cur = self._conn.cursor()
@@ -177,26 +176,207 @@ class TimescaleBarStore:
             rows = cur.fetchall()
         finally:
             cur.close()
+        return [_row_to_run_dict(row) for row in rows]
+
+    # ── async sync 专用方法 ──────────────────────────────────────
+
+    def insert_sync_run_running(self, payload: dict) -> None:
+        """创建 status=running 的 sync_run（用于异步提交）。"""
+        sql = """
+        insert into sync_runs (
+          run_id, request_id, status, phase, days, end_date, timeframe,
+          selection_mode, symbols_hash, effective_symbols_count, written_rows,
+          manifest_ids, error_code, error_message, progress
+        ) values (
+          %(run_id)s, %(request_id)s, 'running', %(phase)s,
+          %(days)s, %(end_date)s, %(timeframe)s,
+          %(selection_mode)s, %(symbols_hash)s, %(effective_symbols_count)s, 0,
+          %(manifest_ids)s, null, null, %(progress)s::jsonb
+        )
+        """
+        cur = self._conn.cursor()
+        try:
+            params = dict(payload)
+            params.setdefault("phase", "pending")
+            params.setdefault("progress", "{}")
+            if isinstance(params["progress"], dict):
+                params["progress"] = json.dumps(params["progress"])
+            cur.execute(sql, params)
+            self._conn.commit()
+        finally:
+            cur.close()
+
+    def get_sync_run_by_id(self, run_id: str) -> dict | None:
+        sql = f"select {_SYNC_RUN_COLUMNS} from sync_runs where run_id = %s::uuid"
+        cur = self._conn.cursor()
+        try:
+            cur.execute(sql, [run_id])
+            row = cur.fetchone()
+        finally:
+            cur.close()
+        return _row_to_run_dict(row) if row else None
+
+    def get_running_sync_run(self) -> dict | None:
+        sql = f"select {_SYNC_RUN_COLUMNS} from sync_runs where status = 'running' order by started_at desc limit 1"
+        cur = self._conn.cursor()
+        try:
+            cur.execute(sql)
+            row = cur.fetchone()
+        finally:
+            cur.close()
+        return _row_to_run_dict(row) if row else None
+
+    def update_sync_progress(self, run_id: str, phase: str, progress: dict) -> None:
+        sql = """
+        update sync_runs
+        set phase = %s, progress = %s::jsonb
+        where run_id = %s::uuid
+        """
+        cur = self._conn.cursor()
+        try:
+            cur.execute(sql, [phase, json.dumps(progress), run_id])
+            self._conn.commit()
+        finally:
+            cur.close()
+
+    def finalize_sync_run(
+        self,
+        run_id: str,
+        status: str,
+        *,
+        written_rows: int = 0,
+        manifest_ids: list[str] | None = None,
+        error_code: str | None = None,
+        error_message: str | None = None,
+        phase: str | None = None,
+        progress: dict | None = None,
+    ) -> None:
+        sql = """
+        update sync_runs
+        set status = %s,
+            phase = %s,
+            written_rows = %s,
+            manifest_ids = %s,
+            error_code = %s,
+            error_message = %s,
+            progress = %s::jsonb,
+            finished_at = now()
+        where run_id = %s::uuid
+        """
+        final_phase = phase or status
+        cur = self._conn.cursor()
+        try:
+            cur.execute(sql, [
+                status, final_phase, written_rows,
+                manifest_ids or [], error_code, error_message,
+                json.dumps(progress or {}), run_id,
+            ])
+            self._conn.commit()
+        finally:
+            cur.close()
+
+    def request_sync_cancel(self, run_id: str) -> bool:
+        """Set cancel_requested_at if still running. Returns True if accepted."""
+        sql = """
+        update sync_runs
+        set cancel_requested_at = now()
+        where run_id = %s::uuid and status = 'running' and cancel_requested_at is null
+        """
+        cur = self._conn.cursor()
+        try:
+            cur.execute(sql, [run_id])
+            affected = cur.rowcount
+            self._conn.commit()
+        finally:
+            cur.close()
+        return affected > 0
+
+    def mark_orphan_runs_interrupted(self) -> int:
+        """Startup 收口：将所有 status=running 的行标记为 interrupted。"""
+        sql = """
+        update sync_runs
+        set status = 'interrupted',
+            phase = 'interrupted',
+            error_code = 'SYNC_ORPHAN_RUN',
+            error_message = 'process restarted while sync was running',
+            finished_at = now()
+        where status = 'running'
+        """
+        cur = self._conn.cursor()
+        try:
+            cur.execute(sql)
+            affected = cur.rowcount
+            self._conn.commit()
+        finally:
+            cur.close()
+        return affected
+
+    # ── symbol failure audit ──────────────────────────────────
+
+    def upsert_symbol_failure(
+        self,
+        run_id: str,
+        symbol: str,
+        error_code: str,
+        error_message: str,
+        failed_day: str,
+    ) -> None:
+        sql = """
+        insert into sync_run_symbol_failures
+          (run_id, symbol, attempt_count, last_error_code, last_error_message, last_failed_day)
+        values (%s::uuid, %s, 1, %s, %s, %s::date)
+        on conflict (run_id, symbol) do update set
+          attempt_count = sync_run_symbol_failures.attempt_count + 1,
+          last_error_code = excluded.last_error_code,
+          last_error_message = excluded.last_error_message,
+          last_failed_day = excluded.last_failed_day,
+          last_failed_at = now()
+        """
+        cur = self._conn.cursor()
+        try:
+            cur.execute(sql, [run_id, symbol, error_code, error_message, failed_day])
+            self._conn.commit()
+        finally:
+            cur.close()
+
+    def list_failed_symbols_for_retry(self, run_id: str, min_attempts: int = 3) -> list[dict]:
+        """返回超过重试阈值的 terminal 失败标的。"""
+        sql = """
+        select symbol, attempt_count, last_error_code, last_error_message,
+               last_failed_day::text, first_failed_at::text, last_failed_at::text
+        from sync_run_symbol_failures
+        where run_id = %s::uuid and attempt_count >= %s
+        order by symbol
+        """
+        cur = self._conn.cursor()
+        try:
+            cur.execute(sql, [run_id, min_attempts])
+            rows = cur.fetchall()
+        finally:
+            cur.close()
         return [
             {
-                "run_id": row[0],
-                "request_id": row[1],
-                "status": row[2],
-                "days": row[3],
-                "end_date": row[4],
-                "timeframe": row[5],
-                "selection_mode": row[6],
-                "symbols_hash": row[7],
-                "effective_symbols_count": row[8],
-                "written_rows": row[9],
-                "manifest_ids": row[10] or [],
-                "started_at": row[11],
-                "finished_at": row[12],
-                "error_code": row[13],
-                "error_message": row[14],
+                "symbol": r[0],
+                "attempt_count": r[1],
+                "last_error_code": r[2],
+                "last_error_message": r[3],
+                "last_failed_day": r[4],
+                "first_failed_at": r[5],
+                "last_failed_at": r[6],
             }
-            for row in rows
+            for r in rows
         ]
+
+    def clear_symbol_failure(self, run_id: str, symbol: str) -> None:
+        sql = "delete from sync_run_symbol_failures where run_id = %s::uuid and symbol = %s"
+        cur = self._conn.cursor()
+        try:
+            cur.execute(sql, [run_id, symbol])
+            self._conn.commit()
+        finally:
+            cur.close()
+
+    # ── 原有读方法 ────────────────────────────────────────────
 
     def list_bars(
         self,

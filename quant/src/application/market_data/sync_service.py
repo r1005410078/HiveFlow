@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from pathlib import Path
@@ -13,6 +15,10 @@ _UNIVERSE_FILE_EXT = ".txt"
 
 _SYMBOL_PATTERN = re.compile(r"^[0-9]{6}\.(SH|SZ|BJ)$")
 
+MAX_SYMBOL_ATTEMPTS = 3
+PROGRESS_LIST_TRUNCATE_N = 200
+RETRY_BACKOFF_SECONDS = 2.0
+
 
 class SyncService:
     def __init__(self, quote_repo, bar_store, universe_source_repo=None):
@@ -20,8 +26,9 @@ class SyncService:
         self.bar_store = bar_store
         self.universe_source_repo = universe_source_repo
 
+    # ── config / file helpers (unchanged) ─────────────────────
+
     def _config_root(self) -> Path:
-        # quant/src/application/market_data/sync_service.py -> quant/
         return Path(__file__).resolve().parents[3]
 
     def _universe_dir(self) -> Path:
@@ -173,6 +180,88 @@ class SyncService:
         default_set = sorted(set(watchlist + positions))
         return default_set, "default"
 
+    # ── progress helpers ──────────────────────────────────────
+
+    @staticmethod
+    def _truncated_list(items: list[str], n: int = PROGRESS_LIST_TRUNCATE_N) -> tuple[list[str], bool]:
+        s = sorted(items)
+        if len(s) <= n:
+            return s, False
+        return s[:n], True
+
+    @staticmethod
+    def _classify_symbols(
+        effective_symbols: list[str],
+        checkpoint_starts: dict[str, object],
+        as_of_dates: list[str],
+        completed_days_index: int,
+    ) -> tuple[list[str], list[str]]:
+        """Split symbols into done / pending for current progress."""
+        if not as_of_dates:
+            return list(effective_symbols), []
+        last_date_str = as_of_dates[-1]
+        last_date = datetime.strptime(last_date_str, "%Y-%m-%d").date()
+        done: list[str] = []
+        pending: list[str] = []
+        for sym in effective_symbols:
+            start = checkpoint_starts.get(sym)
+            if start is not None and start > last_date:
+                done.append(sym)
+            elif completed_days_index >= len(as_of_dates):
+                done.append(sym)
+            else:
+                pending.append(sym)
+        return done, pending
+
+    def _build_progress_dict(
+        self,
+        *,
+        effective_symbols: list[str],
+        checkpoint_starts: dict,
+        as_of_dates: list[str],
+        completed_days: int,
+        current_day: str | None,
+        current_symbol: str | None,
+        total_rows_written: int,
+        start_time: float,
+        failure_queue: list[dict],
+        terminal_failed_count: int,
+        symbol_errors: list[dict],
+    ) -> dict:
+        done, pending = self._classify_symbols(
+            effective_symbols, checkpoint_starts, as_of_dates, completed_days,
+        )
+        done_trunc, trunc_done = self._truncated_list(done)
+        pending_trunc, trunc_pending = self._truncated_list(pending)
+        truncated = trunc_done or trunc_pending
+
+        elapsed = time.monotonic() - start_time
+        total_days = len(as_of_dates)
+        eta = None
+        if completed_days > 0 and completed_days < total_days:
+            eta = round(elapsed / completed_days * (total_days - completed_days), 1)
+
+        return {
+            "total_symbols": len(effective_symbols),
+            "total_rows_written": total_rows_written,
+            "current_day": current_day,
+            "total_days": total_days,
+            "completed_days": completed_days,
+            "current_symbol": current_symbol,
+            "symbols_done_for_run": done_trunc,
+            "symbols_pending_for_run": pending_trunc,
+            "symbols_done_count": len(done),
+            "symbols_pending_count": len(pending),
+            "symbol_lists_truncated": truncated,
+            "elapsed_seconds": round(elapsed, 1),
+            "estimated_remaining_seconds": eta,
+            "symbol_errors": symbol_errors[-50:],
+            "failure_queue_depth": len(failure_queue),
+            "terminal_failed_symbols_count": terminal_failed_count,
+        }
+
+    # ── universe sync (unchanged) ─────────────────────────────
+
     def sync_universe_symbols(self, universe: str, provider: str = "akshare") -> dict:
         if provider != "akshare":
             raise ValueError(f"unsupported provider: {provider}")
@@ -191,6 +280,324 @@ class SyncService:
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
 
+    # ── execute_sync (extracted core loop with callbacks) ─────
+
+    def execute_sync(
+        self,
+        *,
+        run_id: str,
+        days: int,
+        end_date: str,
+        timeframe: str,
+        symbols: list[str] | None = None,
+        universe: str | None = None,
+        request_id: str | None = None,
+        on_progress: Callable[[str, dict], None] | None = None,
+        should_cancel: Callable[[], bool] | None = None,
+    ) -> dict:
+        """Core sync loop with progress, cancel, and failure queue support.
+
+        Returns the final sync summary dict (same shape as sync()).
+        Raises ValueError / RuntimeError on unrecoverable issues.
+        """
+        validate_timeframe(timeframe)
+        start_time = time.monotonic()
+
+        # ── resolve symbols ───────────────────────────────────
+        if on_progress:
+            on_progress("resolving_symbols", {"total_symbols": 0})
+
+        effective_symbols, selection_mode = self._resolve_effective_symbols(symbols, universe)
+        if not effective_symbols:
+            raise ValueError("no market data fetched for requested scope")
+
+        as_of_dates = self._as_of_window(end_date=end_date, days=days)
+        window_start = datetime.strptime(as_of_dates[0], "%Y-%m-%d").date()
+        checkpoint_starts: dict[str, datetime.date] = {s: window_start for s in effective_symbols}
+
+        get_checkpoints = getattr(self.bar_store, "get_checkpoints", None)
+        if callable(get_checkpoints):
+            try:
+                checkpoint_map = get_checkpoints(effective_symbols, timeframe) or {}
+            except Exception:
+                checkpoint_map = {}
+            for sym, last_bar_time in checkpoint_map.items():
+                if sym in checkpoint_starts and last_bar_time:
+                    try:
+                        checkpoint_starts[sym] = self._checkpoint_start_date(last_bar_time, window_start)
+                    except ValueError:
+                        continue
+
+        has_incremental_checkpoint = any(d > window_start for d in checkpoint_starts.values())
+
+        # ── main fetch loop ───────────────────────────────────
+        total_written_rows = 0
+        has_any_rows = False
+        made_fetch_call = False
+        last_provider_error: RuntimeError | None = None
+        latest_bar_times: dict[str, datetime] = {}
+        symbol_errors: list[dict] = []
+        failure_queue: list[dict] = []
+        failure_attempts: dict[str, int] = {}
+        terminal_failed: set[str] = set()
+
+        for day_idx, as_of in enumerate(as_of_dates):
+            if should_cancel and should_cancel():
+                break
+
+            as_of_date = datetime.strptime(as_of, "%Y-%m-%d").date()
+            fetch_symbols = [s for s in effective_symbols if as_of_date >= checkpoint_starts[s]]
+            if not fetch_symbols:
+                if on_progress:
+                    progress = self._build_progress_dict(
+                        effective_symbols=effective_symbols,
+                        checkpoint_starts=checkpoint_starts,
+                        as_of_dates=as_of_dates,
+                        completed_days=day_idx + 1,
+                        current_day=as_of,
+                        current_symbol=None,
+                        total_rows_written=total_written_rows,
+                        start_time=start_time,
+                        failure_queue=failure_queue,
+                        terminal_failed_count=len(terminal_failed),
+                        symbol_errors=symbol_errors,
+                    )
+                    on_progress("fetching", progress)
+                continue
+
+            made_fetch_call = True
+            current_symbol = fetch_symbols[0] if fetch_symbols else None
+
+            try:
+                rows = self.quote_repo.fetch(symbols=fetch_symbols, as_of=as_of, timeframe=timeframe)
+            except RuntimeError as exc:
+                last_provider_error = exc
+                for sym in fetch_symbols:
+                    self._record_symbol_failure(
+                        run_id=run_id, symbol=sym, day=as_of,
+                        error_code="RUNTIME_ERROR", error_message=str(exc)[:500],
+                        failure_attempts=failure_attempts,
+                        failure_queue=failure_queue,
+                        terminal_failed=terminal_failed,
+                        symbol_errors=symbol_errors,
+                    )
+                continue
+
+            if rows:
+                has_any_rows = True
+                total_written_rows += self.bar_store.upsert_bars(rows)
+                fetched_symbols_set = set()
+                for row in rows:
+                    sym = row.get("symbol")
+                    bar_time = row.get("bar_time")
+                    if not sym or not bar_time:
+                        continue
+                    fetched_symbols_set.add(sym)
+                    try:
+                        current_bar_time = self._parse_datetime(bar_time)
+                    except ValueError:
+                        continue
+                    prev = latest_bar_times.get(sym)
+                    if prev is None or current_bar_time > prev:
+                        latest_bar_times[sym] = current_bar_time
+
+                empty_symbols = [s for s in fetch_symbols if s not in fetched_symbols_set]
+                for sym in empty_symbols:
+                    self._record_symbol_failure(
+                        run_id=run_id, symbol=sym, day=as_of,
+                        error_code="EMPTY_ROWS", error_message=f"no data returned for {as_of}",
+                        failure_attempts=failure_attempts,
+                        failure_queue=failure_queue,
+                        terminal_failed=terminal_failed,
+                        symbol_errors=symbol_errors,
+                    )
+
+            if on_progress:
+                progress = self._build_progress_dict(
+                    effective_symbols=effective_symbols,
+                    checkpoint_starts=checkpoint_starts,
+                    as_of_dates=as_of_dates,
+                    completed_days=day_idx + 1,
+                    current_day=as_of,
+                    current_symbol=current_symbol,
+                    total_rows_written=total_written_rows,
+                    start_time=start_time,
+                    failure_queue=failure_queue,
+                    terminal_failed_count=len(terminal_failed),
+                    symbol_errors=symbol_errors,
+                )
+                on_progress("fetching", progress)
+
+            # Periodic checkpoint flush (every 10 days of progress)
+            if (day_idx + 1) % 10 == 0:
+                self._flush_checkpoints(latest_bar_times, timeframe, run_id)
+
+        # ── retry pass for failure queue ──────────────────────
+        retryable = [
+            item for item in failure_queue
+            if item["symbol"] not in terminal_failed
+        ]
+        if retryable and not (should_cancel and should_cancel()):
+            time.sleep(RETRY_BACKOFF_SECONDS)
+            for item in retryable:
+                if should_cancel and should_cancel():
+                    break
+                sym = item["symbol"]
+                day = item["day"]
+                try:
+                    rows = self.quote_repo.fetch(symbols=[sym], as_of=day, timeframe=timeframe)
+                except RuntimeError as exc:
+                    self._record_symbol_failure(
+                        run_id=run_id, symbol=sym, day=day,
+                        error_code="RUNTIME_ERROR", error_message=str(exc)[:500],
+                        failure_attempts=failure_attempts,
+                        failure_queue=failure_queue,
+                        terminal_failed=terminal_failed,
+                        symbol_errors=symbol_errors,
+                    )
+                    continue
+                if rows:
+                    has_any_rows = True
+                    total_written_rows += self.bar_store.upsert_bars(rows)
+                    for row in rows:
+                        bar_sym = row.get("symbol")
+                        bar_time = row.get("bar_time")
+                        if bar_sym and bar_time:
+                            try:
+                                t = self._parse_datetime(bar_time)
+                            except ValueError:
+                                continue
+                            prev = latest_bar_times.get(bar_sym)
+                            if prev is None or t > prev:
+                                latest_bar_times[bar_sym] = t
+                    failure_queue[:] = [f for f in failure_queue if f["symbol"] != sym or f["day"] != day]
+                    clear_fn = getattr(self.bar_store, "clear_symbol_failure", None)
+                    if callable(clear_fn):
+                        try:
+                            clear_fn(run_id, sym)
+                        except Exception:
+                            pass
+
+        # ── determine final status ────────────────────────────
+        was_cancelled = should_cancel and should_cancel()
+
+        if was_cancelled:
+            final_status = "cancelled"
+            error_code = "SYNC_CANCELLED"
+            error_message = "cancelled by user"
+        elif not has_any_rows and made_fetch_call:
+            if last_provider_error is not None:
+                raise RuntimeError(str(last_provider_error)) from last_provider_error
+            if not has_incremental_checkpoint:
+                raise ValueError("no market data fetched for requested scope")
+            final_status = "success"
+            error_code = None
+            error_message = None
+        else:
+            final_status = "success"
+            error_code = None
+            error_message = None
+
+        # ── flush checkpoints ─────────────────────────────────
+        self._flush_checkpoints(latest_bar_times, timeframe, run_id)
+
+        manifest_id = f"mf_{uuid4().hex[:10]}"
+        now = datetime.now(timezone.utc).isoformat()
+
+        final_progress = self._build_progress_dict(
+            effective_symbols=effective_symbols,
+            checkpoint_starts=checkpoint_starts,
+            as_of_dates=as_of_dates,
+            completed_days=len(as_of_dates) if not was_cancelled else 0,
+            current_day=None,
+            current_symbol=None,
+            total_rows_written=total_written_rows,
+            start_time=start_time,
+            failure_queue=failure_queue,
+            terminal_failed_count=len(terminal_failed),
+            symbol_errors=symbol_errors,
+        )
+
+        return {
+            "status": final_status,
+            "run_id": run_id,
+            "request_id": request_id,
+            "timeframe": timeframe,
+            "days": days,
+            "end_date": end_date,
+            "selection_mode": selection_mode,
+            "effective_symbols_count": len(effective_symbols),
+            "symbols_hash": self._symbols_hash(effective_symbols),
+            "written_rows": total_written_rows,
+            "manifest_ids": [manifest_id],
+            "generated_at": now,
+            "error_code": error_code,
+            "error_message": error_message,
+            "progress": final_progress,
+        }
+
+    def _record_symbol_failure(
+        self,
+        *,
+        run_id: str,
+        symbol: str,
+        day: str,
+        error_code: str,
+        error_message: str,
+        failure_attempts: dict[str, int],
+        failure_queue: list[dict],
+        terminal_failed: set[str],
+        symbol_errors: list[dict],
+    ) -> None:
+        failure_attempts[symbol] = failure_attempts.get(symbol, 0) + 1
+        attempts = failure_attempts[symbol]
+
+        symbol_errors.append({"symbol": symbol, "day": day, "error": error_message})
+
+        upsert_fn = getattr(self.bar_store, "upsert_symbol_failure", None)
+        if callable(upsert_fn):
+            try:
+                upsert_fn(run_id, symbol, error_code, error_message, day)
+            except Exception:
+                pass
+
+        if attempts >= MAX_SYMBOL_ATTEMPTS:
+            terminal_failed.add(symbol)
+            failure_queue[:] = [f for f in failure_queue if f["symbol"] != symbol]
+        else:
+            existing = [f for f in failure_queue if f["symbol"] == symbol and f["day"] == day]
+            if not existing:
+                failure_queue.append({
+                    "symbol": symbol,
+                    "day": day,
+                    "enqueued_at": datetime.now(timezone.utc).isoformat(),
+                    "reason_code": error_code,
+                    "reason_message": error_message,
+                    "attempts_in_run": attempts,
+                })
+            else:
+                for f in existing:
+                    f["reason_code"] = error_code
+                    f["reason_message"] = error_message
+                    f["attempts_in_run"] = attempts
+
+    def _flush_checkpoints(
+        self, latest_bar_times: dict[str, datetime], timeframe: str, run_id: str,
+    ) -> None:
+        upsert_checkpoints = getattr(self.bar_store, "upsert_checkpoints", None)
+        if callable(upsert_checkpoints) and latest_bar_times:
+            upsert_checkpoints([
+                {
+                    "symbol": sym,
+                    "timeframe": timeframe,
+                    "last_bar_time": bt.isoformat(),
+                    "last_run_id": run_id,
+                }
+                for sym, bt in latest_bar_times.items()
+            ])
+
+    # ── sync() — backward-compatible wrapper ──────────────────
+
     def sync(
         self,
         days: int,
@@ -200,6 +607,7 @@ class SyncService:
         universe: str | None = None,
         request_id: str | None = None,
     ) -> dict:
+        """Original synchronous sync — used by _InMemoryBarStore path and tests."""
         validate_timeframe(timeframe)
 
         get_existing_run = getattr(self.bar_store, "get_sync_run_by_request_id", None)
@@ -220,81 +628,31 @@ class SyncService:
                     run=existing_run,
                 )
 
-        effective_symbols, selection_mode = self._resolve_effective_symbols(symbols, universe)
-        if not effective_symbols:
-            raise ValueError("no market data fetched for requested scope")
-        as_of_dates = self._as_of_window(end_date=end_date, days=days)
-        window_start = datetime.strptime(as_of_dates[0], "%Y-%m-%d").date()
-        checkpoint_starts: dict[str, datetime.date] = {symbol: window_start for symbol in effective_symbols}
-        get_checkpoints = getattr(self.bar_store, "get_checkpoints", None)
-        if callable(get_checkpoints):
-            try:
-                checkpoint_map = get_checkpoints(effective_symbols, timeframe) or {}
-            except Exception:
-                checkpoint_map = {}
-            for symbol, last_bar_time in checkpoint_map.items():
-                if symbol in checkpoint_starts and last_bar_time:
-                    try:
-                        checkpoint_starts[symbol] = self._checkpoint_start_date(last_bar_time, window_start)
-                    except ValueError:
-                        continue
-        has_incremental_checkpoint = any(start_date > window_start for start_date in checkpoint_starts.values())
-
-        total_written_rows = 0
-        has_any_rows = False
-        made_fetch_call = False
-        last_provider_error: RuntimeError | None = None
-        latest_bar_times: dict[str, datetime] = {}
-        for as_of in as_of_dates:
-            as_of_date = datetime.strptime(as_of, "%Y-%m-%d").date()
-            fetch_symbols = [symbol for symbol in effective_symbols if as_of_date >= checkpoint_starts[symbol]]
-            if not fetch_symbols:
-                continue
-            made_fetch_call = True
-            try:
-                rows = self.quote_repo.fetch(symbols=fetch_symbols, as_of=as_of, timeframe=timeframe)
-            except RuntimeError as exc:
-                last_provider_error = exc
-                continue
-            if not rows:
-                continue
-            has_any_rows = True
-            total_written_rows += self.bar_store.upsert_bars(rows)
-            for row in rows:
-                symbol = row.get("symbol")
-                bar_time = row.get("bar_time")
-                if not symbol or not bar_time:
-                    continue
-                try:
-                    current_bar_time = self._parse_datetime(bar_time)
-                except ValueError:
-                    continue
-                previous_bar_time = latest_bar_times.get(symbol)
-                if previous_bar_time is None or current_bar_time > previous_bar_time:
-                    latest_bar_times[symbol] = current_bar_time
-
-        if not has_any_rows and made_fetch_call:
-            if last_provider_error is not None:
-                raise RuntimeError(str(last_provider_error)) from last_provider_error
-            if not has_incremental_checkpoint:
-                raise ValueError("no market data fetched for requested scope")
         run_id = str(uuid4())
-        manifest_id = f"mf_{uuid4().hex[:10]}"
-        now = datetime.now(timezone.utc).isoformat()
+        result = self.execute_sync(
+            run_id=run_id,
+            days=days,
+            end_date=end_date,
+            timeframe=timeframe,
+            symbols=symbols,
+            universe=universe,
+            request_id=request_id,
+        )
+
         sync_run_payload = {
             "run_id": run_id,
             "request_id": request_id,
-            "status": "success",
+            "status": result["status"],
             "days": days,
             "end_date": end_date,
             "timeframe": timeframe,
-            "selection_mode": selection_mode,
-            "symbols_hash": self._symbols_hash(effective_symbols),
-            "effective_symbols_count": len(effective_symbols),
-            "written_rows": total_written_rows,
-            "manifest_ids": [manifest_id],
-            "error_code": None,
-            "error_message": None,
+            "selection_mode": result["selection_mode"],
+            "symbols_hash": result["symbols_hash"],
+            "effective_symbols_count": result["effective_symbols_count"],
+            "written_rows": result["written_rows"],
+            "manifest_ids": result["manifest_ids"],
+            "error_code": result.get("error_code"),
+            "error_message": result.get("error_message"),
         }
         insert_sync_run = getattr(self.bar_store, "insert_sync_run", None)
         if callable(insert_sync_run):
@@ -309,40 +667,26 @@ class SyncService:
                             timeframe=timeframe,
                             days=days,
                             end_date=end_date,
-                            selection_mode=existing_run.get("selection_mode", selection_mode),
-                            effective_symbols_count=len(effective_symbols),
-                            symbols_hash=existing_run.get("symbols_hash", sync_run_payload["symbols_hash"]),
-                            written_rows=existing_run.get("written_rows", total_written_rows),
+                            selection_mode=existing_run.get("selection_mode", result["selection_mode"]),
+                            effective_symbols_count=result["effective_symbols_count"],
+                            symbols_hash=existing_run.get("symbols_hash", result["symbols_hash"]),
+                            written_rows=existing_run.get("written_rows", result["written_rows"]),
                             manifest_ids=existing_run.get("manifest_ids", []),
-                            generated_at=now,
+                            generated_at=result["generated_at"],
                             run=existing_run,
                         )
                 raise
-
-        upsert_checkpoints = getattr(self.bar_store, "upsert_checkpoints", None)
-        if callable(upsert_checkpoints) and latest_bar_times:
-            upsert_checkpoints(
-                [
-                    {
-                        "symbol": symbol,
-                        "timeframe": timeframe,
-                        "last_bar_time": bar_time.isoformat(),
-                        "last_run_id": run_id,
-                    }
-                    for symbol, bar_time in latest_bar_times.items()
-                ]
-            )
 
         return self._build_sync_summary(
             request_id=request_id,
             timeframe=timeframe,
             days=days,
             end_date=end_date,
-            selection_mode=selection_mode,
-            effective_symbols_count=len(effective_symbols),
-            symbols_hash=sync_run_payload["symbols_hash"],
-            written_rows=total_written_rows,
-            manifest_ids=[manifest_id],
-            generated_at=now,
+            selection_mode=result["selection_mode"],
+            effective_symbols_count=result["effective_symbols_count"],
+            symbols_hash=result["symbols_hash"],
+            written_rows=result["written_rows"],
+            manifest_ids=result["manifest_ids"],
+            generated_at=result["generated_at"],
             run=sync_run_payload,
         )
