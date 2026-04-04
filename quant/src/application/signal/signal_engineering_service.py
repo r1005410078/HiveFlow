@@ -18,6 +18,32 @@ from hiveflow.signal.application.normalize_use_case import winsorize_then_zscore
 _SIGNAL_VERSION = "l3-signal-v1.0"
 _BENCHMARK_SYMBOL = "000300.SH"
 
+_INDUSTRY_MAP: dict[str, str] = {
+    "000001.SZ": "banking",
+    "600519.SH": "food_beverage",
+    "300750.SZ": "new_energy",
+    "601318.SH": "insurance",
+    "000333.SZ": "appliance",
+}
+
+
+def _fill_missing_cross_sectional(
+    wide: pd.DataFrame,
+) -> tuple[pd.DataFrame, dict[str, int]]:
+    """对每个因子列，用该列横截面中位数填补 NaN。
+    返回 (填补后 DataFrame, {factor_name: fill_count})。
+    """
+    filled = wide.copy()
+    fill_counts: dict[str, int] = {}
+    for col in filled.columns:
+        n_missing = int(filled[col].isna().sum())
+        if n_missing > 0:
+            median = filled[col].median()  # skipna=True by default
+            filled[col] = filled[col].fillna(median)
+        fill_counts[col] = n_missing
+    return filled, fill_counts
+
+
 _logger = logging.getLogger(__name__)
 
 

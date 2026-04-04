@@ -127,3 +127,35 @@ def test_single_value_factor_produces_nan():
     assert len(result["rows"]) == 1
     assert math.isnan(result["rows"][0]["signal_value"])
     assert result["transform_stats"][0]["post_zscore"]["count"] == 1
+
+
+def test_fill_missing_uses_cross_sectional_median():
+    import pandas as pd
+    from application.signal.signal_engineering_service import _fill_missing_cross_sectional
+
+    wide = pd.DataFrame(
+        {"factor_a": [1.0, 2.0, float("nan"), 4.0], "factor_b": [10.0, 20.0, 30.0, 40.0]},
+        index=["A", "B", "C", "D"],
+    )
+    filled, counts = _fill_missing_cross_sectional(wide)
+
+    # median of [1.0, 2.0, 4.0] = 2.0
+    assert filled.loc["C", "factor_a"] == 2.0
+    assert counts["factor_a"] == 1
+    assert counts["factor_b"] == 0
+    assert filled.loc["A", "factor_a"] == 1.0  # unchanged
+
+
+def test_fill_missing_all_nan_column_stays_nan():
+    import pandas as pd
+    from application.signal.signal_engineering_service import _fill_missing_cross_sectional
+
+    wide = pd.DataFrame(
+        {"factor_a": [float("nan"), float("nan")]},
+        index=["A", "B"],
+    )
+    filled, counts = _fill_missing_cross_sectional(wide)
+
+    assert math.isnan(filled.loc["A", "factor_a"])
+    assert math.isnan(filled.loc["B", "factor_a"])
+    assert counts["factor_a"] == 2
