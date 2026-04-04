@@ -8,6 +8,7 @@ from application.daily_run_service import run_daily
 from application.factor_optimization import run_factor_optimization
 from application.market_data.sync_worker import SyncWorker
 from application.pipeline_compare_service import run_pipeline_compare
+from application.portfolio.portfolio_optimize_service import run_portfolio_optimize
 from application.signal.signal_evaluate_service import run_signal_evaluation
 from application.signal.signal_engineering_service import run_signal_snapshot
 from application.market_data.bars_query_service import BarsQueryService
@@ -29,6 +30,7 @@ MarketDataQueryService = Callable[..., dict]
 MarketDataBarsQueryService = Callable[..., dict]
 SignalSnapshotService = Callable[[str], dict]
 SignalEvaluateService = Callable[[str, str, int], dict]
+PortfolioOptimizeService = Callable[..., dict]
 
 
 def get_daily_run_service() -> DailyRunService:
@@ -110,6 +112,26 @@ def get_signal_evaluate_service() -> SignalEvaluateService:
     )
 
 
+def get_portfolio_optimize_service() -> PortfolioOptimizeService:
+    bar_store = None
+    if has_db_config():
+        try:
+            bar_store = TimescaleBarStore(open_db_connection_from_env())
+        except Exception:
+            bar_store = None
+    return lambda as_of, alpha, prev_weights, lambda_risk, lambda_tc, w_max, ind_max, lookback_days: run_portfolio_optimize(
+        as_of=as_of,
+        alpha=alpha,
+        prev_weights=prev_weights,
+        lambda_risk=lambda_risk,
+        lambda_tc=lambda_tc,
+        w_max=w_max,
+        ind_max=ind_max,
+        lookback_days=lookback_days,
+        bar_store=bar_store,
+    )
+
+
 class _NoopQuoteRepo:
     def fetch(self, symbols, as_of, timeframe):
         return []
@@ -171,8 +193,12 @@ class _InMemoryBarStore:
         del payload
         return None
 
-    def list_sync_runs(self, days, timeframe=None, status=None, request_id=None, limit=None):
-        del days, timeframe, status, request_id, limit
+    def update_sync_run(self, run_id, payload):
+        del run_id, payload
+        return None
+
+    def list_sync_runs(self, days, timeframe=None, status=None, request_id=None, run_id=None, limit=None):
+        del days, timeframe, status, request_id, run_id, limit
         return [
             {
                 "run_id": "run_demo_001",

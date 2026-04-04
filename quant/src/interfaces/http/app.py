@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from interfaces.http.routes_daily_run import router as daily_router
 from interfaces.http.routes_factor_optimization import router as factor_optimization_router
 from interfaces.http.routes_market_data import router as market_data_router
+from interfaces.http.routes_portfolio import router as portfolio_router
 from interfaces.http.routes_signal import router as signal_router
 
 logger = logging.getLogger(__name__)
@@ -27,6 +28,7 @@ def create_app() -> FastAPI:
     app.include_router(daily_router)
     app.include_router(factor_optimization_router)
     app.include_router(market_data_router)
+    app.include_router(portfolio_router)
     app.include_router(signal_router)
 
     @app.on_event("startup")
