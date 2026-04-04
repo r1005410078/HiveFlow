@@ -103,6 +103,42 @@ def test_query_1d_uses_list_storage_1m_and_aggregates() -> None:
     assert row["close"] == 1454.0
     assert row["high"] == 1455.0
     assert row["low"] == 1449.0
+    assert out["next_cursor_bar_time"] is None
+    assert out["next_cursor_symbol"] is None
+
+
+def test_next_cursor_when_more_rows_than_limit_1m_desc() -> None:
+    day = "2026-04-01"
+    rows = []
+    for minute in (33, 32, 31):
+        rows.append(
+            {
+                "symbol": "600519.SH",
+                "timeframe": "1m",
+                "bar_time": f"{day}T09:{minute:02d}:00+08:00",
+                "open": float(minute),
+                "high": float(minute),
+                "low": float(minute),
+                "close": float(minute),
+                "volume": 1.0,
+                "amount": 1.0,
+                "adj_factor": 1.0,
+                "data_source": "x",
+            }
+        )
+    store = _FakeBarStore(rows)
+    svc = BarsQueryService(bar_store=store)
+    out = svc.query(
+        symbols=["600519.SH"],
+        timeframe="1m",
+        start_date=day,
+        end_date=day,
+        limit=2,
+    )
+    assert len(out["items"]) == 2
+    assert "09:33" in out["items"][0]["bar_time"]
+    assert out["next_cursor_bar_time"] == out["items"][-1]["bar_time"]
+    assert out["next_cursor_symbol"] == "600519.SH"
 
 
 def test_session_date_intraday_1m_sorted_asc() -> None:
@@ -151,6 +187,7 @@ def test_session_date_intraday_1m_sorted_asc() -> None:
     assert times == sorted(times)
     assert "09:31" in times[0]
     assert "10:00" in times[1]
+    assert out["next_cursor_bar_time"] is None
 
 
 def test_cursor_with_multi_symbol_raises() -> None:

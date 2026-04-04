@@ -362,10 +362,25 @@ def get_sync_runs(
     )
 
 
+_BAR_QUERY_VALUE_ERROR_CODES = frozenset(
+    {
+        "TIMEFRAME_FINER_THAN_STORAGE",
+        "BARS_CURSOR_MULTI_SYMBOL",
+        "BARS_CURSOR_SINGLE_SYMBOL_ONLY",
+        "BARS_CURSOR_SYMBOL_MISMATCH",
+        "SESSION_DATE_NOT_TRADING_DAY",
+        "TIMEFRAME_NOT_IMPLEMENTED",
+    }
+)
+
+
 @router.get(
     "/bars",
     summary="查询 K 线数据",
-    description="查询指定标的、时间范围的 K 线数据。",
+    description=(
+        "按输出周期返回 K 线；`timeframe` 为响应桶宽，服务端从存储 1m 聚合。"
+        "支持 `session_date` 分时、`cursor_bar_time`/`cursor_symbol` 游标分页。"
+    ),
 )
 def get_bars(
     symbols: list[str] | None = Query(default=None),
@@ -373,12 +388,33 @@ def get_bars(
     start_date: str | None = Query(default=None),
     end_date: str | None = Query(default=None),
     limit: int = Query(default=5000, ge=1, le=10000),
+    session_date: str | None = Query(default=None, description="分时：YYYY-MM-DD，须为 SSE 交易日"),
+    cursor_bar_time: str | None = Query(
+        default=None,
+        description="下一页游标（ISO bar_time）；仅允许单标的",
+    ),
+    cursor_symbol: str | None = Query(default=None, description="与游标联用的标的，须与 symbols 一致"),
     service: MarketDataBarsQueryService = Depends(get_market_data_bars_query_service),
 ) -> dict:
-    return service(
-        symbols=symbols,
-        timeframe=timeframe,
-        start_date=start_date,
-        end_date=end_date,
-        limit=limit,
-    )
+    try:
+        return service(
+            symbols=symbols,
+            timeframe=timeframe,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+            session_date=session_date,
+            cursor_bar_time=cursor_bar_time,
+            cursor_symbol=cursor_symbol,
+        )
+    except ValueError as exc:
+        code = str(exc)
+        if code in _BAR_QUERY_VALUE_ERROR_CODES:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": code, "message": code},
+            ) from exc
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "BARS_INVALID_ARGUMENT", "message": code},
+        ) from exc

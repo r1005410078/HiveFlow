@@ -100,6 +100,22 @@ class BarsQueryService:
                 items = [x for x in items if _parse_bar_time_key(str(x["bar_time"])) < ctk]
 
         lim = limit if limit is not None else 5000
-        items = items[:lim]
+        has_more = len(items) > lim
+        page = items[:lim]
 
-        return {"items": items}
+        next_bt: str | None = None
+        next_sym: str | None = None
+        if (
+            has_more
+            and page
+            and symbols
+            and len(symbols) == 1
+        ):
+            next_bt = str(page[-1]["bar_time"])
+            next_sym = symbols[0]
+
+        return {
+            "items": page,
+            "next_cursor_bar_time": next_bt,
+            "next_cursor_symbol": next_sym,
+        }
