@@ -132,6 +132,12 @@ pub struct SignalEvaluateRequest {
     pub output: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct PortfolioOptimizeRequest {
+    pub as_of: String,
+    pub output: String,
+}
+
 #[derive(Debug)]
 pub enum AppCommand {
     PipelineDaily(PipelineDailyRequest),
@@ -150,4 +156,5 @@ pub enum AppCommand {
     DataBars(DataBarsRequest),
     SignalSnapshot(SignalSnapshotRequest),
     SignalEvaluate(SignalEvaluateRequest),
+    PortfolioOptimize(PortfolioOptimizeRequest),
 }

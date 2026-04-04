@@ -1,7 +1,7 @@
 use crate::application::handlers::{
     data_bars, data_market_query, data_sync, data_sync_cancel, data_sync_retry_failed,
     data_universe_sync, factor_optimize, factor_replay, pipeline_compare, pipeline_daily,
-    signal_evaluate, signal_snapshot, task_list, task_progress,
+    portfolio_optimize, signal_evaluate, signal_snapshot, task_list, task_progress,
 };
 use crate::application::requests::AppCommand;
 use crate::error::AppError;
@@ -24,5 +24,6 @@ pub fn run(command: AppCommand) -> Result<(), AppError> {
         AppCommand::DataBars(args) => data_bars::handle(args),
         AppCommand::SignalSnapshot(args) => signal_snapshot::handle(args),
         AppCommand::SignalEvaluate(args) => signal_evaluate::handle(args),
+        AppCommand::PortfolioOptimize(args) => portfolio_optimize::handle(args),
     }
 }
