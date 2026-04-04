@@ -154,8 +154,11 @@ cd cli && cargo run -- factor replay --start-date YYYY-MM-DD --end-date YYYY-MM-
 - `POST /api/v1/pipeline/daily`：日频管线触发
 - `POST /api/v1/pipeline/compare`：版本对比回放（`l2-score-v1` vs `l2-score-v1.1`）
 - `POST /api/v1/factor-optimization/evaluate`：因子评估与权重建议（advice-only）
-- `POST /v1/market-data/sync`：行情同步
-- `POST /v1/market-data/universes/sync`：标的池同步（写入 `quant/config/universes/*.txt`）
+- `POST /v1/market-data/sync`：行情同步（异步 202 + 轮询，或无 DB 同步 200）
+- `GET /v1/market-data/sync-runs/{run_id}`：单任务详情（含 progress/phase）
+- `POST /v1/market-data/sync-runs/{run_id}/cancel`：协作式取消
+- `POST /v1/market-data/sync-runs/{run_id}/retry-failed`：仅补拉失败标的
+- `POST /v1/market-data/universes/sync`：标的池同步（异步 202）
 - `GET /v1/market-data/sync-runs`：行情查询
 - `GET /v1/market-data/bars`：行情 K 线查询
 - `POST /api/v1/signal/snapshot`：L3 信号快照
@@ -166,14 +169,14 @@ cd cli && cargo run -- factor replay --start-date YYYY-MM-DD --end-date YYYY-MM-
 - `make check`：通过（Python tests 与 CLI fixtures、Rust tests 以本机最新 `make check` 输出为准）
 - 已知非阻塞警告：CLI 存在少量 `dead_code` 警告（`retry` 字段、部分合同类型未使用），不影响门禁。
 
-### 7.8 各层完成度（2026-04-03）
+### 7.8 各层完成度（2026-04-04）
 
 > **维护说明**：每次完成一个层/阶段，更新此表的状态与说明，并更新"当前工作位置"。
 
 | 层 | 名称 | 状态 | 说明 |
 |---|---|---|---|
 | L0 | 标的池 | ✅ Phase 1 完成 | A 股 universe，静态快照 |
-| L1 | 数据层 | ✅ Phase 1 完成 | TimescaleDB + bars 同步，180 天窗口 |
+| L1 | 数据层 | ✅ Phase 2 完成 | Phase 1: TimescaleDB + bars 同步，180 天窗口；Phase 2: 异步作业（202+轮询）、协作式取消（cancel）、标的失败队列+自动重试+审计表、retry-failed 补拉、进度追踪（current_symbol/done/pending）、孤儿 run 收口 |
 | L2 | 因子层 | ✅ Phase 2 完成 | 6 因子，per-factor 独立版本（FactorMeta TypedDict）、rows 含 direction/unit/missing_strategy/source、真实基准计算（000300.SH）、per-factor stability_metrics（coverage_rate/drift 检测）、FactorValue domain model 对齐、Pydantic schema 同步（FactorStabilityMetric） |
 | L3 | 信号工程 | ✅ Phase 2a 完成 | Phase 1: winsorize+zscore+等权 composite、signal_matrix、snapshot CLI；Phase 2a: Rank IC（per-factor+composite）、信号分布漂移检测、`POST /api/v1/signal/evaluate` + `hf signal evaluate` |
 | L4 | 组合优化 | 🔲 未开始 | — |
@@ -186,7 +189,7 @@ cd cli && cargo run -- factor replay --start-date YYYY-MM-DD --end-date YYYY-MM-
 | G2 | 实验治理 | 🔲 未开始 | — |
 | G3 | 执行安全 | 🚧 部分完成 | advice_only/decision_weight 框架已建，审批流未实现 |
 
-**当前工作位置**：L3 Phase 2a（IC + drift）已合入 master → Phase 2b（缺失值处理/行业中性化/与 L4 衔接）待 spec；或可开始 L4 组合优化。
+**当前工作位置**：L1 Phase 2（异步同步）已在 `feat/l1-async-sync` 完成 → 待合入 master；L3 Phase 2b / L4 组合优化待 spec。
 
 ### 7.9 已交付能力摘要
 
@@ -197,6 +200,7 @@ cd cli && cargo run -- factor replay --start-date YYYY-MM-DD --end-date YYYY-MM-
 - **Factor 回放**：`hf factor replay`，summary + daily_items，区分 fetch_status/release_gate_status
 - **CLI 可读性**：`--output table` 中文标题，top 候选最多 5 条
 - **L3 信号**：`signal_matrix`（coverage_rate、transform_stats）；`hf signal snapshot --as-of ... [--output json|table]`；信号评估 `hf signal evaluate --start-date ... --end-date ... [--forward-days N] [--output json|table]`（Rank IC + drift diagnostics）；详见 `--help` 与 `docs/CLI_OUTPUT_EXAMPLES.md`
+- **L1 异步同步**：`hf data sync` 提交→202→轮询进度条（current_symbol/done/pending/ETA）；`hf data sync cancel --run-id`；`hf data sync retry-failed --from-run-id`；失败队列自动重试（MAX_SYMBOL_ATTEMPTS=3）+ 审计表 `sync_run_symbol_failures`；startup 孤儿 run 收口为 `interrupted`
 
 ## 8. Superpowers 工作流（强约束）
 
