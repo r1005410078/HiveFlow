@@ -101,3 +101,26 @@ def test_domain_signal_does_not_import_application():
     imports = _imports(signal_file)
     violations = [name for name in imports if name == "application" or name.startswith("application.")]
     assert not violations, f"domain.models.signal must not import application: {violations}"
+
+
+def test_application_portfolio_does_not_import_interfaces():
+    """application.portfolio 禁止依赖 interfaces 层"""
+    portfolio_dir = APP_DIR / "portfolio"
+    if not portfolio_dir.exists():
+        return
+    violations: list[str] = []
+    for py in portfolio_dir.rglob("*.py"):
+        imports = _imports(py)
+        if any(name == "interfaces" or name.startswith("interfaces.") for name in imports):
+            violations.append(str(py.relative_to(ROOT)))
+    assert not violations, f"application.portfolio must not import interfaces: {violations}"
+
+
+def test_domain_portfolio_does_not_import_application():
+    """domain.models.portfolio 禁止依赖 application"""
+    portfolio_file = SRC / "domain" / "models" / "portfolio.py"
+    if not portfolio_file.exists():
+        return
+    imports = _imports(portfolio_file)
+    violations = [name for name in imports if name == "application" or name.startswith("application.")]
+    assert not violations, f"domain.models.portfolio must not import application: {violations}"
