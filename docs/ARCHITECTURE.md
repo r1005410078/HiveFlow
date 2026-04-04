@@ -260,7 +260,7 @@ retry = 1
 
 当前 CLI 数据查询形态（与运行实现对齐）：
 
-- `hf task list --output`（别名 `hf task sync-runs`）仅支持 `json|table`，用于同步任务列表（`/v1/market-data/sync-runs`）；`hf task progress`（别名 `hf task status`）查看运行中进度（默认识别唯一 `running` 或 `--run-id`；`--watch` 轮询至终态，对应 `GET /v1/market-data/sync-runs/{run_id}`）；近窗 K 线用 `hf data query`（`json|tui|table`，默认 TUI 分页）；显式区间/chart 用 `hf data bars`。
+- `hf task list --output`（别名 `hf task sync-runs`）仅支持 `json|table`，用于同步任务列表（`/v1/market-data/sync-runs`）；`hf task progress`（别名 `hf task status`）查看运行中进度（默认识别唯一 `running` 或 `--run-id`；`--watch` 轮询至终态，对应 `GET /v1/market-data/sync-runs/{run_id}`）；取消与补拉失败对应 **`hf task cancel` / `hf task retry-failed`**（亦保留 `hf data sync-cancel` 等别名）。近窗 K 线用 `hf data query`（`GET /v1/market-data/bars`，`json|tui|table`，默认 TUI 分页）；显式区间/chart 用 `hf data bars`。列表/详情中的 **`effective_symbols_count`** 与 **`progress.total_symbols`** 在实现上应对齐（finalize + 读取 enrich）；同步无行返回时可为 **`success` + `NO_DATA_RETURNED`**。
 - `hf data bars --output` 支持 `json|table|chart|tui`，用于查询 K 线明细（`/v1/market-data/bars`）。
 - `data bars` 的 `chart` 模式要求单标的 `--symbols`（如 `600519.SH`）。
 - `data bars` 的 `tui` 模式支持左侧选股与键盘交互（`↑/↓` 切换、`←/→` 光标、`a/d` 平移、`+/-` 缩放、`0` 重置、`b` 开关大盘对比）。

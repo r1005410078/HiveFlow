@@ -45,6 +45,16 @@ make db-migrate
 
 未迁移时，行情同步等依赖表结构的接口可能报错或行为异常。
 
+### 4.2 仅清空 L1 行情数据（联调重跑，破坏性）
+
+需要**保留库与迁移**、只删掉 bars / sync 相关表做同步回归时：
+
+```bash
+make db-clear-l1
+```
+
+会 `TRUNCATE` L1 相关表（含外键顺序，见 `scripts/db_clear_l1_stock_data.sql`）。**不**替代 `make db-reset-db-volume`（整卷清空）。清表后请**重启** `make run-server`，确保加载的是当前代码。
+
 ## 5. 启动 quant 服务端
 
 ```bash
@@ -223,7 +233,8 @@ cargo run -- data bars --symbols 600519.SH --timeframe 1d --output tui
 - `--no-benchmark` 在 `chart/tui` 下关闭大盘对比线（默认基准 `000300.SH`）。
 - `--verbose` 仅在 `--output table` 下追加诊断列。
 - `--timeout-ms` 可覆盖 `~/.hiveflow/config.toml` 中的 `timeout_ms`
-- `--timeframe` 默认是 `1m`（分钟级），可显式传 `1d` 切换日频
+- `--timeframe` 默认是 `1m`（分钟级），可显式传 `1d` 切换日频；参数名是 **`--timeframe`**（勿拼成 `tmeframe`）。
+- **分钟线数据源**（如当前 Tencent 适配）往往只返回**最近一段**可解析窗口；若 **`--end-date` 落在该窗口之外**，可能出现**无 K 线**或同步摘要带 **`NO_DATA_RETURNED`**。日频或近端 `end-date` 更易对齐。
 - `symbols` 参数使用逗号分隔（如 `600519.SH,000001.SZ`）
 
 如果 TUI 看不到大盘线，通常是大盘数据尚未同步。可先执行：
@@ -256,7 +267,10 @@ make test
 - 表不存在 / 同步异常：确认已执行 `make db-migrate`（见 4.1）。
 - CLI 报配置缺失：确认 `~/.hiveflow/config.toml` 已创建。
 - 端口冲突：修改 `.env.db` 的 `HF_DB_PORT`，或释放占用端口。
-- 同步提示「已有任务在跑」：使用 `data sync-cancel` 或等待该 `run_id` 结束后再发 `data sync`。
+- 同步提示「已有任务在跑」：使用 **`hf task cancel --run-id ...`**（或 `data sync-cancel`）或等待该 `run_id` 结束后再发 `data sync`。
+- 同步终态为 **success** 但带 **`NO_DATA_RETURNED`**：Provider 未返回可写入行（常见于分钟线窗口与 **`--end-date`** 不匹配）；可改用更近的结束日、换 **日频**，或确认标的在该源上可查。
+- 改了 Python 同步逻辑但行为仍像旧版：**重启** `quant` 进程后再测。
+- `task list` 里 **`effective_symbols_count`** 与详情里 **`progress.total_symbols`** 应一致；若曾见历史数据不一致，升级后读取路径会 **enrich**；仍异常时核对是否连错环境或旧 run。
 
 ## 12. 场景化手册（推荐阅读）
 

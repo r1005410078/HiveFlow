@@ -135,6 +135,7 @@ make check                                     # 全量 CI 门禁
 make architecture-check                        # 架构门禁
 make run-server                                # 启动服务端（开发热更新：make run-server-dev）
 make run-pipeline AS_OF=YYYY-MM-DD            # 运行日频管线
+make db-clear-l1                               # 清空 L1 行情相关表（破坏性，仅联调重跑同步）
 
 # CLI 命令示例
 cd cli && cargo run -- pipeline compare --start-date YYYY-MM-DD --end-date YYYY-MM-DD --top-n 5 --output table
@@ -190,7 +191,7 @@ cd cli && cargo run -- factor replay --start-date YYYY-MM-DD --end-date YYYY-MM-
 | G2 | 实验治理 | 🔲 未开始 | — |
 | G3 | 执行安全 | 🚧 部分完成 | advice_only/decision_weight 框架已建，审批流未实现 |
 
-**当前工作位置**：L1 Phase 2（异步同步）已在 `feat/l1-async-sync` 完成 → 待合入 master；L3 Phase 2b / L4 组合优化待 spec。
+**当前工作位置**：L1 Phase 2（异步同步 + `hf task` / `data query` 拆分 + 空返回与元数据修复）已在 **master** 主线可用；L3 Phase 2b / L4 组合优化待 spec。
 
 ### 7.9 已交付能力摘要
 
@@ -201,7 +202,7 @@ cd cli && cargo run -- factor replay --start-date YYYY-MM-DD --end-date YYYY-MM-
 - **Factor 回放**：`hf factor replay`，summary + daily_items，区分 fetch_status/release_gate_status
 - **CLI 可读性**：`--output table` 中文标题，top 候选最多 5 条
 - **L3 信号**：`signal_matrix`（coverage_rate、transform_stats）；`hf signal snapshot --as-of ... [--output json|table]`；信号评估 `hf signal evaluate --start-date ... --end-date ... [--forward-days N] [--output json|table]`（Rank IC + drift diagnostics）；详见 `--help` 与 `docs/CLI_OUTPUT_EXAMPLES.md`
-- **L1 异步同步**：`hf data sync` 提交→202→**默认** stderr 提示 + stdout JSON（含 run_id）；**`hf task progress`**（别名 `hf task status`）查看运行中进度，**`--watch`** 轮询至终态（与 **`--wait`** 同类）；任务列表 **`hf task list`**（别名 `hf task sync-runs`）；取消/重试 **`hf task cancel` / `hf task retry-failed`**（与 `hf data sync-cancel`、`hf data sync-retry-failed` 等价）；近窗 K 线 **`hf data query`**（默认 TUI 分页）；失败队列自动重试（MAX_SYMBOL_ATTEMPTS=3）+ 审计表 `sync_run_symbol_failures`；startup 孤儿 run 收口为 `interrupted`
+- **L1 异步同步**：`hf data sync` 提交→202→**默认** stderr 提示 + stdout JSON（含 run_id）；**`hf task progress`**（别名 `hf task status`）查看运行中进度，**`--watch`** 轮询至终态（与 **`--wait`** 同类）；任务列表 **`hf task list`**（别名 `hf task sync-runs`）；取消/重试 **`hf task cancel` / `hf task retry-failed`**（与 `hf data sync-cancel`、`hf data sync-retry-failed` 等价）；近窗 K 线 **`hf data query`** → `GET /v1/market-data/bars`（默认 TUI 分页）；失败队列自动重试（MAX_SYMBOL_ATTEMPTS=3）+ 审计表 `sync_run_symbol_failures`；startup 孤儿 run 收口为 `interrupted`；Provider 无行返回且无异常时 run 可为 **`success` + `error_code: NO_DATA_RETURNED`**；`sync_runs.effective_symbols_count` finalize 写库 + 读取 **enrich** 与 `progress` 一致；本地仅清 L1 表 **`make db-clear-l1`**（破坏性）
 
 ## 8. Superpowers 工作流（强约束）
 

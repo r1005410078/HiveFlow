@@ -59,6 +59,7 @@ make db-init-env                               # 生成 .env.db（首次必须�
 make db-up                                     # 启动 TimescaleDB
 make db-down                                   # 停止
 make db-psql                                   # 进入 psql
+make db-clear-l1                               # 仅 TRUNCATE L1 行情相关表（破坏性，联调重跑同步）
 make db-reset-db-volume                        # 清除数据卷（破坏性）
 
 # ── 服务端与端到端联调 ───────────────────────────────────

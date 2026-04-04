@@ -12,6 +12,21 @@
 
 ---
 
+## 实现对齐记录（2026-04-04 合入后）
+
+与计划初稿相比，主线已落地的**方案差异**（便于读文档时代码对照）：
+
+| 主题 | 说明 |
+|------|------|
+| **`hf task` 子命令** | 同步任务列表、进度、取消、retry-failed 收口为 **`hf task list|progress|cancel|retry-failed`**（保留 `hf data sync-cancel` 等别名）；**`hf data query`** 专指近窗 **`GET /v1/market-data/bars`**，不再列 `sync-runs`。 |
+| **空返回** | 无异常但无 bar 行时 run 可为 **`success` + `error_code: NO_DATA_RETURNED`**，避免误报未处理异常。 |
+| **`effective_symbols_count`** | finalize 写库；读取路径 **enrich**，与 **`progress.total_symbols`** 一致。 |
+| **本地清空 L1** | **`make db-clear-l1`**（`scripts/db_clear_l1_stock_data.sql`），破坏性；清库后联调须 **重启 quant**。 |
+
+Spec 正文 §6 已追加「实现对齐」段；入门见根目录 `GETTING_STARTED.md`、`docs/BEGINNER_QUICKSTART.md`。
+
+---
+
 ## 0. 文件与职责总览
 
 ### 0.1 Python 服务端
@@ -197,8 +212,8 @@
 
 ## Task 9: 文档收口
 
-- [ ] 在 [`docs/ARCHITECTURE.md`](../../ARCHITECTURE.md) 或 L1 相关小节增加一句「行情同步为异步作业 + 轮询」（若维护者希望索引；可选，**不**强制大块改写）。
-- [ ] 将本 plan 与 spec 状态在 spec 文首更新为「已确认 / 进行中 / 已完成」（合入后由维护者更新）。
+- [x] 在 [`docs/ARCHITECTURE.md`](../../ARCHITECTURE.md) §8.2 等处与 `task` / `data query` / `NO_DATA_RETURNED` / `db-clear-l1` 对齐（2026-04-04）。
+- [x] spec 文首状态与 §6「实现对齐」、本 plan「实现对齐记录」已更新（合入后维护者可持续增量修订）。
 
 ---
 

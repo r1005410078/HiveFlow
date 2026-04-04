@@ -135,7 +135,7 @@ cargo run -- data sync --days 30 --end-date 2026-04-01 --universe csi300
 常见于参数缺失或组合参数冲突（例如不合法的组合大小区间）。
 
 4. 同步报「已有任务在跑」/ HTTP 409  
-同一 `timeframe` + 标的集合维度上已有 `running` 任务。用 CLI 提示的 `run_id` 执行 `data sync-cancel`，或等待该任务结束后再发 `data sync`。
+同一 `timeframe` + 标的集合维度上已有 `running` 任务。用 CLI 提示的 `run_id` 执行 **`hf task cancel --run-id ...`**（或 `data sync-cancel`），或等待该任务结束后再发 `data sync`。
 
 5. 迁移未执行导致同步或查询异常  
 确认已执行 `make db-migrate`（见「第一次启动」1.1）。
@@ -143,11 +143,20 @@ cargo run -- data sync --days 30 --end-date 2026-04-01 --universe csi300
 6. 查询不到数据  
 先执行 `data sync`（或确认历史 `run_id` 已成功），再执行 **`task list`** 或 **`data query`** / **`data bars`**。
 
+7. 同步显示 **success** 但 **`error_code: NO_DATA_RETURNED`**  
+数据源在该次请求下没有可落库的 bar（分钟线常见原因是 **`--end-date` 与源侧「最近一段」窗口不对齐**）。可换更近的 `end-date`、改用 **日频 `1d`**，或核对标的在 Provider 上是否可查。
+
+8. 联调想「只清行情表」重来  
+在已 `db-up` 且已迁移的前提下执行 **`make db-clear-l1`**（破坏性，见根目录 `GETTING_STARTED.md` 4.2），然后**重启** `make run-server`。
+
+9. 参数拼写  
+同步与查询使用 **`--timeframe`**，不是 `tmeframe`。
+
 ## 5. 当前能力边界
 
 - `factor optimize` 固定是建议态：`advice_only=true`、`decision_weight=0`。
 - `pipeline daily` 当前 `execution_plan.orders` 仍为空数组（执行层未进入实盘自动化）。
-- L1 行情：`data sync` 为异步任务 + CLI 轮询；失败标的可用 `data sync-retry-failed` 续跑。
+- L1 行情：`data sync` 为异步任务 + CLI **`--wait` / `task progress --watch`** 轮询；任务元数据用 **`hf task list`**，进度用 **`hf task progress`**；失败标的可用 **`hf task retry-failed`**（或 `data sync-retry-failed`）续跑；无行返回时可能 **`NO_DATA_RETURNED`**；本地清表 **`make db-clear-l1`**。
 - L2 因子与 L3 信号（快照/评估等）已在主线可用；更细的层状态见仓库根目录 `AGENTS.md` 表格。
 
 ## 6. 深入文档

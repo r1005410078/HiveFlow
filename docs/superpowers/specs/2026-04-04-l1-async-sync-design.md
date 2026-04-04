@@ -1,7 +1,7 @@
 # L1 行情同步异步化设计
 
 > 日期：2026-04-04  
-> 状态：已确认  
+> 状态：已确认（主线已实现；§6 含「实现对齐」与 CLI 终稿差异说明）  
 > 前置：L1 Foundation Hardening（幂等、`sync_runs`、`checkpoint`、`GET /sync-runs` 已合入）  
 > 范围：将 `POST /v1/market-data/sync` 与 `POST /v1/market-data/universes/sync` 从「单次长连接阻塞」改为「提交即返 + 后台执行 + 客户端轮询」，解决大标的池 × 长窗口下的 CLI/网关超时问题；并提供 **`POST /v1/market-data/sync-runs/{run_id}/cancel` 协作式终止** 与 CLI `sync cancel`（名称以实现为准）；以及 **标的级失败队列、可配置自动重试、失败次数与原因持久化、对失败标的的主动补拉**（见 §4.4、§5.6）。
 
@@ -372,23 +372,31 @@ sequenceDiagram
 
 **实现修订（2026-04-04 后）**：为避免长时间卡在 `resolving_symbols` 等阶段，**默认不轮询**：受理成功后 **stderr** 中文提示「任务已提交」并打印 **run_id**，**stdout** 打印受理 JSON；需要在本终端阻塞直至终态时显式传 **`--wait`**（原稿中的 **`--no-wait`** 语义由「默认轮询 + 可选跳过」改为「默认跳过 + `--wait` 轮询」）。`--poll-interval-ms` 仅与 **`--wait`** 合用。
 
+**实现对齐（与 §6 初稿差异，追溯）**：
+
+- **同步任务列表 / 进度 / 取消 / 补拉失败**：使用 **`hf task list`**（别名 `hf task sync-runs`）、**`hf task progress`**（别名 `hf task status`，支持 **`--watch`**）、**`hf task cancel`**、**`hf task retry-failed`**；与 **`hf data sync-cancel` / `hf data sync-retry-failed`** 等价。下文凡出现「`data sync-runs` / 别名 `data query`」等旧表述，均应以 **`hf task list` / `hf task progress`** 为准。
+- **近窗 K 线**：**`hf data query`** 对应 **`GET /v1/market-data/bars`**（`json|tui|table`），**不再**承担 `sync-runs` 列表职责（与 L1 Foundation 时期 CLI 形态不同）。
+- **无返回行**：Provider 整次执行未抛异常但**未写入任何 bar 行**时，run 可记为 **`success`**，摘要中带 **`error_code: NO_DATA_RETURNED`**（或等价），便于与「部分成功」区分；不再唯一依赖 `ValueError("no market data fetched")` 类路径。
+- **`effective_symbols_count`**：`finalize` 时从实际 scope 写库；列表/详情读取路径 **`enrich_sync_run_dict`** 与 **`progress.total_symbols`** 等对齐，避免列表里出现 `0` 与进度条总数不一致的误导。
+- **本地清空 L1 表（破坏性）**：`make db-clear-l1`（`scripts/db_clear_l1_stock_data.sql`），用于联调重跑同步；执行后需**重启** `quant` 进程后再测行为与线上代码一致。
+
 ### 6.1 `hf data sync`
 
 1. **POST** `/v1/market-data/sync`，提交阶段使用**较短**超时（如 10s），与「整次同步」解耦。
 2. 若 **202**（或等价「已入队 + `run_id`」）：
-   - **默认**：不进入轮询；提示用户 `run_id` 与 **`data sync-runs`**（别名 `data query`）用法，stdout 输出受理 JSON。
+   - **默认**：不进入轮询；提示用户 `run_id` 与 **`hf task list` / `hf task progress`** 用法，stdout 输出受理 JSON。
    - 若带 **`--wait`**：进入轮询循环：
      - **GET** `/v1/market-data/sync-runs/{run_id}`，间隔默认 **1500ms**（`--poll-interval-ms` 可配置）。
      - 使用 `indicatif` 展示进度条/ETA；展示 **`current_symbol`**、**已同步/待同步数量**（来自 `symbols_*_count`）；在 **`--verbose`** 或 `table` 输出模式下展示 **`symbols_done_for_run` / `symbols_pending_for_run` 截断列表**（与 API 截断策略一致）。
 3. 若 **200**（幂等命中）：直接输出最终 JSON（与现行为一致）。
-4. 若 **409**：提示已有任务及 `running_run_id`，建议用户 **`data sync-runs`** 或等待。
+4. 若 **409**：提示已有任务及 `running_run_id`，建议用户 **`hf task list` / `hf task progress`** 或等待。
 5. **Ctrl+C**（仅 **`--wait`** 轮询时）：进程退出前打印「服务端仍在执行」及 `run_id`，便于后续查询；可选后续增强为**自动调用 cancel**（需显式 flag，避免误杀他人任务，见实现计划）。
 
 ### 6.1.1 `hf data sync cancel`（建议）
 
 - 参数：`--run-id <UUID>`（必填），`--timeout-ms`（调用 cancel API 的超时）。
 - 行为：`POST /v1/market-data/sync-runs/{run_id}/cancel`，将 stdout 包装为现有 CLI JSON 信封（与仓库 `CLI_OUTPUT_SCHEMA` 一致）。
-- 成功后用户可继续 `hf data sync-runs --request-id ...`（别名 `hf data query`）或按 `run_id` 查询直至 `status=cancelled`。
+- 成功后用户可继续 **`hf task list`**（按 `request_id` 筛选）或 **`hf task progress --run-id ...`** 直至 `status=cancelled`。
 
 ### 6.1.2 `hf data sync retry-failed`（建议）
 
