@@ -1192,3 +1192,66 @@ pub fn render_portfolio_optimize_table(payload: &Value) -> String {
         header, weights_table, fallback_note
     )
 }
+
+pub fn render_risk_check_table(payload: &Value) -> String {
+    let data = payload.get("data");
+    let as_of = as_str(data.and_then(|d| d.get("as_of")));
+    let risk_gate = as_str(data.and_then(|d| d.get("risk_gate")));
+    let regime = as_str(data.and_then(|d| d.get("regime")));
+    let regime_vol = data
+        .and_then(|d| d.get("regime_vol"))
+        .and_then(Value::as_f64)
+        .map(|v| format!("{:.1}%", v * 100.0))
+        .unwrap_or_else(|| "n/a".to_string());
+
+    let mut checks_table = Table::new();
+    checks_table
+        .load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec![
+            Cell::new("检查项"),
+            Cell::new("实际值"),
+            Cell::new("阈值"),
+            Cell::new("状态"),
+        ]);
+
+    if let Some(checks) = data
+        .and_then(|d| d.get("checks"))
+        .and_then(Value::as_array)
+    {
+        for check in checks {
+            let name = as_str(check.get("name"));
+            let value = check.get("value").and_then(Value::as_f64).unwrap_or(0.0);
+            let threshold = check.get("threshold").and_then(Value::as_f64).unwrap_or(0.0);
+            let passed = check.get("passed").and_then(Value::as_bool).unwrap_or(false);
+            let status_str = if passed { "✓" } else { "✗ BLOCK" };
+            checks_table.add_row(vec![
+                name,
+                format!("{:.1}%", value * 100.0),
+                format!("{:.1}%", threshold * 100.0),
+                status_str.to_string(),
+            ]);
+        }
+    }
+
+    let gate_line = if risk_gate == "pass" {
+        "风险门控: PASS ✓".to_string()
+    } else {
+        let block_codes = data
+            .and_then(|d| d.get("block_codes"))
+            .and_then(Value::as_array)
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            })
+            .unwrap_or_default();
+        format!("风险门控: BLOCK ✗  [{block_codes}]")
+    };
+
+    format!(
+        "风险门控检查（{as_of}）  市场状态: {regime}（波动率={regime_vol}）\n{}\n{}\n",
+        checks_table, gate_line
+    )
+}

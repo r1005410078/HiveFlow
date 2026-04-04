@@ -154,6 +154,12 @@ pub struct PortfolioOptimizeRequest {
     pub output: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct RiskCheckRequest {
+    pub as_of: String,
+    pub output: String,
+}
+
 #[derive(Debug)]
 pub enum AppCommand {
     Tui(TuiShellRequest),
@@ -175,4 +181,5 @@ pub enum AppCommand {
     SignalSnapshot(SignalSnapshotRequest),
     SignalEvaluate(SignalEvaluateRequest),
     PortfolioOptimize(PortfolioOptimizeRequest),
+    RiskCheck(RiskCheckRequest),
 }

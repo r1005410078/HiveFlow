@@ -2,6 +2,7 @@ pub mod data;
 pub mod factor;
 pub mod pipeline;
 pub mod portfolio;
+pub mod risk;
 pub mod signal;
 pub mod task;
 pub mod tui;
@@ -30,6 +31,8 @@ pub enum Commands {
     Signal(signal::SignalArgs),
     /// L4 组合优化：信号 → 目标权重（需 quant 服务与 ~/.hiveflow/config.toml）
     Portfolio(portfolio::PortfolioArgs),
+    /// L5 风险门控：目标权重硬约束检查（需 quant 服务与 ~/.hiveflow/config.toml）
+    Risk(risk::RiskArgs),
 }
 
 impl From<Cli> for AppCommand {
@@ -83,6 +86,9 @@ impl From<Cli> for AppCommand {
                 portfolio::PortfolioSubcommand::Optimize(optimize) => {
                     AppCommand::PortfolioOptimize(optimize.into())
                 }
+            },
+            Commands::Risk(args) => match args.command {
+                risk::RiskSubcommand::Check(check) => AppCommand::RiskCheck(check.into()),
             },
         }
     }
