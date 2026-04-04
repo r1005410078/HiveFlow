@@ -24,7 +24,7 @@ def solve_portfolio(
     prev_weights: dict[str, float],
     lambda_risk: float = 1.0,
     lambda_tc: float = 0.001,
-    w_max: float = 0.40,
+    w_max: float = 0.30,
     ind_max: float = 0.40,
     industry_map: dict[str, str] | None = None,
 ) -> dict:

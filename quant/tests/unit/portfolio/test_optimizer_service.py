@@ -47,7 +47,7 @@ def test_industry_constraint():
     cov = _cov_2x2(symbols)
     result = solve_portfolio(
         alpha=alpha, cov_matrix=cov, prev_weights={},
-        ind_max=0.60, industry_map=industry_map,
+        w_max=0.40, ind_max=0.60, industry_map=industry_map,
     )
 
     w = {row["symbol"]: row["weight"] for row in result["target_weights"]}
