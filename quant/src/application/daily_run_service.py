@@ -10,6 +10,7 @@ from application.factor.basic_factor_service import (
     compute_basic_factor_snapshot_from_bars,
 )
 from application.portfolio.portfolio_optimize_service import run_portfolio_optimize
+from application.risk.risk_gate_service import run_risk_check
 from application.signal.signal_engineering_service import compute_signal_matrix
 
 
@@ -132,6 +133,21 @@ def run_daily(
                 "code": "PORTFOLIO_OPTIMIZATION_FAILED",
                 "message": "L4 portfolio optimization failed; portfolio set to null",
             })
+    risk_gate_result = None
+    if portfolio is not None:
+        try:
+            risk_gate_result = run_risk_check(
+                as_of=as_of,
+                target_weights={r["symbol"]: r["weight"] for r in portfolio["target_weights"]},
+                prev_weights={},   # Phase 1: no historical weights
+                bar_store=bar_store,
+            )
+        except Exception:
+            _logger.warning("daily run: risk gate failed", exc_info=True)
+            warnings.append({
+                "code": "RISK_GATE_FAILED",
+                "message": "L5 risk gate computation failed; risk_gate set to null",
+            })
     return ok_output(
         command="hf pipeline daily",
         run_id=run_id,
@@ -143,6 +159,7 @@ def run_daily(
             "l2_decision": l2_decision,
             "signal_matrix": signal_matrix,
             "portfolio": portfolio,
+            "risk_gate": risk_gate_result.get("data") if risk_gate_result else None,
         },
         warnings=warnings,
     )

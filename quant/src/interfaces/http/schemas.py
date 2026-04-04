@@ -353,6 +353,8 @@ class DailyRunData(BaseModel):
     execution_plan: ExecutionPlan
     l2_decision: L2Decision
     signal_matrix: SignalMatrix | None = None
+    portfolio: dict | None = None
+    risk_gate: dict | None = None
 
 
 class PipelineCompareResponse(BaseModel):

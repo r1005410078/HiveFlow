@@ -781,3 +781,41 @@ CLI 默认 **`--output table`** 为可读摘要；**`--output json`** 时 stdout
   "errors": []
 }
 ```
+
+## hf risk check（L5 风险门控）
+
+```bash
+hf risk check --as-of 2026-04-04
+hf risk check --as-of 2026-04-04 --output table
+```
+
+Pass 示例（`status=ok`，`risk_gate=pass`）：
+
+```json
+{
+  "schema_version": "1.0.0",
+  "command": "hf risk check",
+  "run_id": "run_20260404_abc12345",
+  "status": "ok",
+  "generated_at": "2026-04-04T10:00:00+00:00",
+  "source": "system",
+  "advice_only": false,
+  "decision_weight": 1,
+  "data": {
+    "as_of": "2026-04-04",
+    "risk_gate": "pass",
+    "regime": "normal",
+    "regime_vol": 0.182,
+    "regime_vol_source": "benchmark",
+    "checks": [
+      {"name": "portfolio_vol",    "value": 0.22, "threshold": 0.30, "passed": true},
+      {"name": "single_asset_max", "value": 0.28, "threshold": 0.35, "passed": true},
+      {"name": "industry_max",     "value": 0.35, "threshold": 0.45, "passed": true},
+      {"name": "turnover",         "value": 0.45, "threshold": 0.80, "passed": true}
+    ],
+    "block_codes": []
+  },
+  "warnings": [],
+  "errors": []
+}
+```
