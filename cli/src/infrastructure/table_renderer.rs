@@ -1081,3 +1081,84 @@ pub fn render_signal_evaluate_table(payload: &Value) -> String {
         header, ic_table, drift_table
     )
 }
+
+pub fn render_portfolio_optimize_table(payload: &Value) -> String {
+    let data = payload.get("data");
+    let as_of = as_str(data.and_then(|d| d.get("as_of")));
+    let opt_status = as_str(data.and_then(|d| d.get("optimization_status")));
+    let fallback_reason = as_str(data.and_then(|d| d.get("fallback_reason")));
+
+    let report = data.and_then(|d| d.get("optimization_report"));
+    let solver = as_str(report.and_then(|r| r.get("solver")));
+    let solve_ms = as_i64(report.and_then(|r| r.get("solve_time_ms")));
+    let obj_val = as_f64(report.and_then(|r| r.get("objective_value")));
+    let risk_contrib = as_f64(report.and_then(|r| r.get("risk_contribution")));
+    let turnover_cost = as_f64(report.and_then(|r| r.get("turnover_cost")));
+
+    let mut header = Table::new();
+    header
+        .load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec![
+            Cell::new("日期"),
+            Cell::new("求解状态"),
+            Cell::new("求解器"),
+            Cell::new("耗时(ms)"),
+            Cell::new("目标值"),
+            Cell::new("风险贡献"),
+            Cell::new("换手成本"),
+        ]);
+    header.add_row(vec![
+        as_of.clone(),
+        opt_status.clone(),
+        solver,
+        solve_ms,
+        obj_val,
+        risk_contrib,
+        turnover_cost,
+    ]);
+
+    let mut weights_table = Table::new();
+    weights_table
+        .load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec![
+            Cell::new("标的"),
+            Cell::new("目标权重"),
+            Cell::new("上期权重"),
+            Cell::new("变动"),
+        ]);
+
+    if let Some(rows) = data
+        .and_then(|d| d.get("target_weights"))
+        .and_then(Value::as_array)
+    {
+        for row in rows {
+            let w = row.get("weight").and_then(Value::as_f64).unwrap_or(0.0);
+            let pw = row.get("prev_weight").and_then(Value::as_f64).unwrap_or(0.0);
+            let delta = row.get("delta").and_then(Value::as_f64).unwrap_or(0.0);
+            let delta_str = if delta >= 0.0 {
+                format!("+{:.2}%", delta * 100.0)
+            } else {
+                format!("{:.2}%", delta * 100.0)
+            };
+            weights_table.add_row(vec![
+                as_str(row.get("symbol")),
+                format!("{:.2}%", w * 100.0),
+                format!("{:.2}%", pw * 100.0),
+                delta_str,
+            ]);
+        }
+    }
+
+    let fallback_note = if !fallback_reason.is_empty() {
+        format!("\n[降级原因: {fallback_reason}]")
+    } else {
+        String::new()
+    };
+
+    format!(
+        "组合优化结果（{as_of}）  求解状态: {opt_status}\n{}\n目标权重\n{}{}\n",
+        header, weights_table, fallback_note
+    )
+}
