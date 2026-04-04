@@ -448,3 +448,45 @@ class PortfolioOptimizeResponse(BaseModel):
     data: PortfolioOptimizeData
     warnings: list[dict]
     errors: list[dict]
+
+
+class RiskCheckRequest(BaseModel):
+    as_of: str = Field(description="计算基准日期，格式 YYYY-MM-DD（PIT 语义）")
+    target_weights: dict[str, float] = Field(
+        description="目标权重 {symbol: weight}，由 L4 portfolio optimize 输出"
+    )
+    prev_weights: dict[str, float] | None = Field(
+        default=None,
+        description="上期权重 {symbol: weight}；缺省时视为从零建仓（换手率 = 1.0）",
+    )
+
+
+class RiskCheckItem(BaseModel):
+    name: str
+    value: float
+    threshold: float
+    passed: bool
+
+
+class RiskCheckData(BaseModel):
+    as_of: str
+    risk_gate: str
+    regime: str
+    regime_vol: float | None
+    regime_vol_source: str
+    checks: list[RiskCheckItem]
+    block_codes: list[str]
+
+
+class RiskCheckResponse(BaseModel):
+    schema_version: str
+    command: str
+    run_id: str
+    status: str
+    generated_at: str
+    source: str
+    advice_only: bool
+    decision_weight: int
+    data: RiskCheckData
+    warnings: list[dict]
+    errors: list[dict]
