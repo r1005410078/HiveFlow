@@ -160,6 +160,7 @@ cd cli && cargo run -- factor replay --start-date YYYY-MM-DD --end-date YYYY-MM-
 - `POST /v1/market-data/sync-runs/{run_id}/cancel`：协作式取消
 - `POST /v1/market-data/sync-runs/{run_id}/retry-failed`：仅补拉失败标的
 - `POST /v1/market-data/universes/sync`：标的池同步（异步 202）
+- `POST /v1/market-data/universes/symbol-names/sync`：仅合并 `symbol_names.json`（默认 csi300+zz500+all_a；CLI：`hf data symbol-names-sync`）
 - `GET /v1/market-data/sync-runs`：同步任务列表（CLI：`hf task list`，别名 `hf task sync-runs`）
 - `GET /v1/market-data/sync-runs/{run_id}`：单任务详情含进度（CLI：`hf task progress`，别名 `hf task status`）
 - `GET /v1/market-data/bars`：行情 K 线查询

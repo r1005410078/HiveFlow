@@ -61,6 +61,15 @@ pub struct DataUniverseSyncRequest {
     pub universe: String,
     pub provider: String,
     pub timeout_ms: Option<u64>,
+    pub wait: bool,
+    pub poll_interval_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DataSymbolNamesSyncRequest {
+    pub universes: Vec<String>,
+    pub provider: String,
+    pub timeout_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -108,6 +117,7 @@ pub struct DataMarketQueryRequest {
 #[derive(Debug, Clone)]
 pub struct DataBarsRequest {
     pub symbols: Option<String>,
+    pub universe: Option<String>,
     pub timeframe: String,
     pub start_date: Option<String>,
     pub end_date: Option<String>,
@@ -115,6 +125,8 @@ pub struct DataBarsRequest {
     pub verbose: bool,
     pub no_benchmark: bool,
     pub limit: Option<i32>,
+    /// TUI 每标的最大显示点数；`0` 表示不聚合。json/table 始终为原始 items。
+    pub max_display_points: usize,
     pub timeout_ms: Option<u64>,
 }
 
@@ -148,6 +160,7 @@ pub enum AppCommand {
     DataSyncCancel(DataSyncCancelRequest),
     DataSyncRetryFailed(DataSyncRetryFailedRequest),
     DataUniverseSync(DataUniverseSyncRequest),
+    DataSymbolNamesSync(DataSymbolNamesSyncRequest),
     TaskList(TaskListRequest),
     TaskProgress(TaskProgressRequest),
     TaskCancel(DataSyncCancelRequest),

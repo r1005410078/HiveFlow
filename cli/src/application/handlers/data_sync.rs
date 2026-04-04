@@ -17,7 +17,8 @@ fn parse_csv(input: Option<&str>) -> Option<Vec<String>> {
     })
 }
 
-fn is_async_accepted(value: &Value) -> bool {
+/// True when the server accepted an async job (202-style body with `run_id` + `running`).
+pub(crate) fn sync_run_async_accepted(value: &Value) -> bool {
     value.get("run_id").is_some()
         && value.get("status").and_then(|s| s.as_str()) == Some("running")
 }
@@ -41,10 +42,16 @@ pub fn handle(args: DataSyncRequest) -> Result<(), AppError> {
 
     match result {
         Ok(value) => {
-            if is_async_accepted(&value) {
+            if sync_run_async_accepted(&value) {
                 if args.wait {
                     let run_id = value["run_id"].as_str().unwrap_or("unknown").to_string();
-                    return poll_sync_progress(&cfg.server_url, &run_id, timeout_ms, poll_interval);
+                    return poll_sync_progress(
+                        &cfg.server_url,
+                        &run_id,
+                        timeout_ms,
+                        poll_interval,
+                        "同步行情中",
+                    );
                 }
                 let run_id = value["run_id"].as_str().unwrap_or("unknown");
                 eprintln!("任务已提交，服务端后台执行中。");
@@ -77,6 +84,7 @@ pub(crate) fn poll_sync_progress(
     run_id: &str,
     timeout_ms: u64,
     poll_interval_ms: u64,
+    operation_label: &str,
 ) -> Result<(), AppError> {
     let interrupted = Arc::new(AtomicBool::new(false));
     {
@@ -88,8 +96,9 @@ pub(crate) fn poll_sync_progress(
     }
 
     let pb = ProgressBar::new(0);
+    let spinner_tpl = format!("{{spinner}} {operation_label}... {{msg}}");
     pb.set_style(
-        ProgressStyle::with_template("{spinner} 同步行情中... {msg}")
+        ProgressStyle::with_template(&spinner_tpl)
             .unwrap_or_else(|_| ProgressStyle::default_spinner()),
     );
     pb.set_message(format!("run_id={run_id}"));
@@ -123,13 +132,18 @@ pub(crate) fn poll_sync_progress(
                 return Ok(());
             }
             _ => {
-                update_progress(&pb, &detail, &mut switched_to_bar);
+                update_progress(&pb, &detail, &mut switched_to_bar, operation_label);
             }
         }
     }
 }
 
-fn update_progress(pb: &ProgressBar, detail: &Value, switched_to_bar: &mut bool) {
+fn update_progress(
+    pb: &ProgressBar,
+    detail: &Value,
+    switched_to_bar: &mut bool,
+    operation_label: &str,
+) {
     let progress = &detail["progress"];
     let total = progress["total_symbols"].as_u64().unwrap_or(0);
     let completed = progress["completed_symbols"].as_u64().unwrap_or(0);
@@ -141,11 +155,9 @@ fn update_progress(pb: &ProgressBar, detail: &Value, switched_to_bar: &mut bool)
     if total > 0 && !*switched_to_bar {
         *switched_to_bar = true;
         pb.set_length(total);
+        let bar_tpl = format!("{operation_label} [{{bar:20}}] {{pos}}/{{len}} symbols | {{msg}}");
         pb.set_style(
-            ProgressStyle::with_template(
-                "同步行情中 [{bar:20}] {pos}/{len} symbols | {msg}",
-            )
-            .unwrap_or_else(|_| ProgressStyle::default_bar()),
+            ProgressStyle::with_template(&bar_tpl).unwrap_or_else(|_| ProgressStyle::default_bar()),
         );
     }
 

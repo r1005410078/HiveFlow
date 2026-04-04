@@ -23,6 +23,8 @@ use serde_json::Value;
 #[derive(Debug, Clone)]
 struct SymbolSeries {
     symbol: String,
+    /// Chinese short name from API (`symbol_name_zh`); may be empty.
+    name_zh: String,
     points: Vec<(String, f64)>,
 }
 
@@ -97,9 +99,33 @@ impl ChartViewState {
     }
 }
 
+/// Indices into `symbols` whose `symbol` or `name_zh` matches the trimmed query (substring, symbol ASCII-insensitive).
+fn filtered_symbol_indices(symbols: &[SymbolSeries], query: &str) -> Vec<usize> {
+    let q = query.trim();
+    if q.is_empty() {
+        return (0..symbols.len()).collect();
+    }
+    let q_lower = q.to_lowercase();
+    symbols
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| {
+            s.symbol.to_lowercase().contains(&q_lower) || s.name_zh.contains(q)
+        })
+        .map(|(i, _)| i)
+        .collect()
+}
+
 #[derive(Debug, Clone)]
 struct TuiState {
-    selected_symbol_idx: usize,
+    /// Row index in the left list (into `filtered_indices`).
+    selected_list_idx: usize,
+    /// Subset of `symbols` indices to show; rebuilt when the filter query changes.
+    filtered_indices: Vec<usize>,
+    /// Substring filter for symbol code and Chinese short name.
+    filter_query: String,
+    /// When true, keyboard input edits `filter_query` instead of moving the chart.
+    filter_editing: bool,
     chart_view: ChartViewState,
     show_benchmark: bool,
 }
@@ -110,43 +136,77 @@ impl TuiState {
         preferred_symbol: Option<&str>,
         benchmark_enabled: bool,
     ) -> Self {
-        let selected_symbol_idx = preferred_symbol
-            .and_then(|preferred| symbols.iter().position(|s| s.symbol == preferred))
-            .unwrap_or(0);
-        let points_len = symbols
-            .get(selected_symbol_idx)
+        let filter_query = String::new();
+        let filtered_indices = filtered_symbol_indices(symbols, &filter_query);
+        let selected_list_idx = preferred_symbol
+            .and_then(|preferred| {
+                filtered_indices
+                    .iter()
+                    .position(|&sym_i| symbols[sym_i].symbol == preferred)
+            })
+            .unwrap_or(0)
+            .min(filtered_indices.len().saturating_sub(1));
+        let points_len = filtered_indices
+            .get(selected_list_idx)
+            .and_then(|&i| symbols.get(i))
             .map(|s| s.points.len())
             .unwrap_or(0);
         Self {
-            selected_symbol_idx,
+            selected_list_idx,
+            filtered_indices,
+            filter_query,
+            filter_editing: false,
             chart_view: ChartViewState::new(points_len),
             show_benchmark: benchmark_enabled,
         }
     }
 
+    fn current_symbol_index(&self) -> Option<usize> {
+        self.filtered_indices.get(self.selected_list_idx).copied()
+    }
+
     fn selected_series<'a>(&self, symbols: &'a [SymbolSeries]) -> Option<&'a SymbolSeries> {
-        symbols.get(self.selected_symbol_idx)
+        self.current_symbol_index()
+            .and_then(|i| symbols.get(i))
+    }
+
+    fn apply_filter_update(&mut self, symbols: &[SymbolSeries]) {
+        let prev_sym_i = self.current_symbol_index();
+        self.filtered_indices = filtered_symbol_indices(symbols, &self.filter_query);
+        if self.filtered_indices.is_empty() {
+            self.selected_list_idx = 0;
+            self.chart_view = ChartViewState::new(0);
+            self.chart_view.normalize(0);
+            return;
+        }
+        self.selected_list_idx = prev_sym_i
+            .and_then(|pi| self.filtered_indices.iter().position(|&i| i == pi))
+            .unwrap_or(0)
+            .min(self.filtered_indices.len().saturating_sub(1));
+        self.reset_chart(symbols);
     }
 
     fn move_symbol_up(&mut self, symbols: &[SymbolSeries]) {
-        if symbols.is_empty() {
+        if self.filtered_indices.is_empty() {
             return;
         }
-        self.selected_symbol_idx = self.selected_symbol_idx.saturating_sub(1);
+        self.selected_list_idx = self.selected_list_idx.saturating_sub(1);
         self.reset_chart(symbols);
     }
 
     fn move_symbol_down(&mut self, symbols: &[SymbolSeries]) {
-        if symbols.is_empty() {
+        if self.filtered_indices.is_empty() {
             return;
         }
-        self.selected_symbol_idx =
-            (self.selected_symbol_idx + 1).min(symbols.len().saturating_sub(1));
+        self.selected_list_idx = (self.selected_list_idx + 1).min(self.filtered_indices.len() - 1);
         self.reset_chart(symbols);
     }
 
     fn reset_chart(&mut self, symbols: &[SymbolSeries]) {
-        let points_len = self.selected_series(symbols).map(|s| s.points.len()).unwrap_or(0);
+        let points_len = self
+            .selected_series(symbols)
+            .map(|s| s.points.len())
+            .unwrap_or(0);
         self.chart_view = ChartViewState::new(points_len);
         self.chart_view.normalize(points_len);
     }
@@ -186,15 +246,20 @@ fn run_tui_loop(
                     .constraints([Constraint::Percentage(28), Constraint::Percentage(72)])
                     .split(rows[0]);
 
-                let items: Vec<ListItem> = symbols
+                let items: Vec<ListItem> = state
+                    .filtered_indices
                     .iter()
+                    .filter_map(|&idx| symbols.get(idx))
                     .map(|s| {
                         let latest = s.points.last().map(|(_, p)| *p).unwrap_or(0.0);
+                        let name_tail: String = s.name_zh.chars().take(8).collect();
+                        let left = if name_tail.is_empty() {
+                            format!("{:<10}", s.symbol)
+                        } else {
+                            format!("{:<10} {}", s.symbol, name_tail)
+                        };
                         ListItem::new(Line::from(vec![
-                            Span::styled(
-                                format!("{:<10}", s.symbol),
-                                Style::default().fg(Color::DarkGray),
-                            ),
+                            Span::styled(left, Style::default().fg(Color::DarkGray)),
                             Span::styled(
                                 format!("  {:>10.2}", latest),
                                 Style::default().fg(Color::DarkGray),
@@ -203,12 +268,25 @@ fn run_tui_loop(
                     })
                     .collect();
                 let mut list_state = ListState::default();
-                list_state.select(Some(state.selected_symbol_idx));
+                list_state.select(if state.filtered_indices.is_empty() {
+                    None
+                } else {
+                    Some(state.selected_list_idx)
+                });
+                let list_title = if state.filter_query.trim().is_empty() {
+                    format!("Stocks ({})", symbols.len())
+                } else {
+                    format!(
+                        "Stocks {}/{}",
+                        state.filtered_indices.len(),
+                        symbols.len()
+                    )
+                };
                 let list = List::new(items)
                     .block(
                         Block::default()
                             .borders(Borders::NONE)
-                            .title("Stocks")
+                            .title(list_title)
                             .title_style(Style::default().fg(Color::Gray)),
                     )
                     .highlight_style(
@@ -365,18 +443,50 @@ fn run_tui_loop(
                         .get(state.chart_view.cursor)
                         .map(|(t, p)| (t.as_str(), *p))
                         .unwrap_or(("-", 0.0));
-                    let hint = Paragraph::new(format!(
-                        "Stock: ↑/↓  Cursor: ←/→  Pan: a/d  Zoom: +/-  Toggle benchmark: b  Reset: 0  Exit: q/Esc/Enter  |  {} {:.2}  [{}..{}]{}",
-                        cursor_ts,
-                        cursor_price,
-                        state.chart_view.window_start,
-                        window_end.saturating_sub(1),
-                        if plot_benchmark_samples.is_some() {
-                            "  |  Benchmark normalized to 100"
-                        } else {
-                            ""
-                        }
-                    ))
+                    let nav_hint = if state.filter_editing {
+                        format!(
+                            "筛选: \"{}\" | Enter 结束编辑  Esc 清空并退出筛选  |  {} {:.2}  [{}..{}]{}",
+                            state.filter_query,
+                            cursor_ts,
+                            cursor_price,
+                            state.chart_view.window_start,
+                            window_end.saturating_sub(1),
+                            if plot_benchmark_samples.is_some() {
+                                "  |  Benchmark normalized to 100"
+                            } else {
+                                ""
+                            }
+                        )
+                    } else {
+                        format!(
+                            "标的: ↑/↓  /:筛选  图: ←/→  平移: a/d  缩放: +/-  基准: b  复位: 0  退出: q/Esc  |  {} {:.2}  [{}..{}]{}",
+                            cursor_ts,
+                            cursor_price,
+                            state.chart_view.window_start,
+                            window_end.saturating_sub(1),
+                            if plot_benchmark_samples.is_some() {
+                                "  |  Benchmark normalized to 100"
+                            } else {
+                                ""
+                            }
+                        )
+                    };
+                    let hint = Paragraph::new(nav_hint).style(Style::default().fg(Color::DarkGray));
+                    frame.render_widget(hint, rows[1]);
+                } else if !symbols.is_empty() && state.filtered_indices.is_empty() {
+                    let msg = Paragraph::new(
+                        "当前筛选无匹配标的。按 / 编辑关键词，或 Esc 清空筛选并退出编辑。",
+                    )
+                    .style(Style::default().fg(Color::Yellow));
+                    frame.render_widget(msg, cols[1]);
+                    let hint = if state.filter_editing {
+                        Paragraph::new(format!(
+                            "筛选: \"{}\" | Enter 结束  Esc 清空筛选",
+                            state.filter_query
+                        ))
+                    } else {
+                        Paragraph::new("按 / 打开筛选，或修改筛选条件。")
+                    }
                     .style(Style::default().fg(Color::DarkGray));
                     frame.render_widget(hint, rows[1]);
                 }
@@ -387,43 +497,65 @@ fn run_tui_loop(
         {
             if let Event::Key(key) = event::read().map_err(|e| format!("read event failed: {e}"))?
             {
-                if key.code == KeyCode::Char('q')
+                if state.filter_editing {
+                    match key.code {
+                        KeyCode::Esc => {
+                            state.filter_query.clear();
+                            state.apply_filter_update(symbols);
+                            state.filter_editing = false;
+                        }
+                        KeyCode::Enter => state.filter_editing = false,
+                        KeyCode::Backspace => {
+                            state.filter_query.pop();
+                            state.apply_filter_update(symbols);
+                        }
+                        KeyCode::Char(c) => {
+                            state.filter_query.push(c);
+                            state.apply_filter_update(symbols);
+                        }
+                        _ => {}
+                    }
+                } else if key.code == KeyCode::Char('q')
                     || key.code == KeyCode::Esc
                     || key.code == KeyCode::Enter
                 {
                     break;
-                }
-
-                let selected_points_len = state
-                    .selected_series(symbols)
-                    .map(|s| s.points.len())
-                    .unwrap_or(0);
-                match key.code {
-                    KeyCode::Up | KeyCode::Char('k') => state.move_symbol_up(symbols),
-                    KeyCode::Down | KeyCode::Char('j') => state.move_symbol_down(symbols),
-                    KeyCode::Left | KeyCode::Char('h') => {
-                        state.chart_view.cursor_left(selected_points_len)
-                    }
-                    KeyCode::Right | KeyCode::Char('l') => {
-                        state.chart_view.cursor_right(selected_points_len)
-                    }
-                    KeyCode::Char('a') => state.chart_view.pan_left(selected_points_len),
-                    KeyCode::Char('d') => state.chart_view.pan_right(selected_points_len),
-                    KeyCode::Char('+') | KeyCode::Char('=') => {
-                        state.chart_view.zoom_in(selected_points_len)
-                    }
-                    KeyCode::Char('-') | KeyCode::Char('_') => {
-                        state.chart_view.zoom_out(selected_points_len)
-                    }
-                    KeyCode::Char('b') => {
-                        if benchmark_symbol.is_some() {
-                            state.show_benchmark = !state.show_benchmark;
+                } else if key.code == KeyCode::Char('/') {
+                    state.filter_editing = true;
+                } else {
+                    let selected_points_len = state
+                        .selected_series(symbols)
+                        .map(|s| s.points.len())
+                        .unwrap_or(0);
+                    match key.code {
+                        KeyCode::Up | KeyCode::Char('k') => state.move_symbol_up(symbols),
+                        KeyCode::Down | KeyCode::Char('j') => state.move_symbol_down(symbols),
+                        KeyCode::Left | KeyCode::Char('h') => {
+                            state.chart_view.cursor_left(selected_points_len)
                         }
+                        KeyCode::Right | KeyCode::Char('l') => {
+                            state.chart_view.cursor_right(selected_points_len)
+                        }
+                        KeyCode::Char('a') => state.chart_view.pan_left(selected_points_len),
+                        KeyCode::Char('d') => state.chart_view.pan_right(selected_points_len),
+                        KeyCode::Char('+') | KeyCode::Char('=') => {
+                            state.chart_view.zoom_in(selected_points_len)
+                        }
+                        KeyCode::Char('-') | KeyCode::Char('_') => {
+                            state.chart_view.zoom_out(selected_points_len)
+                        }
+                        KeyCode::Char('b') => {
+                            if benchmark_symbol.is_some() {
+                                state.show_benchmark = !state.show_benchmark;
+                            }
+                        }
+                        KeyCode::Char('0') => {
+                            state.chart_view = ChartViewState::new(selected_points_len)
+                        }
+                        _ => {}
                     }
-                    KeyCode::Char('0') => state.chart_view = ChartViewState::new(selected_points_len),
-                    _ => {}
+                    state.chart_view.normalize(selected_points_len);
                 }
-                state.chart_view.normalize(selected_points_len);
             }
         }
     }
@@ -468,13 +600,16 @@ pub fn render_market_data_bars_paged_table_tui(payload: &Value, verbose: bool) -
                 let inner = block.inner(table_area);
                 frame.render_widget(block, table_area);
 
-                let header = Row::new(vec![
+                let show_name = rows.first().is_some_and(|r| r.len() >= 5);
+                let mut hdr = vec![
                     Cell::from("bar_time"),
                     Cell::from("symbol"),
-                    Cell::from("tf"),
-                    Cell::from("close"),
-                ])
-                .style(Style::default().add_modifier(Modifier::BOLD));
+                ];
+                if show_name {
+                    hdr.push(Cell::from("名称"));
+                }
+                hdr.extend([Cell::from("tf"), Cell::from("close")]);
+                let header = Row::new(hdr).style(Style::default().add_modifier(Modifier::BOLD));
                 let data_rows: Vec<Row> = rows
                     .iter()
                     .skip(offset)
@@ -489,12 +624,22 @@ pub fn render_market_data_bars_paged_table_tui(payload: &Value, verbose: bool) -
                     .collect();
                 let shown = data_rows.len();
 
-                let widths = [
-                    Constraint::Percentage(38),
-                    Constraint::Percentage(18),
-                    Constraint::Percentage(10),
-                    Constraint::Percentage(28),
-                ];
+                let widths: &[Constraint] = if show_name {
+                    &[
+                        Constraint::Percentage(28),
+                        Constraint::Percentage(14),
+                        Constraint::Percentage(18),
+                        Constraint::Percentage(8),
+                        Constraint::Percentage(24),
+                    ]
+                } else {
+                    &[
+                        Constraint::Percentage(38),
+                        Constraint::Percentage(18),
+                        Constraint::Percentage(10),
+                        Constraint::Percentage(28),
+                    ]
+                };
                 let table = Table::new(data_rows, widths)
                     .header(header)
                     .block(Block::default());
@@ -546,6 +691,9 @@ fn collect_bars_table_rows(payload: &Value, verbose: bool) -> Vec<Vec<String>> {
     let Some(items) = payload.get("items").and_then(Value::as_array) else {
         return out;
     };
+    let show_name = items
+        .iter()
+        .any(|item| item.get("symbol_name_zh").is_some());
     for item in items {
         let bar_time = item
             .get("bar_time")
@@ -557,6 +705,11 @@ fn collect_bars_table_rows(payload: &Value, verbose: bool) -> Vec<Vec<String>> {
             .and_then(Value::as_str)
             .unwrap_or("-")
             .to_string();
+        let name_zh = item
+            .get("symbol_name_zh")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
         let tf = item
             .get("timeframe")
             .and_then(Value::as_str)
@@ -567,7 +720,12 @@ fn collect_bars_table_rows(payload: &Value, verbose: bool) -> Vec<Vec<String>> {
             .and_then(Value::as_f64)
             .map(|v| format!("{v:.4}"))
             .unwrap_or_else(|| "-".to_string());
-        out.push(vec![bar_time, symbol, tf, close]);
+        let mut row = vec![bar_time, symbol];
+        if show_name {
+            row.push(name_zh);
+        }
+        row.extend([tf, close]);
+        out.push(row);
         if verbose {
             let open = item.get("open").and_then(Value::as_f64);
             let high = item.get("high").and_then(Value::as_f64);
@@ -580,12 +738,12 @@ fn collect_bars_table_rows(payload: &Value, verbose: bool) -> Vec<Vec<String>> {
                 low.map(|v| format!("{v:.2}")).unwrap_or_default(),
                 vol.map(|v| format!("{v:.0}")).unwrap_or_default(),
             );
-            out.push(vec![
-                "".to_string(),
-                detail,
-                "".to_string(),
-                "".to_string(),
-            ]);
+            let mut detail_row = vec!["".to_string(), detail];
+            if show_name {
+                detail_row.push(String::new());
+            }
+            detail_row.extend(["".to_string(), "".to_string()]);
+            out.push(detail_row);
         }
     }
     out
@@ -612,7 +770,7 @@ pub fn render_sync_runs_tui(
 }
 
 fn build_symbol_series(payload: &Value) -> Vec<SymbolSeries> {
-    let mut by_symbol: BTreeMap<String, Vec<(String, f64)>> = BTreeMap::new();
+    let mut by_symbol: BTreeMap<String, (String, Vec<(String, f64)>)> = BTreeMap::new();
     if let Some(items) = payload.get("items").and_then(Value::as_array) {
         for item in items {
             let symbol = item
@@ -627,17 +785,31 @@ fn build_symbol_series(payload: &Value) -> Vec<SymbolSeries> {
                 .unwrap_or("")
                 .to_string();
             let close = item.get("close").and_then(Value::as_f64).unwrap_or(0.0);
+            let row_name = item
+                .get("symbol_name_zh")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .trim()
+                .to_string();
             if symbol.is_empty() || ts.is_empty() {
                 continue;
             }
-            by_symbol.entry(symbol).or_default().push((ts, close));
+            let ent = by_symbol.entry(symbol).or_insert_with(|| (String::new(), Vec::new()));
+            if ent.0.is_empty() && !row_name.is_empty() {
+                ent.0 = row_name;
+            }
+            ent.1.push((ts, close));
         }
     }
     by_symbol
         .into_iter()
-        .map(|(symbol, mut points)| {
+        .map(|(symbol, (name_zh, mut points))| {
             points.sort_by(|a, b| a.0.cmp(&b.0));
-            SymbolSeries { symbol, points }
+            SymbolSeries {
+                symbol,
+                name_zh,
+                points,
+            }
         })
         .collect()
 }
@@ -702,7 +874,7 @@ fn build_aligned_indexed_samples(
 
 #[cfg(test)]
 mod tests {
-    use super::{build_symbol_series, ChartViewState, TuiState};
+    use super::{build_symbol_series, ChartViewState, SymbolSeries, TuiState};
     use serde_json::json;
 
     #[test]
@@ -730,7 +902,51 @@ mod tests {
         });
         let series = build_symbol_series(&payload);
         let state = TuiState::new(&series, Some("600519.SH"), true);
-        assert_eq!(state.selected_symbol_idx, 1);
+        let idx = state.filtered_indices[state.selected_list_idx];
+        assert_eq!(series[idx].symbol, "600519.SH");
+    }
+
+    #[test]
+    fn filtered_symbol_indices_matches_symbol_or_name() {
+        let series = vec![
+            SymbolSeries {
+                symbol: "600519.SH".to_string(),
+                name_zh: "贵州茅台".to_string(),
+                points: vec![],
+            },
+            SymbolSeries {
+                symbol: "000001.SZ".to_string(),
+                name_zh: "平安银行".to_string(),
+                points: vec![],
+            },
+        ];
+        assert_eq!(super::filtered_symbol_indices(&series, ""), vec![0, 1]);
+        assert_eq!(super::filtered_symbol_indices(&series, "600519"), vec![0]);
+        assert_eq!(super::filtered_symbol_indices(&series, "600519.sh"), vec![0]);
+        assert_eq!(super::filtered_symbol_indices(&series, "茅台"), vec![0]);
+        assert_eq!(super::filtered_symbol_indices(&series, "银行"), vec![1]);
+        assert!(super::filtered_symbol_indices(&series, "nomatch").is_empty());
+    }
+
+    #[test]
+    fn tui_state_filter_update_preserves_selection_when_possible() {
+        let series = vec![
+            SymbolSeries {
+                symbol: "000001.SZ".to_string(),
+                name_zh: "".to_string(),
+                points: vec![("t".to_string(), 1.0)],
+            },
+            SymbolSeries {
+                symbol: "600519.SH".to_string(),
+                name_zh: "".to_string(),
+                points: vec![("t".to_string(), 2.0)],
+            },
+        ];
+        let mut state = TuiState::new(&series, Some("600519.SH"), false);
+        state.filter_query = "600519".to_string();
+        state.apply_filter_update(&series);
+        assert_eq!(state.filtered_indices.len(), 1);
+        assert_eq!(series[state.filtered_indices[state.selected_list_idx]].symbol, "600519.SH");
     }
 
     #[test]

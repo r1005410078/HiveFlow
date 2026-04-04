@@ -65,3 +65,4 @@ def test_get_market_data_bars_returns_items() -> None:
         assert "symbol" in first
         assert "bar_time" in first
         assert "close" in first
+        assert "symbol_name_zh" in first

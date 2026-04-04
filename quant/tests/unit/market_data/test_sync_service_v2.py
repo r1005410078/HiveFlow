@@ -1,3 +1,8 @@
+import json
+from pathlib import Path
+
+import pytest
+
 from application.market_data.sync_service import SyncService
 
 
@@ -323,20 +328,29 @@ def test_sync_service_supports_self_select_universe_file() -> None:
     assert out["effective_symbols_count"] >= 1
 
 
-def test_sync_service_can_sync_universe_from_provider() -> None:
-    """验证可通过第三方 provider 同步 universe 文件。"""
+def test_sync_service_can_sync_universe_from_provider(tmp_path: Path) -> None:
+    """验证可通过第三方 provider 同步 universe 文件并合并 symbol_names.json。"""
 
     class _FakeUniverseSourceRepo:
-        def fetch_universe_symbols(self, universe: str):
+        def fetch_universe_symbols_with_names(self, universe: str):
             assert universe == "csi300"
-            return ["600519.SH", "000001.SZ", "600036.SH"]
+            return [
+                ("600519.SH", "贵州茅台"),
+                ("000001.SZ", "平安银行"),
+                ("600036.SH", "招商银行"),
+            ]
 
     class _TestableSyncService(SyncService):
-        def _config_root(self):
-            # 用项目内真实 config 目录做集成式验证（无副作用，写回同名样例）。
-            return super()._config_root()
+        def __init__(self, quant_root: Path, **kw):
+            self._quant_root = quant_root
+            super().__init__(**kw)
 
+        def _config_root(self) -> Path:
+            return self._quant_root
+
+    quant_root = tmp_path / "quant"
     svc = _TestableSyncService(
+        quant_root,
         quote_repo=_FakeQuoteRepo(),
         bar_store=_FakeBarStore(),
         universe_source_repo=_FakeUniverseSourceRepo(),
@@ -346,7 +360,138 @@ def test_sync_service_can_sync_universe_from_provider() -> None:
     assert out["universe"] == "csi300"
     assert out["provider"] == "akshare"
     assert out["symbols_count"] == 3
-    assert out["file_path"].endswith("quant/config/universes/csi300.txt")
+    assert (quant_root / "config" / "universes" / "csi300.txt").is_file()
+    names_path = quant_root / "config" / "universes" / "symbol_names.json"
+    assert names_path.is_file()
+    assert out.get("symbol_names_path") == str(names_path)
+    names = json.loads(names_path.read_text(encoding="utf-8"))
+    assert names["600519.SH"] == "贵州茅台"
+    assert names["000001.SZ"] == "平安银行"
+
+
+def test_merge_symbol_names_only_updates_json_without_txt(tmp_path: Path) -> None:
+    """仅合并 symbol_names.json，不写 csi300.txt 等 universe 文件。"""
+
+    class _FakeNamesRepo:
+        MAP = {
+            "csi300": [("600519.SH", "贵州茅台")],
+            "zz500": [("000001.SZ", "平安银行")],
+        }
+
+        def fetch_universe_symbols_with_names(self, universe: str):
+            return list(self.MAP.get(universe, []))
+
+    class _TestableSyncService(SyncService):
+        def __init__(self, quant_root: Path, **kw):
+            self._quant_root = quant_root
+            super().__init__(**kw)
+
+        def _config_root(self) -> Path:
+            return self._quant_root
+
+    quant_root = tmp_path / "quant"
+    (quant_root / "config" / "universes").mkdir(parents=True)
+    svc = _TestableSyncService(
+        quant_root,
+        quote_repo=_FakeQuoteRepo(),
+        bar_store=_FakeBarStore(),
+        universe_source_repo=_FakeNamesRepo(),
+    )
+    out = svc.merge_symbol_names_only(universes=["csi300", "zz500"], provider="akshare")
+    assert out["status"] == "ok"
+    assert out["universes"] == ["csi300", "zz500"]
+    assert out["per_universe_symbols"] == {"csi300": 1, "zz500": 1}
+    p = quant_root / "config" / "universes" / "symbol_names.json"
+    assert p.is_file()
+    names = json.loads(p.read_text(encoding="utf-8"))
+    assert names["600519.SH"] == "贵州茅台"
+    assert names["000001.SZ"] == "平安银行"
+    assert not (quant_root / "config" / "universes" / "csi300.txt").exists()
+
+
+def test_merge_symbol_names_only_partial_keeps_successful_universes(tmp_path: Path) -> None:
+    class _FakeNamesRepo:
+        def fetch_universe_symbols_with_names(self, universe: str):
+            if universe == "all_a":
+                raise OSError("simulated network failure")
+            if universe == "csi300":
+                return [("600519.SH", "贵州茅台")]
+            if universe == "zz500":
+                return [("000001.SZ", "平安银行")]
+            return []
+
+    class _TestableSyncService(SyncService):
+        def __init__(self, quant_root: Path, **kw):
+            self._quant_root = quant_root
+            super().__init__(**kw)
+
+        def _config_root(self) -> Path:
+            return self._quant_root
+
+    quant_root = tmp_path / "quant"
+    (quant_root / "config" / "universes").mkdir(parents=True)
+    svc = _TestableSyncService(
+        quant_root,
+        quote_repo=_FakeQuoteRepo(),
+        bar_store=_FakeBarStore(),
+        universe_source_repo=_FakeNamesRepo(),
+    )
+    out = svc.merge_symbol_names_only(
+        universes=["csi300", "zz500", "all_a"],
+        provider="akshare",
+    )
+    assert out["status"] == "partial"
+    assert out["per_universe_symbols"] == {"csi300": 1, "zz500": 1}
+    assert len(out["failed_universes"]) == 1
+    assert out["failed_universes"][0]["universe"] == "all_a"
+    p = quant_root / "config" / "universes" / "symbol_names.json"
+    names = json.loads(p.read_text(encoding="utf-8"))
+    assert "600519.SH" in names and "000001.SZ" in names
+
+
+def test_merge_symbol_names_only_rejects_unsupported_universe() -> None:
+    class _FakeNamesRepo:
+        def fetch_universe_symbols_with_names(self, universe: str):
+            return []
+
+    svc = SyncService(
+        quote_repo=_FakeQuoteRepo(),
+        bar_store=_FakeBarStore(),
+        universe_source_repo=_FakeNamesRepo(),
+    )
+    with pytest.raises(ValueError, match="does not support symbol-name sync"):
+        svc.merge_symbol_names_only(universes=["self_select"], provider="akshare")
+
+
+def test_sync_universe_writes_symbol_names_json_when_provider_has_symbols_only(tmp_path: Path) -> None:
+    """仅有 fetch_universe_symbols 时也应落盘 symbol_names.json（可为空对象）。"""
+
+    class _SymbolsOnlyRepo:
+        def fetch_universe_symbols(self, universe: str):
+            assert universe == "csi300"
+            return ["600519.SH", "000001.SZ"]
+
+    class _TestableSyncService(SyncService):
+        def __init__(self, quant_root: Path, **kw):
+            self._quant_root = quant_root
+            super().__init__(**kw)
+
+        def _config_root(self) -> Path:
+            return self._quant_root
+
+    quant_root = tmp_path / "quant"
+    svc = _TestableSyncService(
+        quant_root,
+        quote_repo=_FakeQuoteRepo(),
+        bar_store=_FakeBarStore(),
+        universe_source_repo=_SymbolsOnlyRepo(),
+    )
+    out = svc.sync_universe_symbols(universe="csi300", provider="akshare")
+
+    names_path = quant_root / "config" / "universes" / "symbol_names.json"
+    assert names_path.is_file()
+    assert out.get("symbol_names_path") == str(names_path)
+    assert json.loads(names_path.read_text(encoding="utf-8")) == {}
 
 
 def test_sync_service_succeeds_with_warning_when_no_rows_fetched() -> None:

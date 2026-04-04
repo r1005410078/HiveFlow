@@ -55,7 +55,13 @@ pub fn handle(args: TaskProgressRequest) -> Result<(), AppError> {
 
     if args.watch {
         let poll_interval = args.poll_interval_ms.unwrap_or(1500);
-        return poll_sync_progress(&cfg.server_url, &run_id, timeout_ms, poll_interval);
+        return poll_sync_progress(
+            &cfg.server_url,
+            &run_id,
+            timeout_ms,
+            poll_interval,
+            "同步任务",
+        );
     }
 
     let detail = get_sync_run_detail(&cfg.server_url, &run_id, timeout_ms)?;

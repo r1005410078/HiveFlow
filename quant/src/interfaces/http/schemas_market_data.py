@@ -15,6 +15,14 @@ class MarketDataUniverseSyncRequest(BaseModel):
     provider: str = Field(default="akshare", description="第三方来源，当前仅支持 akshare")
 
 
+class MarketDataSymbolNamesSyncRequest(BaseModel):
+    universes: list[str] | None = Field(
+        default=None,
+        description="要拉取中文简称的标的池；省略则 csi300 + zz500 + all_a",
+    )
+    provider: str = Field(default="akshare", description="第三方来源，当前仅支持 akshare")
+
+
 class MarketDataSyncRunsQuery(BaseModel):
     days: int = Field(ge=1)
     timeframe: str | None = None

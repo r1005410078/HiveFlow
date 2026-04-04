@@ -409,7 +409,7 @@ CLI 默认 **`--output table`** 为可读摘要；**`--output json`** 时 stdout
 
 ### hf data query --output json
 
-`hf data query` 打印 **服务端 bars 形状** 的 JSON（`data.items`）；默认 **`--output tui`** 为分页表格，脚本用 **`--output json`**。
+`hf data query` 打印 **服务端 bars 形状** 的 JSON（`data.items`）；默认 **`--output tui`** 为分页表格，脚本用 **`--output json`**。若存在 `quant/config/universes/symbol_names.json`（由 **`hf data universe-sync`** 合并写入），每条 bar 对象通常还带 **`symbol_name_zh`**（中文简称，无映射时为空字符串）；其它含 `symbol` 字段的 HTTP JSON 响应同样会由服务端中间件附带该字段。
 
 ```json
 {

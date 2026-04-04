@@ -55,6 +55,9 @@ impl From<Cli> for AppCommand {
                 data::DataSubcommand::UniverseSync(sync_args) => {
                     AppCommand::DataUniverseSync(sync_args.into())
                 }
+                data::DataSubcommand::SymbolNamesSync(args) => {
+                    AppCommand::DataSymbolNamesSync(args.into())
+                }
                 data::DataSubcommand::Query(q) => AppCommand::DataQuery(q.into()),
                 data::DataSubcommand::Bars(bars_args) => AppCommand::DataBars(bars_args.into()),
             },

@@ -189,7 +189,7 @@ cargo run -- data query --days 7 --symbols 600519.SH --output tui
 cargo run -- data query --days 14 --universe self_select --timeframe 1d --output json
 ```
 
-显式 `start_date`/`end_date`、chart 等仍用 **8.4 `data bars`**。
+显式 `start_date`/`end_date`、交互走势图（`--output tui`）等仍用 **8.4 `data bars`**。
 - `data query`：`--output json|tui|table`；`task list`：`--output json|table`，过滤参数含 `--timeframe`、`--status`、`--request-id`、`--limit`；`task progress`：`--output json|table`，另支持 `--watch`、`--poll-interval-ms`。
 
 查询任务列表时可临时覆盖超时：
@@ -199,6 +199,8 @@ cargo run -- task list --days 30 --output table --timeout-ms 120000
 ```
 
 ### 8.4 K 线查询（data bars）
+
+**中文简称**：`hf data universe-sync --universe csi300`（需 quant 服务与 akshare）会更新 `quant/config/universes/{universe}.txt`，并把代码→简称合并进 `quant/config/universes/symbol_names.json`。此后各 HTTP JSON 响应里带 `symbol`（形如 `600519.SH`）的对象会多一个 **`symbol_name_zh`** 字段（无映射时为空字符串）；`data bars` / `data query` 的 **table** 在响应含该字段时会多一列「名称」。
 
 JSON 输出：
 
@@ -212,13 +214,7 @@ cargo run -- data bars --symbols 600519.SH --start-date 2026-03-01 --end-date 20
 cargo run -- data bars --symbols 600519.SH --start-date 2026-03-01 --end-date 2026-04-01 --output table
 ```
 
-图表输出（单标的）：
-
-```bash
-cargo run -- data bars --symbols 600519.SH --timeframe 1d --output chart
-```
-
-TUI 输出（全屏趋势图）：
+TUI 输出（全屏趋势图，左侧选股）：
 
 ```bash
 cargo run -- data bars --symbols 600519.SH --timeframe 1d --output tui
@@ -227,10 +223,9 @@ cargo run -- data bars --symbols 600519.SH --timeframe 1d --output tui
 提示：
 
 - `data bars` 对应 `GET /v1/market-data/bars`。
-- `chart` 模式要求 `--symbols` 只传一个股票。
-- `tui` 模式支持键盘交互（`↑/↓`、`←/→`、`a/d`、`+/-`、`0`、`b`、`q/Esc/Enter`）。
-- `--output` 支持 `json|table|chart|tui`（仅 `data bars`）。
-- `--no-benchmark` 在 `chart/tui` 下关闭大盘对比线（默认基准 `000300.SH`）。
+- `tui` 模式支持键盘交互（`↑/↓`、`←/→`、`a/d`、`+/-`、`0`、`b`、`q/Esc/Enter`）；自动化/脚本请用 **`--output json`**。
+- `--output` 支持 `json|table|tui`（仅 `data bars`）。
+- `--no-benchmark` 在 `tui` 下关闭大盘对比线（默认基准 `000300.SH`）。
 - `--verbose` 仅在 `--output table` 下追加诊断列。
 - `--timeout-ms` 可覆盖 `~/.hiveflow/config.toml` 中的 `timeout_ms`
 - `--timeframe` 默认是 `1m`（分钟级），可显式传 `1d` 切换日频；参数名是 **`--timeframe`**（勿拼成 `tmeframe`）。

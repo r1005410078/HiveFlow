@@ -7,6 +7,7 @@ from interfaces.http.routes_factor_optimization import router as factor_optimiza
 from interfaces.http.routes_market_data import router as market_data_router
 from interfaces.http.routes_portfolio import router as portfolio_router
 from interfaces.http.routes_signal import router as signal_router
+from interfaces.adapters.market_data.symbol_name_json_middleware import SymbolNameJsonMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,8 @@ def create_app() -> FastAPI:
     app.include_router(market_data_router)
     app.include_router(portfolio_router)
     app.include_router(signal_router)
+
+    app.add_middleware(SymbolNameJsonMiddleware)
 
     @app.on_event("startup")
     def _startup() -> None:

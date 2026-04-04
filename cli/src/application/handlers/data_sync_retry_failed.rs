@@ -14,7 +14,13 @@ pub fn handle(args: DataSyncRetryFailedRequest) -> Result<(), AppError> {
 
     if is_async && args.wait {
         let run_id = out["run_id"].as_str().unwrap_or("unknown").to_string();
-        poll_sync_progress(&cfg.server_url, &run_id, timeout_ms, 1500)
+        poll_sync_progress(
+            &cfg.server_url,
+            &run_id,
+            timeout_ms,
+            1500,
+            "补拉失败标的",
+        )
     } else {
         if is_async {
             let run_id = out["run_id"].as_str().unwrap_or("unknown");

@@ -1,6 +1,6 @@
 use crate::application::requests::{
-    DataBarsRequest, DataMarketQueryRequest, DataSyncCancelRequest, DataSyncRequest,
-    DataSyncRetryFailedRequest, DataUniverseSyncRequest,
+    DataBarsRequest, DataMarketQueryRequest, DataSymbolNamesSyncRequest, DataSyncCancelRequest,
+    DataSyncRequest, DataSyncRetryFailedRequest, DataUniverseSyncRequest,
 };
 use clap::{Args, Subcommand};
 
@@ -18,6 +18,8 @@ pub enum DataSubcommand {
     SyncCancel(DataSyncCancelArgs),
     SyncRetryFailed(DataSyncRetryFailedArgs),
     UniverseSync(DataUniverseSyncArgs),
+    /// 仅合并 symbol_names.json（POST /v1/market-data/universes/symbol-names/sync）
+    SymbolNamesSync(DataSymbolNamesSyncArgs),
     /// 按时间窗查询 K 线（GET /v1/market-data/bars）；默认 TUI 分页表
     Query(DataMarketQueryArgs),
     Bars(DataBarsArgs),
@@ -98,6 +100,11 @@ pub struct DataSyncCancelArgs {
 
 const DATA_SYNC_RETRY_LONG_ABOUT: &str = "基于某次已完成同步的 run_id，仅重试失败标的队列；服务端创建新任务。默认仅提交并打印 JSON；加 `--wait` 在本终端轮询至终态。";
 
+const DATA_UNIVERSE_SYNC_LONG_ABOUT: &str = "从数据源拉取标的池并写入 **运行 quant 服务的那台机器** 上的 `quant/config/universes/{universe}.txt`，并合并 `symbol_names.json`。\n\
+\n\
+有数据库时接口为异步（202）：CLI 默认立即打印含 `run_id` 的 JSON，**文件在后台任务成功后才落盘**；本机若看不到文件，请确认服务端工作目录与 `HIVEFLOW_QUANT_ROOT` / `HIVEFLOW_ROOT`（见服务端环境）是否与本地仓库一致。\n\
+加 `--wait` 可在本终端轮询至终态，stdout 会打印最终任务详情（含 `progress.universe_result`）。";
+
 #[derive(Debug, Args)]
 #[command(
     about = "对某次同步的失败标的发起重试",
@@ -116,9 +123,40 @@ pub struct DataSyncRetryFailedArgs {
 }
 
 #[derive(Debug, Args)]
+#[command(
+    about = "同步标的池到服务端配置目录（异步时默认仅提交并返回 run_id）",
+    long_about = DATA_UNIVERSE_SYNC_LONG_ABOUT,
+    after_long_help = "示例:\n  cargo run -- data universe-sync --universe csi300\n  cargo run -- data universe-sync --universe csi300 --wait\n  hf data universe-sync --universe csi300 --wait --poll-interval-ms 2000\n"
+)]
 pub struct DataUniverseSyncArgs {
     #[arg(long)]
     pub universe: String,
+    #[arg(long, default_value = "akshare")]
+    pub provider: String,
+    #[arg(long)]
+    pub timeout_ms: Option<u64>,
+    /// 在本终端轮询直至任务终态后再打印详情 JSON（含 universe 写盘结果）
+    #[arg(long, default_value_t = false)]
+    pub wait: bool,
+    /// 与 --wait 合用：轮询间隔（毫秒），默认约 1500
+    #[arg(long)]
+    pub poll_interval_ms: Option<u64>,
+}
+
+const DATA_SYMBOL_NAMES_SYNC_LONG: &str = "从 akshare 拉取代码与中文简称，**仅**合并服务端 `quant/config/universes/symbol_names.json`。\n\
+不修改各 universe 的 `.txt` 列表；默认拉取 csi300、zz500、all_a（可用多次 `--universe` 指定子集）。\n\
+请求在服务端同步执行，数据量大时可能较慢。";
+
+#[derive(Debug, Args)]
+#[command(
+    about = "仅合并 symbol_names.json（中文简称映射）",
+    long_about = DATA_SYMBOL_NAMES_SYNC_LONG,
+    after_long_help = "示例:\n  cargo run -- data symbol-names-sync\n  cargo run -- data symbol-names-sync --universe csi300 --universe zz500\n  hf data symbol-names-sync --universe csi300\n"
+)]
+pub struct DataSymbolNamesSyncArgs {
+    /// 可重复指定；省略则由服务端默认处理 csi300、zz500、all_a
+    #[arg(long = "universe")]
+    pub universes: Vec<String>,
     #[arg(long, default_value = "akshare")]
     pub provider: String,
     #[arg(long)]
@@ -174,24 +212,57 @@ pub struct DataMarketQueryArgs {
     pub timeout_ms: Option<u64>,
 }
 
+const DATA_BARS_EXAMPLES: &str = "\
+示例:\n  \
+  cargo run -- data bars --symbols 600519.SH --timeframe 1d --start-date 2026-03-01 --end-date 2026-04-01 --output json\n  \
+  cargo run -- data bars --symbols 600519.SH --start-date 2026-03-01 --end-date 2026-04-01 --output table\n  \
+  cargo run -- data bars --symbols 600519.SH,000001.SZ --timeframe 1d --start-date 2026-03-01 --end-date 2026-04-01 --output tui\n  \
+  cargo run -- data bars --universe csi300 --timeframe 1d --start-date 2026-03-01 --end-date 2026-04-01 --output tui\n  \
+  cargo run -- data bars --symbols 600519.SH --start-date 2026-03-01 --end-date 2026-04-01 --output tui --no-benchmark\n  \
+  cargo run -- data bars --symbols 600519.SH --start-date 2026-03-01 --end-date 2026-04-01 --output table --verbose\n  \
+  cargo run -- data bars --universe csi300 --timeframe 1d --start-date 2026-03-01 --end-date 2026-04-01 --output tui --max-display-points 500\n  \
+  hf data bars --symbols 600519.SH --timeframe 1d --start-date 2026-03-01 --end-date 2026-04-01 --output json\n\
+\n\
+tui 图表：/ 打开标的列表筛选（代码或中文简称子串，实时过滤）；编辑中 Enter 结束编辑，Esc 清空关键词并退出编辑；未编辑时 q/Esc/Enter 退出。\n\
+";
+
 #[derive(Debug, Args)]
+#[command(
+    about = "按显式起止日查询 K 线（GET /v1/market-data/bars）；支持 json/table/tui；标的可与 data query 一样用 --universe",
+    after_long_help = DATA_BARS_EXAMPLES
+)]
 pub struct DataBarsArgs {
+    /// 逗号分隔标的，如 600519.SH,000001.SZ
     #[arg(long)]
     pub symbols: Option<String>,
+    /// 标的池名称（读 quant/config/universes/{name}.txt），与 --symbols 并集去重
+    #[arg(long)]
+    pub universe: Option<String>,
+    /// K 线周期，如 1m / 1d（默认 1m）
     #[arg(long, default_value = "1m")]
     pub timeframe: String,
+    /// 区间起始日 YYYY-MM-DD（与 end-date 同用可固定窗口）
     #[arg(long)]
     pub start_date: Option<String>,
+    /// 区间结束日 YYYY-MM-DD
     #[arg(long)]
     pub end_date: Option<String>,
+    /// 输出：json | table | tui（默认 json）；交互看图用 tui
     #[arg(long, default_value = "json")]
     pub output: String,
+    /// 仅在 --output table 下追加诊断列
     #[arg(long, default_value_t = false)]
     pub verbose: bool,
+    /// tui 下不绘制大盘对比线（默认基准 000300.SH）
     #[arg(long, default_value_t = false)]
     pub no_benchmark: bool,
+    /// 每标的返回条数上限（查询参数 limit，由服务端截断）
     #[arg(long)]
     pub limit: Option<i32>,
+    /// 仅 --output tui：每标的用于绘图的最大 K 线点数；超出则按时间顺序分桶合并 OHLC。`0` 关闭聚合
+    #[arg(long, default_value_t = 2000)]
+    pub max_display_points: usize,
+    /// 覆盖 ~/.hiveflow/config.toml 中的 HTTP 超时（毫秒）
     #[arg(long)]
     pub timeout_ms: Option<u64>,
 }
@@ -237,6 +308,18 @@ impl From<DataUniverseSyncArgs> for DataUniverseSyncRequest {
             universe: args.universe,
             provider: args.provider,
             timeout_ms: args.timeout_ms,
+            wait: args.wait,
+            poll_interval_ms: args.poll_interval_ms,
+        }
+    }
+}
+
+impl From<DataSymbolNamesSyncArgs> for DataSymbolNamesSyncRequest {
+    fn from(args: DataSymbolNamesSyncArgs) -> Self {
+        Self {
+            universes: args.universes,
+            provider: args.provider,
+            timeout_ms: args.timeout_ms,
         }
     }
 }
@@ -262,6 +345,7 @@ impl From<DataBarsArgs> for DataBarsRequest {
     fn from(args: DataBarsArgs) -> Self {
         Self {
             symbols: args.symbols,
+            universe: args.universe,
             timeframe: args.timeframe,
             start_date: args.start_date,
             end_date: args.end_date,
@@ -269,6 +353,7 @@ impl From<DataBarsArgs> for DataBarsRequest {
             verbose: args.verbose,
             no_benchmark: args.no_benchmark,
             limit: args.limit,
+            max_display_points: args.max_display_points,
             timeout_ms: args.timeout_ms,
         }
     }

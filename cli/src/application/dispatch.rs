@@ -1,6 +1,7 @@
 use crate::application::handlers::{
     data_bars, data_market_query, data_sync, data_sync_cancel, data_sync_retry_failed,
-    data_universe_sync, factor_optimize, factor_replay, pipeline_compare, pipeline_daily,
+    data_symbol_names_sync, data_universe_sync, factor_optimize, factor_replay, pipeline_compare,
+    pipeline_daily,
     portfolio_optimize, signal_evaluate, signal_snapshot, task_list, task_progress,
 };
 use crate::application::requests::AppCommand;
@@ -16,6 +17,7 @@ pub fn run(command: AppCommand) -> Result<(), AppError> {
         AppCommand::DataSyncCancel(args) => data_sync_cancel::handle(args),
         AppCommand::DataSyncRetryFailed(args) => data_sync_retry_failed::handle(args),
         AppCommand::DataUniverseSync(args) => data_universe_sync::handle(args),
+        AppCommand::DataSymbolNamesSync(args) => data_symbol_names_sync::handle(args),
         AppCommand::TaskList(args) => task_list::handle(args),
         AppCommand::TaskProgress(args) => task_progress::handle(args),
         AppCommand::TaskCancel(args) => data_sync_cancel::handle(args),

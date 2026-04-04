@@ -99,7 +99,7 @@ cargo run -- data bars --symbols 600519.SH --start-date 2026-03-01 --end-date 20
 
 排查顺序建议：
 - `data sync` 拿 `run_id` 后，用 **`task progress --run-id <run_id>`** 看实时进度，用 **`task list`** 看列表与终态、失败原因摘要（需要阻塞式完成则 **`task progress ... --watch`** 或提交时 **`--wait`**）
-- **`task list`** 看最近同步任务；**近窗 K 线**用 **`data query`**（默认 TUI 分页）或 **`data bars`**（显式区间/chart）
+- **`task list`** 看最近同步任务；**近窗 K 线**用 **`data query`**（默认 TUI 分页）或 **`data bars`**（显式区间；交互图用 **`data bars --output tui`**）
 - `data bars` 看具体 K 线是否落库
 
 ### 场景 E：你想先更新标的池，再跑同步
@@ -121,7 +121,7 @@ cargo run -- data sync --days 30 --end-date 2026-04-01 --universe csi300
 - `--output table`：人工看结果时优先用它。
 - `--output json`：写脚本、做回归、接自动化时用它。
 - `task list` 支持 `json|table`（同步任务元数据）；`task progress` 支持 `json|table` 与 **`--watch`**（运行中进度/轮询）；`data query` 支持 `json|tui|table`（K 线窗口查询）。
-- `data bars` 支持 `json|table|chart|tui`（K 线明细查询）。
+- `data bars` 支持 `json|table|tui`（K 线明细查询；脚本用 `json`，看图用 `tui`）。
 
 ## 4. 常见错误与处理
 

@@ -241,23 +241,47 @@ pub fn render_sync_run_progress_summary(detail: &Value, verbose: bool) -> String
 
 pub fn render_market_data_bars_table(payload: &Value, verbose: bool) -> String {
     let mut table = Table::new();
+    let show_name = payload
+        .get("items")
+        .and_then(Value::as_array)
+        .is_some_and(|items| {
+            items
+                .iter()
+                .any(|item| item.get("symbol_name_zh").is_some())
+        });
+    let mut header = vec![
+        Cell::new("bar_time"),
+        Cell::new("symbol"),
+    ];
+    if show_name {
+        header.push(Cell::new("名称"));
+    }
+    header.extend([
+        Cell::new("timeframe"),
+        Cell::new("close"),
+    ]);
     table
         .load_preset(UTF8_FULL)
         .set_content_arrangement(ContentArrangement::Dynamic)
-        .set_header(vec![
-            Cell::new("bar_time"),
-            Cell::new("symbol"),
-            Cell::new("timeframe"),
-            Cell::new("close"),
-        ]);
+        .set_header(header);
 
     if let Some(items) = payload.get("items").and_then(Value::as_array) {
         for item in items {
             let bar_time = as_str(item.get("bar_time"));
             let symbol = as_str(item.get("symbol"));
+            let name_zh = item
+                .get("symbol_name_zh")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
             let timeframe = as_str(item.get("timeframe"));
             let close = as_f64(item.get("close"));
-            table.add_row(vec![bar_time, symbol, timeframe, close]);
+            let mut row = vec![bar_time, symbol];
+            if show_name {
+                row.push(name_zh);
+            }
+            row.extend([timeframe, close]);
+            table.add_row(row);
 
             if verbose {
                 let open = as_f64(item.get("open"));
@@ -265,12 +289,18 @@ pub fn render_market_data_bars_table(payload: &Value, verbose: bool) -> String {
                 let low = as_f64(item.get("low"));
                 let volume = as_f64(item.get("volume"));
                 let source = as_str(item.get("data_source"));
-                table.add_row(vec![
+                let mut detail_row = vec![
                     "".to_string(),
                     format!("o/h/l={open}/{high}/{low}"),
+                ];
+                if show_name {
+                    detail_row.push(String::new());
+                }
+                detail_row.extend([
                     format!("vol={volume}"),
                     format!("src={source}"),
                 ]);
+                table.add_row(detail_row);
             }
         }
     }

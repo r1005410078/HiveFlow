@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
@@ -8,10 +9,14 @@ from pathlib import Path
 import re
 from uuid import uuid4
 
+from application.market_data.symbol_names import resolve_quant_package_root
 from domain.market_data.value_objects import validate_timeframe
 
 _UNIVERSE_KEYS = ("csi300", "zz500", "all_a", "self_select", "follow")
+# Universes that akshare can fetch with optional Chinese names (symbol_names.json merge).
+_AKSHARE_SYMBOL_NAME_UNIVERSES = ("csi300", "zz500", "all_a")
 _UNIVERSE_FILE_EXT = ".txt"
+_SYMBOL_NAMES_JSON = "symbol_names.json"
 
 _SYMBOL_PATTERN = re.compile(r"^[0-9]{6}\.(SH|SZ|BJ)$")
 
@@ -29,7 +34,7 @@ class SyncService:
     # ── config / file helpers (unchanged) ─────────────────────
 
     def _config_root(self) -> Path:
-        return Path(__file__).resolve().parents[3]
+        return resolve_quant_package_root()
 
     def _universe_dir(self) -> Path:
         return self._config_root() / "config" / "universes"
@@ -106,6 +111,31 @@ class SyncService:
         universe_dir.mkdir(parents=True, exist_ok=True)
         path = universe_dir / self._universe_file_name(universe)
         path.write_text("\n".join(normalized) + "\n", encoding="utf-8")
+        return path
+
+    def _symbol_names_json_path(self) -> Path:
+        return self._universe_dir() / _SYMBOL_NAMES_JSON
+
+    def _merge_symbol_names_json(self, updates: dict[str, str]) -> Path | None:
+        """Merge symbol -> Chinese short name; empty values are skipped."""
+        if not updates:
+            return None
+        path = self._symbol_names_json_path()
+        existing: dict[str, str] = {}
+        if path.is_file():
+            try:
+                raw = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(raw, dict):
+                    existing = {str(k): str(v) for k, v in raw.items() if v is not None}
+            except (json.JSONDecodeError, OSError):
+                existing = {}
+        for sym, name in updates.items():
+            if not name or not str(name).strip():
+                continue
+            existing[self._norm_symbol(sym)] = str(name).strip()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        ordered = dict(sorted(existing.items()))
+        path.write_text(json.dumps(ordered, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         return path
 
     @staticmethod
@@ -269,23 +299,100 @@ class SyncService:
 
     # ── universe sync (unchanged) ─────────────────────────────
 
-    def sync_universe_symbols(self, universe: str, provider: str = "akshare") -> dict:
-        if provider != "akshare":
-            raise ValueError(f"unsupported provider: {provider}")
+    def _fetch_universe_symbol_name_updates(self, universe: str) -> tuple[list[str], dict[str, str]]:
+        """Pull symbol -> name map from universe_source; no file writes."""
         if self.universe_source_repo is None:
             raise RuntimeError("universe source provider is unavailable")
+        fetch_pairs = getattr(self.universe_source_repo, "fetch_universe_symbols_with_names", None)
+        if callable(fetch_pairs):
+            pairs = fetch_pairs(universe=universe)
+            symbols = [s for s, _ in pairs]
+            updates = {s: n for s, n in pairs}
+            return symbols, updates
         fetch = getattr(self.universe_source_repo, "fetch_universe_symbols", None)
         if not callable(fetch):
             raise RuntimeError("universe source provider is unavailable")
         symbols = fetch(universe=universe)
+        updates = {s: "" for s in symbols}
+        return symbols, updates
+
+    def merge_symbol_names_only(
+        self,
+        *,
+        universes: list[str] | None = None,
+        provider: str = "akshare",
+    ) -> dict:
+        """Merge ``symbol_names.json`` from akshare for given universes (default: csi300, zz500, all_a).
+
+        Does not modify ``quant/config/universes/*.txt``.
+        """
+        if provider != "akshare":
+            raise ValueError(f"unsupported provider: {provider}")
+        raw_targets = list(universes) if universes else list(_AKSHARE_SYMBOL_NAME_UNIVERSES)
+        seen: set[str] = set()
+        targets: list[str] = []
+        for u in raw_targets:
+            u = str(u).strip()
+            if not u or u in seen:
+                continue
+            seen.add(u)
+            targets.append(u)
+        if not targets:
+            targets = list(_AKSHARE_SYMBOL_NAME_UNIVERSES)
+        allowed = set(_AKSHARE_SYMBOL_NAME_UNIVERSES)
+        for u in targets:
+            if u not in allowed:
+                raise ValueError(
+                    "universe does not support symbol-name sync via akshare: "
+                    f"{u} (allowed: {', '.join(_AKSHARE_SYMBOL_NAME_UNIVERSES)})"
+                )
+        names_path: Path | None = None
+        per_universe: dict[str, int] = {}
+        failed: list[dict[str, str]] = []
+        for u in targets:
+            try:
+                _symbols, updates = self._fetch_universe_symbol_name_updates(u)
+                merged = self._merge_symbol_names_json(updates)
+                if merged is not None:
+                    names_path = merged
+                per_universe[u] = len(updates)
+            except Exception as exc:
+                failed.append({"universe": u, "message": str(exc)[:800]})
+        if not per_universe:
+            raise RuntimeError(
+                "symbol_names sync failed for every universe: "
+                + "; ".join(f"{item['universe']}: {item['message'][:200]}" for item in failed)
+            )
+        status = "ok" if not failed else "partial"
+        out: dict = {
+            "status": status,
+            "provider": provider,
+            "universes": targets,
+            "per_universe_symbols": per_universe,
+            "symbol_names_path": str(names_path) if names_path else None,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if failed:
+            out["failed_universes"] = failed
+        return out
+
+    def sync_universe_symbols(self, universe: str, provider: str = "akshare") -> dict:
+        if provider != "akshare":
+            raise ValueError(f"unsupported provider: {provider}")
+        symbols, updates = self._fetch_universe_symbol_name_updates(universe)
+        merged = self._merge_symbol_names_json(updates)
+        names_path = str(merged) if merged else None
         path = self._write_universe_file(universe=universe, symbols=symbols)
-        return {
+        out = {
             "universe": universe,
             "provider": provider,
             "symbols_count": len(symbols),
             "file_path": str(path),
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
+        if names_path:
+            out["symbol_names_path"] = names_path
+        return out
 
     # ── execute_sync (extracted core loop with callbacks) ─────
 

@@ -60,7 +60,7 @@ fn data_bars_tui_falls_back_when_tui_is_unavailable() {
         "stderr did not show tui fallback: {stderr}"
     );
     assert!(
-        stdout.contains("Price Chart (textplots)") || stdout.contains("Market Data"),
-        "stdout did not show chart/table fallback: {stdout}"
+        stdout.contains("Market Data") || stdout.contains("600519.SH"),
+        "stdout did not show table fallback: {stdout}"
     );
 }

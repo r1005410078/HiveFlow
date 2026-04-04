@@ -42,7 +42,12 @@ fn cmd_layer_must_not_import_infrastructure() {
 
 #[test]
 fn domain_layer_must_not_depend_on_io_or_frameworks() {
-    let domain_files = ["domain/command.rs", "domain/result.rs", "domain/mod.rs"];
+    let domain_files = [
+        "domain/bars_aggregate.rs",
+        "domain/command.rs",
+        "domain/result.rs",
+        "domain/mod.rs",
+    ];
     for file in domain_files {
         let content = read(&src_path(file));
         let forbidden = [

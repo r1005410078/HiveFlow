@@ -1,29 +1,12 @@
-use std::collections::BTreeSet;
-
 use chrono::{Duration, Local, NaiveDate};
-use serde_json::{json, Value};
+use serde_json::json;
 
+use crate::application::bars_fetch::{fetch_bars_merged_items, resolve_bar_symbols};
 use crate::application::requests::DataMarketQueryRequest;
 use crate::error::AppError;
 use crate::infrastructure::config_loader::load_default_config;
-use crate::infrastructure::http_client::get_market_data_bars;
-use crate::infrastructure::repo_root::hiveflow_repo_root;
 use crate::infrastructure::table_renderer::render_market_data_bars_table;
 use crate::infrastructure::tui_renderer::render_market_data_bars_paged_table_tui;
-use crate::infrastructure::universe_loader::load_universe_symbols;
-
-const SYMBOL_BATCH: usize = 30;
-
-fn parse_csv(input: Option<&str>) -> Vec<String> {
-    input
-        .map(|raw| {
-            raw.split(',')
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default()
-}
 
 fn resolve_date_window(args: &DataMarketQueryRequest) -> Result<(String, String), AppError> {
     let parse_d = |s: &str| {
@@ -73,69 +56,23 @@ fn resolve_date_window(args: &DataMarketQueryRequest) -> Result<(String, String)
     }
 }
 
-fn collect_symbols(args: &DataMarketQueryRequest) -> Result<Vec<String>, AppError> {
-    let mut set: BTreeSet<String> = BTreeSet::new();
-    for s in parse_csv(args.symbols.as_deref()) {
-        set.insert(s);
-    }
-    if let Some(name) = args.universe.as_deref() {
-        let root = hiveflow_repo_root().ok_or_else(|| {
-            AppError::InvalidArgs(
-                "cannot locate repo root (set HIVEFLOW_ROOT or run from HiveFlow checkout)"
-                    .to_string(),
-            )
-        })?;
-        for s in load_universe_symbols(&root, name)? {
-            set.insert(s);
-        }
-    }
-    if set.is_empty() {
-        return Err(AppError::InvalidArgs(
-            "need at least one symbol: pass --symbols and/or --universe".to_string(),
-        ));
-    }
-    Ok(set.into_iter().collect())
-}
-
-fn merge_items(into: &mut Vec<Value>, batch: &Value) {
-    if let Some(arr) = batch.get("items").and_then(Value::as_array) {
-        into.extend(arr.iter().cloned());
-    }
-}
-
-fn sort_items(items: &mut [Value]) {
-    items.sort_by(|a, b| {
-        let ta = a.get("bar_time").and_then(Value::as_str).unwrap_or("");
-        let tb = b.get("bar_time").and_then(Value::as_str).unwrap_or("");
-        let sa = a.get("symbol").and_then(Value::as_str).unwrap_or("");
-        let sb = b.get("symbol").and_then(Value::as_str).unwrap_or("");
-        ta.cmp(tb).then_with(|| sa.cmp(sb))
-    });
-}
-
 pub fn handle(args: DataMarketQueryRequest) -> Result<(), AppError> {
     let cfg = load_default_config()?;
     let timeout_ms = args.timeout_ms.unwrap_or(cfg.timeout_ms);
     let (start_date, end_date) = resolve_date_window(&args)?;
-    let symbols = collect_symbols(&args)?;
+    let symbols = resolve_bar_symbols(args.symbols.as_deref(), args.universe.as_deref())?;
     let per_request_limit = args.limit.unwrap_or(5000).min(10_000);
 
-    let mut merged: Vec<Value> = Vec::new();
-    for chunk in symbols.chunks(SYMBOL_BATCH) {
-        let batch: Vec<String> = chunk.to_vec();
-        let v = get_market_data_bars(
-            &cfg.server_url,
-            Some(&batch),
-            Some(args.timeframe.as_str()),
-            Some(start_date.as_str()),
-            Some(end_date.as_str()),
-            Some(per_request_limit),
-            timeout_ms,
-        )?;
-        merge_items(&mut merged, &v);
-    }
+    let mut merged = fetch_bars_merged_items(
+        &cfg.server_url,
+        &symbols,
+        Some(args.timeframe.as_str()),
+        Some(start_date.as_str()),
+        Some(end_date.as_str()),
+        Some(per_request_limit),
+        timeout_ms,
+    )?;
 
-    sort_items(&mut merged);
     if let Some(lim) = args.limit {
         if merged.len() > lim as usize {
             merged.truncate(lim as usize);
@@ -230,6 +167,7 @@ mod tests {
 
     #[test]
     fn merge_and_sort_items() {
+        use crate::application::bars_fetch::{merge_items, sort_items};
         let mut merged = Vec::new();
         merge_items(
             &mut merged,

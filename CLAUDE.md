@@ -81,9 +81,9 @@ cargo run -- task progress
 cargo run -- task progress --run-id <run_id> --watch
 # data query：近窗 K 线，--output json|tui|table（默认 tui 分页）
 cargo run -- data query --days 7 --symbols 600519.SH --output tui
-# data bars：--output json|table|chart|tui（显式区间）
+# data bars：--output json|table|tui（显式区间；看图用 tui）
 cargo run -- data bars --symbols 600519.SH --timeframe 1d --start-date 2026-03-01 --end-date 2026-04-01 --output tui
-# TUI 键位：↑↓/jk 切换标的，←→/hl 移动光标，a/d 平移，+/- 缩放，0 重置，q 退出
+# TUI 键位（data bars 图表）：↑↓/jk 切换标的，`/` 筛选标的列表（代码或中文简称子串），Enter 结束筛选编辑、Esc 清空筛选；←→/hl 光标，a/d 平移，+/- 缩放，0 重置，b 基准，q/Esc 退出
 ```
 
 ## CLI 输出契约

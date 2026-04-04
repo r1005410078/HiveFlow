@@ -1,3 +1,6 @@
+//! 终端 Unicode 折线图（textplots）。已从 `hf data bars` 子命令移除；保留供单元测试与后续复用（如 OHLC 聚合预览）。
+#![allow(dead_code)]
+
 use std::cmp::Ordering;
 
 use serde_json::Value;
@@ -251,7 +254,8 @@ pub fn render_sync_runs_chart_with_capability(
 
 #[cfg(test)]
 mod tests {
-    use super::downsample_for_chart;
+    use super::{downsample_for_chart, render_sync_runs_chart_with_capability};
+    use serde_json::json;
 
     #[test]
     fn downsample_keeps_first_and_last_points() {
@@ -260,5 +264,49 @@ mod tests {
         assert_eq!(sampled.first().copied(), Some(0.0));
         assert_eq!(sampled.last().copied(), Some(999.0));
         assert!(sampled.len() <= 121);
+    }
+
+    #[test]
+    fn chart_returns_error_without_utf8_terminal_capability() {
+        let payload = json!({
+            "items": [
+                {"bar_time":"2026-04-01T09:30:00+08:00","symbol":"600519.SH","close":1450.0},
+                {"bar_time":"2026-04-01T09:31:00+08:00","symbol":"600519.SH","close":1459.0}
+            ]
+        });
+        let res = render_sync_runs_chart_with_capability(&payload, false, "600519.SH", Some("000300.SH"));
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn chart_renders_line_for_bars_payload_when_utf8() {
+        let payload = json!({
+            "items": [
+                {"bar_time":"2026-03-29T15:00:00+08:00","symbol":"600519.SH","close":1400.0},
+                {"bar_time":"2026-03-30T15:00:00+08:00","symbol":"600519.SH","close":1420.0},
+                {"bar_time":"2026-03-31T15:00:00+08:00","symbol":"600519.SH","close":1450.0},
+                {"bar_time":"2026-04-01T15:00:00+08:00","symbol":"600519.SH","close":1459.0}
+            ]
+        });
+        let chart = render_sync_runs_chart_with_capability(&payload, true, "600519.SH", Some("000300.SH"))
+            .expect("chart should be rendered");
+        assert!(chart.contains("Price Chart (textplots)"));
+        assert!(chart.contains("600519.SH"));
+        assert!(chart.contains("Compact Trend:"));
+        assert!(chart.contains("Close Price"));
+        assert!(chart.chars().any(|c| !c.is_ascii()));
+    }
+
+    #[test]
+    fn chart_single_point_uses_readable_fallback() {
+        let payload = json!({
+            "items": [
+                {"bar_time":"2026-04-01T15:00:00+08:00","symbol":"600519.SH","close":1459.44}
+            ]
+        });
+        let chart = render_sync_runs_chart_with_capability(&payload, true, "600519.SH", Some("000300.SH"))
+            .expect("chart should be rendered");
+        assert!(chart.contains("sample too small for line chart"));
+        assert!(chart.contains("point: ●"));
     }
 }

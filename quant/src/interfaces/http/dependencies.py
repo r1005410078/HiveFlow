@@ -26,6 +26,7 @@ PipelineCompareService = Callable[[str, str, int], dict]
 FactorOptimizationService = Callable[[str, str, list[str], dict[str, float]], dict]
 MarketDataSyncService = Callable[..., dict]
 MarketDataUniverseSyncService = Callable[..., dict]
+MarketDataSymbolNamesSyncService = Callable[..., dict]
 MarketDataQueryService = Callable[..., dict]
 MarketDataBarsQueryService = Callable[..., dict]
 SignalSnapshotService = Callable[[str], dict]
@@ -317,6 +318,19 @@ def get_market_data_universe_sync_service() -> MarketDataUniverseSyncService:
         universe_source_repo=universe_source,
     )
     return service.sync_universe_symbols
+
+
+def get_market_data_symbol_names_sync_service() -> MarketDataSymbolNamesSyncService:
+    try:
+        universe_source = AkshareUniverseAdapter()
+    except Exception:
+        universe_source = None
+    service = SyncService(
+        quote_repo=_build_quote_repo(),
+        bar_store=_build_bar_store(),
+        universe_source_repo=universe_source,
+    )
+    return service.merge_symbol_names_only
 
 
 def get_market_data_query_service() -> MarketDataQueryService:

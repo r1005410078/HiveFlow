@@ -176,6 +176,40 @@ pub fn post_data_universe_sync(
     parse_json(&body_text)
 }
 
+pub fn post_symbol_names_sync(
+    server_url: &str,
+    universes: &[String],
+    provider: &str,
+    timeout_ms: u64,
+) -> Result<Value, AppError> {
+    let url = format!(
+        "{}/v1/market-data/universes/symbol-names/sync",
+        server_url.trim_end_matches('/')
+    );
+    let client = build_client(server_url, timeout_ms)?;
+
+    let body = if universes.is_empty() {
+        json!({ "provider": provider })
+    } else {
+        json!({ "provider": provider, "universes": universes })
+    };
+
+    let response = client
+        .post(url)
+        .json(&body)
+        .send()
+        .map_err(AppError::HttpClient)?;
+
+    let status = response.status();
+    let body_text = response.text().map_err(AppError::HttpClient)?;
+    if !status.is_success() {
+        let body =
+            serde_json::from_str(&body_text).unwrap_or_else(|_| json!({ "raw_body": body_text }));
+        return Err(AppError::Upstream(status.as_u16(), body));
+    }
+    parse_json(&body_text)
+}
+
 pub fn get_market_data_sync_runs(
     server_url: &str,
     days: i32,

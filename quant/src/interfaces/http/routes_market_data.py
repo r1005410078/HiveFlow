@@ -7,14 +7,20 @@ from interfaces.http.dependencies import (
     MarketDataBarsQueryService,
     MarketDataQueryService,
     MarketDataSyncService,
+    MarketDataSymbolNamesSyncService,
     MarketDataUniverseSyncService,
     get_market_data_bars_query_service,
     get_market_data_query_service,
     get_market_data_sync_service,
+    get_market_data_symbol_names_sync_service,
     get_market_data_universe_sync_service,
     get_sync_worker,
 )
-from interfaces.http.schemas_market_data import MarketDataSyncRequest, MarketDataUniverseSyncRequest
+from interfaces.http.schemas_market_data import (
+    MarketDataSyncRequest,
+    MarketDataSymbolNamesSyncRequest,
+    MarketDataUniverseSyncRequest,
+)
 
 router = APIRouter(prefix="/v1/market-data", tags=["market-data"])
 
@@ -298,6 +304,40 @@ def post_universe_sync(
         status_code=202,
         content={"run_id": run_id, "status": "running", "message": "universe sync job submitted"},
     )
+
+
+@router.post(
+    "/universes/symbol-names/sync",
+    summary="仅合并 symbol_names.json",
+    description=(
+        "从 akshare 拉取指定标的池（或默认 csi300+zz500+all_a）的代码与中文简称，"
+        "合并写入 quant/config/universes/symbol_names.json；不修改各 universe .txt。"
+        "若部分池失败，仍返回 200，JSON 中 status=partial 且含 failed_universes；"
+        "仅当全部失败时返回错误。"
+    ),
+    response_model=None,
+)
+def post_universe_symbol_names_sync(
+    req: MarketDataSymbolNamesSyncRequest,
+    service: MarketDataSymbolNamesSyncService = Depends(get_market_data_symbol_names_sync_service),
+):
+    try:
+        return service(universes=req.universes, provider=req.provider)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "SYMBOL_NAMES_SYNC_INVALID_ARGUMENT", "message": str(exc)},
+        ) from exc
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "SYMBOL_NAMES_SYNC_PROVIDER_ERROR", "message": str(exc)},
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "SYMBOL_NAMES_SYNC_FAILED", "message": str(exc)},
+        ) from exc
 
 
 @router.get(

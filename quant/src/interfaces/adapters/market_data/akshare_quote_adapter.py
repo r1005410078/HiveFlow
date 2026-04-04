@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from interfaces.adapters.market_data.no_http_proxy_env import disabled_http_proxy_env
+
 
 class AkshareQuoteAdapter:
     def __init__(self, client=None):
@@ -89,12 +91,13 @@ class AkshareQuoteAdapter:
         return rows
 
     def fetch(self, symbols: list[str], as_of: str, timeframe: str) -> list[dict]:
-        rows: list[dict] = []
-        for symbol in symbols:
-            if timeframe == "1d":
-                rows.extend(self._fetch_daily(symbol=symbol, as_of=as_of))
-            elif timeframe == "1m":
-                rows.extend(self._fetch_minute(symbol=symbol, as_of=as_of))
-            else:
-                raise ValueError(f"unsupported timeframe: {timeframe}")
-        return rows
+        with disabled_http_proxy_env():
+            rows: list[dict] = []
+            for symbol in symbols:
+                if timeframe == "1d":
+                    rows.extend(self._fetch_daily(symbol=symbol, as_of=as_of))
+                elif timeframe == "1m":
+                    rows.extend(self._fetch_minute(symbol=symbol, as_of=as_of))
+                else:
+                    raise ValueError(f"unsupported timeframe: {timeframe}")
+            return rows
