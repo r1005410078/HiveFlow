@@ -6,6 +6,19 @@ def _make_bar_store(rows: list[dict]):
     class _MockBarStore:
         def list_bars(self, symbols, timeframe, start_date, end_date, limit):
             return [r for r in rows if r["symbol"] in symbols]
+
+        def list_storage_bars(
+            self,
+            symbols=None,
+            storage_timeframe="1m",
+            start_date=None,
+            end_date=None,
+            limit=None,
+            order="asc",
+        ):
+            del storage_timeframe, start_date, end_date, limit, order
+            syms = symbols or []
+            return [r for r in rows if r["symbol"] in syms]
     return _MockBarStore()
 
 

@@ -239,6 +239,33 @@ class _InMemoryBarStore:
             }
         ]
 
+    def list_storage_bars(
+        self,
+        symbols=None,
+        storage_timeframe="1m",
+        start_date=None,
+        end_date=None,
+        limit=None,
+        order="asc",
+    ):
+        del start_date, end_date, limit, order
+        symbol = (symbols or ["600519.SH"])[0]
+        return [
+            {
+                "symbol": symbol,
+                "timeframe": storage_timeframe,
+                "bar_time": "2026-04-01T15:00:00+08:00",
+                "open": 1450.0,
+                "high": 1468.0,
+                "low": 1442.0,
+                "close": 1459.44,
+                "volume": 29125.0,
+                "amount": 4256185472.0,
+                "adj_factor": 1.0,
+                "data_source": "demo",
+            }
+        ]
+
 
 def _build_bar_store():
     if has_db_config():

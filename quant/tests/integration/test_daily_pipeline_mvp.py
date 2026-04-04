@@ -72,6 +72,18 @@ def test_daily_pipeline_prefers_real_bars_when_available() -> None:
                 out.extend(_bars_for_symbol(s))
             return out
 
+        def list_storage_bars(
+            self,
+            symbols=None,
+            storage_timeframe="1m",
+            start_date=None,
+            end_date=None,
+            limit=None,
+            order="asc",
+        ):
+            del storage_timeframe, start_date, end_date, limit, order
+            return []
+
     out = run_daily(as_of="2026-04-01", root=None, bar_store=_BarStore())
     rows = out["data"]["factor_snapshot"]["rows"]
     trend_rows = [r for r in rows if r["factor_name"] == "trend_stability_20"]

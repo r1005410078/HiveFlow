@@ -43,3 +43,14 @@ class BarStore(Protocol):
         limit: int | None = None,
     ) -> list[dict]:
         ...
+
+    def list_storage_bars(
+        self,
+        symbols: list[str] | None = None,
+        storage_timeframe: str = "1m",
+        start_date: str | None = None,
+        end_date: str | None = None,
+        limit: int | None = None,
+        order: str = "asc",
+    ) -> list[dict]:
+        ...

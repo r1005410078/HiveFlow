@@ -26,6 +26,18 @@ class _FakeBarStore:
             }
         ]
 
+    def list_storage_bars(
+        self,
+        symbols=None,
+        storage_timeframe="1m",
+        start_date=None,
+        end_date=None,
+        limit=None,
+        order="asc",
+    ):
+        del symbols, storage_timeframe, start_date, end_date, limit, order
+        return []
+
 
 def test_bars_query_service_returns_bar_items() -> None:
     store = _FakeBarStore()

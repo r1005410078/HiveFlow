@@ -40,6 +40,13 @@ class _FakeCursor:
         return None
 
 
+class _FakeCursorBars(_FakeCursor):
+    """Cursor for bar reads: avoid returning sync_run-shaped rows from fetchall."""
+
+    def fetchall(self):
+        return []
+
+
 class _FakeConn:
     def __init__(self):
         self.cursor_obj = _FakeCursor()
@@ -50,6 +57,12 @@ class _FakeConn:
 
     def commit(self):
         self.committed = True
+
+
+class _FakeConnBars(_FakeConn):
+    def __init__(self):
+        super().__init__()
+        self.cursor_obj = _FakeCursorBars()
 
 
 def test_upsert_bars_uses_on_conflict_and_commits():
@@ -190,3 +203,44 @@ def test_finalize_sync_run_omits_optional_symbol_columns_when_not_passed():
     sql_text, _params = conn.cursor_obj.executed[-1]
     assert "effective_symbols_count" not in sql_text
     assert "symbols_hash" not in sql_text
+
+
+def test_list_storage_bars_filters_timeframe_and_orders_asc():
+    conn = _FakeConnBars()
+    store = TimescaleBarStore(conn)
+    store.list_storage_bars(order="asc")
+    sql_text, params = conn.cursor_obj.executed[-1]
+    assert "timeframe = %s" in sql_text
+    assert params[0] == "1m"
+    assert "order by bar_time asc" in sql_text.lower()
+    assert "symbol asc" in sql_text.lower()
+    assert params[-1] == 5000
+
+
+def test_list_storage_bars_orders_desc():
+    conn = _FakeConnBars()
+    store = TimescaleBarStore(conn)
+    store.list_storage_bars(storage_timeframe="1m", order="desc")
+    sql_text, params = conn.cursor_obj.executed[-1]
+    assert "timeframe = %s" in sql_text
+    assert params[0] == "1m"
+    assert "order by bar_time desc" in sql_text.lower()
+    assert "symbol asc" in sql_text.lower()
+
+
+def test_list_storage_bars_passes_bounds_and_custom_limit():
+    conn = _FakeConnBars()
+    store = TimescaleBarStore(conn)
+    store.list_storage_bars(
+        symbols=["600519.SH"],
+        storage_timeframe="1m",
+        start_date="2026-04-01",
+        end_date="2026-04-02",
+        limit=100,
+        order="asc",
+    )
+    sql_text, params = conn.cursor_obj.executed[-1]
+    assert "symbol = any(%s)" in sql_text
+    assert "2026-04-01T00:00:00+08:00" in params
+    assert "2026-04-02T23:59:59+08:00" in params
+    assert params[-1] == 100

@@ -476,3 +476,60 @@ class TimescaleBarStore:
             }
             for row in rows
         ]
+
+    def list_storage_bars(
+        self,
+        symbols: list[str] | None = None,
+        storage_timeframe: str = "1m",
+        start_date: str | None = None,
+        end_date: str | None = None,
+        limit: int | None = None,
+        order: str = "asc",
+    ) -> list[dict]:
+        query = """
+        select symbol, timeframe, bar_time::text, open, high, low, close,
+               volume, amount, adj_factor, data_source
+        from bars
+        where 1=1
+        """
+        params: list[object] = []
+        query += " and timeframe = %s"
+        params.append(storage_timeframe)
+        if symbols:
+            query += " and symbol = any(%s)"
+            params.append(symbols)
+        if start_date:
+            query += " and bar_time >= %s::timestamptz"
+            params.append(f"{start_date}T00:00:00+08:00")
+        if end_date:
+            query += " and bar_time <= %s::timestamptz"
+            params.append(f"{end_date}T23:59:59+08:00")
+        if order == "desc":
+            query += " order by bar_time desc, symbol asc"
+        else:
+            query += " order by bar_time asc, symbol asc"
+        query += " limit %s"
+        params.append(limit or 5000)
+
+        cur = self._conn.cursor()
+        try:
+            cur.execute(query, params)
+            rows = cur.fetchall()
+        finally:
+            cur.close()
+        return [
+            {
+                "symbol": row[0],
+                "timeframe": row[1],
+                "bar_time": row[2],
+                "open": row[3],
+                "high": row[4],
+                "low": row[5],
+                "close": row[6],
+                "volume": row[7],
+                "amount": row[8],
+                "adj_factor": row[9],
+                "data_source": row[10],
+            }
+            for row in rows
+        ]
