@@ -46,6 +46,32 @@ def _fill_missing_cross_sectional(
     return filled, fill_counts
 
 
+def _neutralize_industry(
+    wide: pd.DataFrame,
+    industry_map: dict[str, str],
+) -> pd.DataFrame:
+    """对每个因子列做行业哑变量 OLS 回归，返回残差矩阵。
+    若标的不在 industry_map 中，归入 'other'。
+    当每个行业只有 1 只标的时（守卫条件），直接透传原值。
+    """
+    from collections import Counter
+    symbols = wide.index.tolist()
+    industries = [industry_map.get(s, "other") for s in symbols]
+    industry_counts = Counter(industries)
+
+    # Guard: every industry has exactly 1 symbol → OLS residuals would be zero
+    if max(industry_counts.values()) < 2:
+        return wide.copy()
+
+    X = pd.get_dummies(industries, dtype=float).values  # shape (n_symbols, n_industries)
+    residuals = wide.copy()
+    for col in wide.columns:
+        y = wide[col].values.reshape(-1, 1)
+        beta, _, _, _ = np.linalg.lstsq(X, y, rcond=None)
+        residuals[col] = (y - X @ beta).flatten()
+    return residuals
+
+
 def _series_stats(s: pd.Series) -> dict:
     clean = s.dropna()
     if len(clean) == 0:

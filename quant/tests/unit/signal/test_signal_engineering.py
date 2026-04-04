@@ -159,3 +159,31 @@ def test_fill_missing_all_nan_column_stays_nan():
     assert math.isnan(filled.loc["A", "factor_a"])
     assert math.isnan(filled.loc["B", "factor_a"])
     assert counts["factor_a"] == 2
+
+
+def test_neutralize_skips_when_one_symbol_per_industry():
+    import pandas as pd
+    from application.signal.signal_engineering_service import _neutralize_industry
+
+    industry_map = {"A": "tech", "B": "finance", "C": "energy"}
+    wide = pd.DataFrame({"factor_a": [1.0, 2.0, 3.0]}, index=["A", "B", "C"])
+
+    result = _neutralize_industry(wide, industry_map)
+
+    # Every industry has exactly 1 symbol → guard fires → return original values
+    pd.testing.assert_frame_equal(result, wide)
+
+
+def test_neutralize_removes_industry_mean_with_multi_symbol():
+    import pandas as pd
+    from application.signal.signal_engineering_service import _neutralize_industry
+
+    # A and B share "tech" industry; C is alone in "finance"
+    industry_map = {"A": "tech", "B": "tech", "C": "finance"}
+    wide = pd.DataFrame({"factor_a": [3.0, 1.0, 5.0]}, index=["A", "B", "C"])
+
+    result = _neutralize_industry(wide, industry_map)
+
+    # Within "tech": A=3, B=1, industry mean=2 → residuals A=+1, B=-1, sum=0
+    residual_sum = result.loc["A", "factor_a"] + result.loc["B", "factor_a"]
+    assert abs(residual_sum) < 1e-9, f"industry residuals must sum to 0, got {residual_sum}"
