@@ -7,12 +7,13 @@ const INSTRUMENTS_PAGE_LIMIT: i32 = 2000;
 const MAX_INSTRUMENT_PAGES: usize = 500;
 
 /// Paginate `GET /v1/market-data/instruments` until `has_more` is false.
-pub fn fetch_universe_symbols_via_api(
+/// Returns `(symbol, symbol_name_zh)` per row (name may be empty).
+pub fn fetch_universe_instruments_via_api(
     server_url: &str,
     universe: &str,
     timeout_ms: u64,
-) -> Result<Vec<String>, AppError> {
-    let mut all: Vec<String> = Vec::new();
+) -> Result<Vec<(String, String)>, AppError> {
+    let mut all: Vec<(String, String)> = Vec::new();
     let mut cursor: Option<String> = None;
     let mut pages = 0usize;
     while pages < MAX_INSTRUMENT_PAGES {
@@ -31,9 +32,21 @@ pub fn fetch_universe_symbols_via_api(
         )?;
         if let Some(arr) = v.get("items").and_then(|x| x.as_array()) {
             for item in arr {
-                if let Some(sym) = item.get("symbol").and_then(|x| x.as_str()) {
-                    all.push(sym.to_string());
+                let sym = item
+                    .get("symbol")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
+                if sym.is_empty() {
+                    continue;
                 }
+                let zh = item
+                    .get("symbol_name_zh")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                all.push((sym, zh));
             }
         }
         let has_more = v.get("has_more").and_then(|x| x.as_bool()).unwrap_or(false);

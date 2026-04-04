@@ -78,16 +78,35 @@ pub fn aggregate_market_bars_payload_for_tui(
             out_items.extend(vs);
             continue;
         }
+        let name_zh = vs
+            .iter()
+            .find_map(|v| {
+                v.get("symbol_name_zh")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string())
+            })
+            .unwrap_or_default();
+        let timeframe = vs
+            .iter()
+            .find_map(|v| v.get("timeframe").and_then(Value::as_str).map(str::to_string));
         let agg = aggregate_ohlc_time_order(&pts, max_display_points);
         for p in agg {
-            out_items.push(json!({
-                "symbol": symbol,
-                "bar_time": p.bar_time,
-                "open": p.open,
-                "high": p.high,
-                "low": p.low,
-                "close": p.close,
-            }));
+            let mut row = serde_json::Map::new();
+            row.insert("symbol".into(), json!(symbol));
+            if !name_zh.is_empty() {
+                row.insert("symbol_name_zh".into(), json!(name_zh));
+            }
+            if let Some(ref tf) = timeframe {
+                row.insert("timeframe".into(), json!(tf));
+            }
+            row.insert("bar_time".into(), json!(p.bar_time));
+            row.insert("open".into(), json!(p.open));
+            row.insert("high".into(), json!(p.high));
+            row.insert("low".into(), json!(p.low));
+            row.insert("close".into(), json!(p.close));
+            out_items.push(Value::Object(row));
         }
     }
 
@@ -131,5 +150,29 @@ mod tests {
         assert!(agg);
         let arr = out["items"].as_array().unwrap();
         assert_eq!(arr.len(), 2);
+    }
+
+    #[test]
+    fn aggregation_preserves_symbol_name_zh_and_timeframe() {
+        let mut items = Vec::new();
+        for i in 0..5 {
+            items.push(json!({
+                "symbol": "X",
+                "symbol_name_zh": "测试股",
+                "timeframe": "1m",
+                "bar_time": format!("2026-04-0{i}T00:00:00Z"),
+                "open": i as f64,
+                "high": (i as f64) + 1.0,
+                "low": (i as f64) - 0.5,
+                "close": (i as f64) + 0.5,
+            }));
+        }
+        let payload = json!({ "items": items });
+        let (out, agg) = aggregate_market_bars_payload_for_tui(&payload, 2);
+        assert!(agg);
+        for row in out["items"].as_array().unwrap() {
+            assert_eq!(row["symbol_name_zh"], "测试股");
+            assert_eq!(row["timeframe"], "1m");
+        }
     }
 }

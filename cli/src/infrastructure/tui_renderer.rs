@@ -35,6 +35,28 @@ struct ChartViewState {
     window_len: usize,
 }
 
+/// `render_sync_runs_tui_with_timeframes` 结束原因（`Quit` 或切换 K 线周期后由上层重新拉数）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SyncRunsTuiClose {
+    Quit,
+    TimeframeChanged(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MainView {
+    Chart,
+    Table,
+}
+
+impl MainView {
+    fn toggle(self) -> Self {
+        match self {
+            MainView::Chart => MainView::Table,
+            MainView::Table => MainView::Chart,
+        }
+    }
+}
+
 impl ChartViewState {
     fn new(total: usize) -> Self {
         let default_window = total.clamp(40, 300);
@@ -128,6 +150,9 @@ struct TuiState {
     filter_editing: bool,
     chart_view: ChartViewState,
     show_benchmark: bool,
+    main_view: MainView,
+    /// Vertical scroll offset for table view (current symbol's bars).
+    table_scroll: usize,
 }
 
 impl TuiState {
@@ -158,6 +183,8 @@ impl TuiState {
             filter_editing: false,
             chart_view: ChartViewState::new(points_len),
             show_benchmark: benchmark_enabled,
+            main_view: MainView::Chart,
+            table_scroll: 0,
         }
     }
 
@@ -173,6 +200,7 @@ impl TuiState {
     fn apply_filter_update(&mut self, symbols: &[SymbolSeries]) {
         let prev_sym_i = self.current_symbol_index();
         self.filtered_indices = filtered_symbol_indices(symbols, &self.filter_query);
+        self.table_scroll = 0;
         if self.filtered_indices.is_empty() {
             self.selected_list_idx = 0;
             self.chart_view = ChartViewState::new(0);
@@ -191,6 +219,7 @@ impl TuiState {
             return;
         }
         self.selected_list_idx = self.selected_list_idx.saturating_sub(1);
+        self.table_scroll = 0;
         self.reset_chart(symbols);
     }
 
@@ -199,6 +228,7 @@ impl TuiState {
             return;
         }
         self.selected_list_idx = (self.selected_list_idx + 1).min(self.filtered_indices.len() - 1);
+        self.table_scroll = 0;
         self.reset_chart(symbols);
     }
 
@@ -212,13 +242,94 @@ impl TuiState {
     }
 }
 
+/// API `timeframe` → 界面用中文（K 线颗粒度）。
+fn timeframe_label_zh(tf: &str) -> &'static str {
+    match tf {
+        "1m" => "分时",
+        "1d" => "日K",
+        "1w" => "周K",
+        "1M" => "月K",
+        "1y" => "年K",
+        _ => "",
+    }
+}
+
+fn tf_title_suffix(tf: &str) -> String {
+    let zh = timeframe_label_zh(tf);
+    if zh.is_empty() {
+        format!(" ({tf})")
+    } else {
+        format!(" ({zh})")
+    }
+}
+
+/// `choices` 须为 **细 → 粗**（如 1m … 1y）。`+` 更细，`−` 更粗；已在端点则不变。
+fn step_granularity(choices: &[&str], current: &str, finer: bool) -> String {
+    if choices.is_empty() {
+        return current.to_string();
+    }
+    let idx = choices.iter().position(|&c| c == current).unwrap_or_else(|| {
+        choices
+            .iter()
+            .position(|&c| c == "1d")
+            .unwrap_or(choices.len() / 2)
+    });
+    let next = if finer {
+        idx.saturating_sub(1)
+    } else {
+        (idx + 1).min(choices.len() - 1)
+    };
+    choices[next].to_string()
+}
+
+fn timeframe_hint_suffix(cycle: Option<(&[&str], &str)>) -> String {
+    let Some((_choices, cur)) = cycle else {
+        return String::new();
+    };
+    let z = timeframe_label_zh(cur);
+    let cur_part = if z.is_empty() {
+        cur.to_string()
+    } else {
+        format!("{z}·{cur}")
+    };
+    format!(
+        "  +/- 颗粒度(细←→粗) 当前{}  阶梯：分时→日K→周K→月K→年K",
+        cur_part
+    )
+}
+
+fn filtered_items_payload(payload: &Value, symbol: &str) -> Value {
+    let items: Vec<Value> = payload
+        .get("items")
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter(|it| {
+                    it.get("symbol")
+                        .and_then(Value::as_str)
+                        .map(|s| s == symbol)
+                        .unwrap_or(false)
+                })
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default();
+    serde_json::json!({ "items": items })
+}
+
 fn run_tui_loop(
     terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
     symbols: &[SymbolSeries],
+    bars_payload: &Value,
     preferred_symbol: Option<&str>,
     benchmark_symbol: Option<&str>,
-) -> Result<(), String> {
+    timeframe_cycle: Option<(&[&str], &str)>,
+) -> Result<SyncRunsTuiClose, String> {
     let mut state = TuiState::new(symbols, preferred_symbol, benchmark_symbol.is_some());
+    let tf_suffix: String = timeframe_cycle
+        .map(|(_, c)| tf_title_suffix(c))
+        .unwrap_or_default();
+    let tf_bar_hint = timeframe_hint_suffix(timeframe_cycle);
 
     loop {
         terminal
@@ -300,6 +411,92 @@ fn run_tui_loop(
                 if let Some(series) = state.selected_series(symbols) {
                     let points = &series.points;
                     let total = points.len();
+
+                    if state.main_view == MainView::Table {
+                        let sub = filtered_items_payload(bars_payload, series.symbol.as_str());
+                        let bar_rows = collect_bars_table_rows(&sub, false);
+                        let block = Block::default()
+                            .title(format!(" Table — {} ", series.symbol))
+                            .borders(Borders::ALL);
+                        let inner = block.inner(cols[1]);
+                        frame.render_widget(block, cols[1]);
+                        let page = (inner.height as usize).saturating_sub(2).max(3);
+                        let max_scroll =
+                            bar_rows.len().saturating_sub(page.min(bar_rows.len()).max(1));
+                        state.table_scroll = state.table_scroll.min(max_scroll);
+                        if bar_rows.is_empty() {
+                            let empty = Paragraph::new("该标的暂无 bar 行（与左侧列表同一 payload）。")
+                                .style(Style::default().fg(Color::Yellow));
+                            frame.render_widget(empty, inner);
+                        } else {
+                            let show_name = bar_rows.first().is_some_and(|r| r.len() >= 5);
+                            let mut hdr = vec![Cell::from("bar_time"), Cell::from("symbol")];
+                            if show_name {
+                                hdr.push(Cell::from("名称"));
+                            }
+                            hdr.extend([Cell::from("tf"), Cell::from("close")]);
+                            let header =
+                                Row::new(hdr).style(Style::default().add_modifier(Modifier::BOLD));
+                            let data_rows: Vec<Row> = bar_rows
+                                .iter()
+                                .skip(state.table_scroll)
+                                .take(page)
+                                .map(|r| {
+                                    Row::new(
+                                        r.iter()
+                                            .map(|c| Cell::from(c.as_str()))
+                                            .collect::<Vec<_>>(),
+                                    )
+                                })
+                                .collect();
+                            let widths: &[Constraint] = if show_name {
+                                &[
+                                    Constraint::Percentage(28),
+                                    Constraint::Percentage(14),
+                                    Constraint::Percentage(18),
+                                    Constraint::Percentage(8),
+                                    Constraint::Percentage(24),
+                                ]
+                            } else {
+                                &[
+                                    Constraint::Percentage(38),
+                                    Constraint::Percentage(18),
+                                    Constraint::Percentage(10),
+                                    Constraint::Percentage(28),
+                                ]
+                            };
+                            let table = Table::new(data_rows, widths)
+                                .header(header)
+                                .block(Block::default());
+                            frame.render_widget(table, inner);
+                        }
+                        let shown_end = (state.table_scroll + page).min(bar_rows.len());
+                        let hint = Paragraph::new(format!(
+                            "Tab/t 走势图  PgUp/PgDn [ ] Home/End 翻页  |  行 {}-{} / {}{}",
+                            if bar_rows.is_empty() {
+                                0
+                            } else {
+                                state.table_scroll + 1
+                            },
+                            shown_end,
+                            bar_rows.len(),
+                            tf_bar_hint
+                        ))
+                        .style(Style::default().fg(Color::DarkGray));
+                        frame.render_widget(hint, rows[1]);
+                    } else if total == 0 {
+                        let msg = Paragraph::new(
+                            "该标的暂无 K 线点（检查 data sync、timeframe 与日期窗）。",
+                        )
+                        .style(Style::default().fg(Color::Yellow));
+                        frame.render_widget(msg, cols[1]);
+                        let nav_hint = Paragraph::new(format!(
+                            "标的: ↑/↓  Tab/t 表格  /:筛选  退出: q/Esc{}",
+                            tf_bar_hint
+                        ))
+                        .style(Style::default().fg(Color::DarkGray));
+                        frame.render_widget(nav_hint, rows[1]);
+                    } else {
                     let window_end = (state.chart_view.window_start + state.chart_view.window_len).min(total);
                     let visible = &points[state.chart_view.window_start..window_end];
                     let samples: Vec<(f64, f64)> = visible
@@ -331,7 +528,8 @@ fn run_tui_loop(
                     let (plot_samples, plot_benchmark_samples) = if let Some((stock_idx, bench_idx, bm)) =
                         benchmark_samples
                     {
-                        comparison_title = Some(format!("Trend - {} vs {}", series.symbol, bm));
+                        comparison_title =
+                            Some(format!("Trend - {} vs {}{}", series.symbol, bm, tf_suffix));
                         (stock_idx, Some(bench_idx))
                     } else {
                         (samples.clone(), None)
@@ -418,8 +616,9 @@ fn run_tui_loop(
                             Block::default()
                                 .borders(Borders::NONE)
                                 .title(
-                                    comparison_title
-                                        .unwrap_or_else(|| format!("Trend - {}", series.symbol)),
+                                    comparison_title.unwrap_or_else(|| {
+                                        format!("Trend - {}{}", series.symbol, tf_suffix)
+                                    }),
                                 )
                                 .title_style(Style::default().fg(Color::Gray)),
                         )
@@ -445,7 +644,7 @@ fn run_tui_loop(
                         .unwrap_or(("-", 0.0));
                     let nav_hint = if state.filter_editing {
                         format!(
-                            "筛选: \"{}\" | Enter 结束编辑  Esc 清空并退出筛选  |  {} {:.2}  [{}..{}]{}",
+                            "筛选: \"{}\" | Enter 结束编辑  Esc 清空并退出筛选  |  {} {:.2}  [{}..{}]{}{}",
                             state.filter_query,
                             cursor_ts,
                             cursor_price,
@@ -455,11 +654,12 @@ fn run_tui_loop(
                                 "  |  Benchmark normalized to 100"
                             } else {
                                 ""
-                            }
+                            },
+                            tf_bar_hint
                         )
                     } else {
                         format!(
-                            "标的: ↑/↓  /:筛选  图: ←/→  平移: a/d  缩放: +/-  基准: b  复位: 0  退出: q/Esc  |  {} {:.2}  [{}..{}]{}",
+                            "标的: ↑/↓  Tab/t 表格  /:筛选  图: ←/→  平移: a/d  窗口缩放: [/]  基准: b  复位: 0  退出: q/Esc  |  {} {:.2}  [{}..{}]{}{}",
                             cursor_ts,
                             cursor_price,
                             state.chart_view.window_start,
@@ -468,11 +668,13 @@ fn run_tui_loop(
                                 "  |  Benchmark normalized to 100"
                             } else {
                                 ""
-                            }
+                            },
+                            tf_bar_hint
                         )
                     };
                     let hint = Paragraph::new(nav_hint).style(Style::default().fg(Color::DarkGray));
                     frame.render_widget(hint, rows[1]);
+                    }
                 } else if !symbols.is_empty() && state.filtered_indices.is_empty() {
                     let msg = Paragraph::new(
                         "当前筛选无匹配标的。按 / 编辑关键词，或 Esc 清空筛选并退出编辑。",
@@ -519,10 +721,55 @@ fn run_tui_loop(
                     || key.code == KeyCode::Esc
                     || key.code == KeyCode::Enter
                 {
-                    break;
+                    return Ok(SyncRunsTuiClose::Quit);
                 } else if key.code == KeyCode::Char('/') {
                     state.filter_editing = true;
+                } else if key.code == KeyCode::Tab || key.code == KeyCode::Char('t') {
+                    state.main_view = state.main_view.toggle();
+                    state.table_scroll = 0;
                 } else {
+                    if let Some((choices, cur)) = timeframe_cycle {
+                        match key.code {
+                            KeyCode::Char('+') | KeyCode::Char('=') => {
+                                return Ok(SyncRunsTuiClose::TimeframeChanged(
+                                    step_granularity(choices, cur, true),
+                                ));
+                            }
+                            KeyCode::Char('-') | KeyCode::Char('_') => {
+                                return Ok(SyncRunsTuiClose::TimeframeChanged(
+                                    step_granularity(choices, cur, false),
+                                ));
+                            }
+                            _ => {}
+                        }
+                    }
+                    if state.main_view == MainView::Table {
+                    let size = terminal
+                        .size()
+                        .map_err(|e| format!("terminal size: {e}"))?;
+                    let page = (size.height.saturating_sub(5) as usize).max(3);
+                    let rows_len = state
+                        .selected_series(symbols)
+                        .map(|s| {
+                            let sub = filtered_items_payload(bars_payload, s.symbol.as_str());
+                            collect_bars_table_rows(&sub, false).len()
+                        })
+                        .unwrap_or(0);
+                    let max_scroll = rows_len.saturating_sub(page.min(rows_len).max(1));
+                    match key.code {
+                        KeyCode::PageDown | KeyCode::Char(']') | KeyCode::Char('}') => {
+                            state.table_scroll = (state.table_scroll + page).min(max_scroll);
+                        }
+                        KeyCode::PageUp | KeyCode::Char('[') | KeyCode::Char('{') => {
+                            state.table_scroll = state.table_scroll.saturating_sub(page);
+                        }
+                        KeyCode::Home => state.table_scroll = 0,
+                        KeyCode::End => state.table_scroll = max_scroll,
+                        KeyCode::Up | KeyCode::Char('k') => state.move_symbol_up(symbols),
+                        KeyCode::Down | KeyCode::Char('j') => state.move_symbol_down(symbols),
+                        _ => {}
+                    }
+                    } else {
                     let selected_points_len = state
                         .selected_series(symbols)
                         .map(|s| s.points.len())
@@ -538,10 +785,10 @@ fn run_tui_loop(
                         }
                         KeyCode::Char('a') => state.chart_view.pan_left(selected_points_len),
                         KeyCode::Char('d') => state.chart_view.pan_right(selected_points_len),
-                        KeyCode::Char('+') | KeyCode::Char('=') => {
+                        KeyCode::Char(']') | KeyCode::Char('}') => {
                             state.chart_view.zoom_in(selected_points_len)
                         }
-                        KeyCode::Char('-') | KeyCode::Char('_') => {
+                        KeyCode::Char('[') | KeyCode::Char('{') => {
                             state.chart_view.zoom_out(selected_points_len)
                         }
                         KeyCode::Char('b') => {
@@ -555,11 +802,11 @@ fn run_tui_loop(
                         _ => {}
                     }
                     state.chart_view.normalize(selected_points_len);
+                    }
                 }
             }
         }
     }
-    Ok(())
 }
 
 /// Paged table TUI for merged bars `items` (from GET /v1/market-data/bars).
@@ -754,6 +1001,23 @@ pub fn render_sync_runs_tui(
     preferred_symbol: Option<&str>,
     benchmark_symbol: Option<&str>,
 ) -> Result<(), String> {
+    render_sync_runs_tui_with_timeframes(
+        payload,
+        preferred_symbol,
+        benchmark_symbol,
+        None,
+    )
+    .map(|_| ())
+}
+
+/// 与 [`render_sync_runs_tui`] 相同，但底栏用 **`+` / `−`** 在 `choices`（须 **细→粗**）上逐级变颗粒度，
+/// 并以 [`SyncRunsTuiClose::TimeframeChanged`] 交回上层重新拉数（端点不再循环）。
+pub fn render_sync_runs_tui_with_timeframes(
+    payload: &Value,
+    preferred_symbol: Option<&str>,
+    benchmark_symbol: Option<&str>,
+    timeframe_cycle: Option<(&[&str], &str)>,
+) -> Result<SyncRunsTuiClose, String> {
     let symbols = build_symbol_series(payload);
     enable_raw_mode().map_err(|e| format!("enable raw mode failed: {e}"))?;
     let mut stdout = std::io::stdout();
@@ -761,7 +1025,14 @@ pub fn render_sync_runs_tui(
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend).map_err(|e| format!("create terminal failed: {e}"))?;
 
-    let run_res = run_tui_loop(&mut terminal, &symbols, preferred_symbol, benchmark_symbol);
+    let run_res = run_tui_loop(
+        &mut terminal,
+        &symbols,
+        payload,
+        preferred_symbol,
+        benchmark_symbol,
+        timeframe_cycle,
+    );
 
     let _ = disable_raw_mode();
     let _ = execute!(terminal.backend_mut(), LeaveAlternateScreen);
