@@ -27,6 +27,7 @@ fn cmd_layer_must_not_import_infrastructure() {
         "cmd/data.rs",
         "cmd/pipeline.rs",
         "cmd/factor.rs",
+        "cmd/portfolio.rs",
         "cmd/signal.rs",
         "cmd/task.rs",
     ];
