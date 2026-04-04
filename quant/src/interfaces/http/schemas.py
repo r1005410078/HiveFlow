@@ -393,3 +393,58 @@ class DailyRunResponse(BaseModel):
     data: DailyRunData
     warnings: list[dict]
     errors: list[dict]
+
+
+class PortfolioOptimizeRequest(BaseModel):
+    as_of: str = Field(description="计算基准日期，格式 YYYY-MM-DD（PIT 语义）")
+    alpha: dict[str, float] | None = Field(
+        default=None,
+        description="标的 alpha 字典 {symbol: value}；缺省时自动从 L3 signal snapshot 取 composite_score",
+    )
+    prev_weights: dict[str, float] | None = Field(
+        default=None,
+        description="上期权重 {symbol: weight}；缺省时视为全零向量（首次运行）",
+    )
+    lambda_risk: float = Field(default=1.0, gt=0, description="风险厌恶系数，默认 1.0")
+    lambda_tc: float = Field(default=0.001, ge=0, description="交易成本系数，默认 0.001")
+    w_max: float = Field(default=0.30, gt=0, le=1.0, description="单标的权重上限，默认 0.30")
+    ind_max: float = Field(default=0.40, gt=0, le=1.0, description="单行业权重上限，默认 0.40")
+    lookback_days: int = Field(default=60, ge=20, le=252, description="协方差计算窗口（日历天），默认 60")
+
+
+class PortfolioTargetWeightRow(BaseModel):
+    symbol: str
+    weight: float
+    prev_weight: float
+    delta: float
+
+
+class PortfolioOptimizationReport(BaseModel):
+    objective_value: float
+    risk_contribution: float
+    turnover_cost: float
+    solver: str
+    solve_time_ms: int
+
+
+class PortfolioOptimizeData(BaseModel):
+    as_of: str
+    optimize_version: str
+    optimization_status: str
+    fallback_reason: str | None
+    target_weights: list[PortfolioTargetWeightRow]
+    optimization_report: PortfolioOptimizationReport
+
+
+class PortfolioOptimizeResponse(BaseModel):
+    schema_version: str
+    command: str
+    run_id: str
+    status: str
+    generated_at: str
+    source: str
+    advice_only: bool
+    decision_weight: int
+    data: PortfolioOptimizeData
+    warnings: list[dict]
+    errors: list[dict]
