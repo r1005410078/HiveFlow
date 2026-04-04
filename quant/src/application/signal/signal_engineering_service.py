@@ -59,7 +59,8 @@ def _neutralize_industry(
     industries = [industry_map.get(s, "other") for s in symbols]
     industry_counts = Counter(industries)
 
-    # Guard: every industry has exactly 1 symbol → OLS residuals would be zero
+    # Guard: every industry has exactly 1 symbol → OLS would absorb all variance
+    # (residuals = 0), destroying signal; return original values unchanged instead.
     if max(industry_counts.values()) < 2:
         return wide.copy()
 
