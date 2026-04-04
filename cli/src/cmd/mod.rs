@@ -2,6 +2,7 @@ pub mod data;
 pub mod factor;
 pub mod pipeline;
 pub mod signal;
+pub mod task;
 
 use crate::application::requests::AppCommand;
 use clap::{Parser, Subcommand};
@@ -19,6 +20,8 @@ pub enum Commands {
     Pipeline(pipeline::PipelineArgs),
     Factor(factor::FactorArgs),
     Data(data::DataArgs),
+    /// 异步任务：同步 run 列表、取消、失败重试
+    Task(task::TaskArgs),
     /// L3 信号工程：因子截面 → signal_matrix（需 quant 服务与 ~/.hiveflow/config.toml）
     Signal(signal::SignalArgs),
 }
@@ -49,8 +52,14 @@ impl From<Cli> for AppCommand {
                 data::DataSubcommand::UniverseSync(sync_args) => {
                     AppCommand::DataUniverseSync(sync_args.into())
                 }
-                data::DataSubcommand::Query(query_args) => AppCommand::DataQuery(query_args.into()),
+                data::DataSubcommand::Query(q) => AppCommand::DataQuery(q.into()),
                 data::DataSubcommand::Bars(bars_args) => AppCommand::DataBars(bars_args.into()),
+            },
+            Commands::Task(args) => match args.command {
+                task::TaskSubcommand::List(a) => AppCommand::TaskList(a.into()),
+                task::TaskSubcommand::Progress(a) => AppCommand::TaskProgress(a.into()),
+                task::TaskSubcommand::Cancel(a) => AppCommand::TaskCancel(a.into()),
+                task::TaskSubcommand::RetryFailed(a) => AppCommand::TaskRetryFailed(a.into()),
             },
             Commands::Signal(args) => match args.command {
                 signal::SignalSubcommand::Snapshot(snapshot) => {

@@ -84,12 +84,18 @@ cargo run -- --help
 cargo run -- pipeline daily --as-of 2026-04-01
 ```
 
-### 8.2 数据同步（异步任务 + CLI 轮询）
+### 8.2 数据同步（异步任务；默认只返回 run_id）
 
-服务端对 `POST /v1/market-data/sync` 采用**异步执行**：先返回 `run_id`，后台拉数写库。Rust CLI **默认会轮询** `GET /v1/market-data/sync-runs/{run_id}` 直到终态（`success` / `failed` / `cancelled` / `interrupted` 等），再打印最终 JSON。
+服务端对 `POST /v1/market-data/sync` 采用**异步执行**：先返回 `run_id`，后台拉数写库。Rust CLI **默认不轮询**：stderr 提示「任务已提交」并给出 `run_id`，stdout 打印受理 JSON（便于脚本解析）。需要在本终端**等到终态**时加 **`--wait`**，此时会轮询 `GET /v1/market-data/sync-runs/{run_id}` 直至 `success` / `failed` / `cancelled` / `interrupted` 等，再打印最终 JSON。
 
 ```bash
 cargo run -- data sync --days 5 --end-date 2026-04-01
+```
+
+在本终端等待同步跑完：
+
+```bash
+cargo run -- data sync --days 5 --end-date 2026-04-01 --wait
 ```
 
 带股票范围：
@@ -104,9 +110,9 @@ cargo run -- data sync \
 
 常用可选参数：
 
-- `--no-wait`：只打印受理结果（含 `run_id`），不轮询；适合脚本里自行查状态。
-- `--poll-interval-ms <毫秒>`：轮询间隔（默认约 1500）。
-- **Ctrl+C**：结束本地轮询，**不取消**服务端任务；可按提示的 `run_id` 用 `data query` 查看进度。
+- `--wait`：轮询直至终态；不加则提交后立即返回（含 `run_id`）。
+- `--poll-interval-ms <毫秒>`：与 `--wait` 合用时的轮询间隔（默认约 1500）。
+- **Ctrl+C**（仅在 `--wait` 时）：结束本地轮询，**不取消**服务端任务；可按提示的 `run_id` 用 **`hf task progress --run-id <run_id>`** 查看进度（或 **`hf task progress --watch`** 继续跟到终态）。
 
 临时覆盖超时（不改配置文件）：
 
@@ -120,47 +126,66 @@ cargo run -- data sync --days 90 --end-date 2026-04-01 --timeout-ms 120000
 cargo run -- data sync-cancel --run-id <run_id>
 ```
 
-若某次同步**部分标的失败**，可基于该次 `run_id` 只重试失败队列（默认同样轮询到终态）：
+若某次同步**部分标的失败**，可基于该次 `run_id` 只重试失败队列（默认只提交并返回新 `run_id`；加 `--wait` 则轮询到终态）：
 
 ```bash
 cargo run -- data sync-retry-failed --from-run-id <run_id>
 ```
 
-只发起重试、不等待结束：
+在本终端等待重试任务结束：
 
 ```bash
-cargo run -- data sync-retry-failed --from-run-id <run_id> --no-wait
+cargo run -- data sync-retry-failed --from-run-id <run_id> --wait
 ```
 
-### 8.3 数据查询
+### 8.3 同步任务列表（`hf task list`）
 
 JSON 输出（默认，适合 AI）：
 
 ```bash
-cargo run -- data query --days 7 --output json
+cargo run -- task list --days 7 --output json
 ```
 
 表格输出（适合人工查看）：
 
 ```bash
-cargo run -- data query --days 7 --output table
+cargo run -- task list --days 7 --output table
 ```
 
 按状态筛选（可选）：
 
 ```bash
-cargo run -- data query --days 7 --status success --output table
+cargo run -- task list --days 7 --status success --output table
 ```
 
 说明：
-- `data query` 对应 `GET /v1/market-data/sync-runs`，用于查看**近期**同步任务列表与元数据（含各次 `run_id`、状态）。
-- `--output` 仅支持 `json|table`。
-- 常用过滤参数：`--timeframe`、`--status`、`--request-id`、`--limit`。
+- `task list` 对应 `GET /v1/market-data/sync-runs`，查看**近期行情同步任务**（`run_id`、状态等），**不是** K 线。
+- 别名：`hf task sync-runs`（与 `list` 等价）。
 
-查询时可临时覆盖超时：
+**运行中进度**（`hf task progress`，别名 `hf task status`）：默认识别近期唯一 `running` 任务并拉详情；或 **`--run-id`** 指定；**`--watch`** 在本终端轮询直至终态（与 `data sync --wait` 同类体验）。**`--output json|table`**（默认 `table`）。
 
 ```bash
-cargo run -- data query --days 30 --output table --timeout-ms 120000
+cargo run -- task progress
+cargo run -- task progress --run-id <run_id> --output json
+cargo run -- task progress --run-id <run_id> --watch
+```
+
+### 8.3.1 按窗口查 K 线（`hf data query`）
+
+便捷入口：在**近 N 天**窗口内查 bars（`GET /v1/market-data/bars`），支持 `--symbols` 与 `--universe`（并集）。默认 **`--output tui`** 为分页表格；脚本用 `--output json`。
+
+```bash
+cargo run -- data query --days 7 --symbols 600519.SH --output tui
+cargo run -- data query --days 14 --universe self_select --timeframe 1d --output json
+```
+
+显式 `start_date`/`end_date`、chart 等仍用 **8.4 `data bars`**。
+- `data query`：`--output json|tui|table`；`task list`：`--output json|table`，过滤参数含 `--timeframe`、`--status`、`--request-id`、`--limit`；`task progress`：`--output json|table`，另支持 `--watch`、`--poll-interval-ms`。
+
+查询任务列表时可临时覆盖超时：
+
+```bash
+cargo run -- task list --days 30 --output table --timeout-ms 120000
 ```
 
 ### 8.4 K 线查询（data bars）

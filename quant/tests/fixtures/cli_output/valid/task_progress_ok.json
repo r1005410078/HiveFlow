@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0.0",
+  "command": "hf task progress",
+  "run_id": "run_valid_task_progress_001",
+  "status": "ok",
+  "generated_at": "2026-04-01T12:01:00+00:00",
+  "source": "system",
+  "advice_only": false,
+  "decision_weight": 1,
+  "data": {
+    "run_id": "run_demo_running_001",
+    "status": "running",
+    "phase": "fetching_bars",
+    "progress": {
+      "total_symbols": 100,
+      "completed_symbols": 42,
+      "current_symbol": "600519.SH",
+      "total_days": 30,
+      "completed_days": 12
+    },
+    "selection_mode": "universe",
+    "end_date": "2026-04-01",
+    "timeframe": "1d",
+    "days": 30
+  },
+  "warnings": [],
+  "errors": []
+}

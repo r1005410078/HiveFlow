@@ -306,7 +306,7 @@ sequenceDiagram
 
 #### CLI（建议）
 
-- `hf data sync retry-failed --from-run-id <UUID> [--days ...] [--end-date ...] [--no-wait] ...`：调用上述 API，再进入轮询（与常规模板一致）。
+- `hf data sync retry-failed --from-run-id <UUID> [--days ...] [--end-date ...] [--wait] ...`：调用上述 API；默认仅提交并打印 JSON，**`--wait`** 时再进入轮询（与 `data sync` 一致）。
 
 #### 与 `request_id` 幂等
 
@@ -370,36 +370,40 @@ sequenceDiagram
 
 ## 6. CLI 行为
 
+**实现修订（2026-04-04 后）**：为避免长时间卡在 `resolving_symbols` 等阶段，**默认不轮询**：受理成功后 **stderr** 中文提示「任务已提交」并打印 **run_id**，**stdout** 打印受理 JSON；需要在本终端阻塞直至终态时显式传 **`--wait`**（原稿中的 **`--no-wait`** 语义由「默认轮询 + 可选跳过」改为「默认跳过 + `--wait` 轮询」）。`--poll-interval-ms` 仅与 **`--wait`** 合用。
+
 ### 6.1 `hf data sync`
 
 1. **POST** `/v1/market-data/sync`，提交阶段使用**较短**超时（如 10s），与「整次同步」解耦。
-2. 若 **202**：进入轮询循环：
-   - **GET** `/v1/market-data/sync-runs/{run_id}`，间隔默认 **1500ms**（可配置）。
-   - 使用 `indicatif` 展示进度条/ETA；展示 **`current_symbol`**、**已同步/待同步数量**（来自 `symbols_*_count`）；在 **`--verbose`** 或 `table` 输出模式下展示 **`symbols_done_for_run` / `symbols_pending_for_run` 截断列表**（与 API 截断策略一致）。
+2. 若 **202**（或等价「已入队 + `run_id`」）：
+   - **默认**：不进入轮询；提示用户 `run_id` 与 **`data sync-runs`**（别名 `data query`）用法，stdout 输出受理 JSON。
+   - 若带 **`--wait`**：进入轮询循环：
+     - **GET** `/v1/market-data/sync-runs/{run_id}`，间隔默认 **1500ms**（`--poll-interval-ms` 可配置）。
+     - 使用 `indicatif` 展示进度条/ETA；展示 **`current_symbol`**、**已同步/待同步数量**（来自 `symbols_*_count`）；在 **`--verbose`** 或 `table` 输出模式下展示 **`symbols_done_for_run` / `symbols_pending_for_run` 截断列表**（与 API 截断策略一致）。
 3. 若 **200**（幂等命中）：直接输出最终 JSON（与现行为一致）。
-4. 若 **409**：提示已有任务及 `running_run_id`，建议用户 `data query` 或等待。
-5. **Ctrl+C**：进程退出前打印「服务端仍在执行」及 `run_id`，便于后续查询；可选后续增强为**自动调用 cancel**（需显式 flag，避免误杀他人任务，见实现计划）。
+4. 若 **409**：提示已有任务及 `running_run_id`，建议用户 **`data sync-runs`** 或等待。
+5. **Ctrl+C**（仅 **`--wait`** 轮询时）：进程退出前打印「服务端仍在执行」及 `run_id`，便于后续查询；可选后续增强为**自动调用 cancel**（需显式 flag，避免误杀他人任务，见实现计划）。
 
 ### 6.1.1 `hf data sync cancel`（建议）
 
 - 参数：`--run-id <UUID>`（必填），`--timeout-ms`（调用 cancel API 的超时）。
 - 行为：`POST /v1/market-data/sync-runs/{run_id}/cancel`，将 stdout 包装为现有 CLI JSON 信封（与仓库 `CLI_OUTPUT_SCHEMA` 一致）。
-- 成功后用户可继续 `hf data query --request-id ...` 或按 `run_id` 查询直至 `status=cancelled`。
+- 成功后用户可继续 `hf data sync-runs --request-id ...`（别名 `hf data query`）或按 `run_id` 查询直至 `status=cancelled`。
 
 ### 6.1.2 `hf data sync retry-failed`（建议）
 
-- 参数：`--from-run-id <UUID>`（必填）；可选 `--days`、`--end-date`、`--timeframe` 覆盖继承值；`--no-wait` / 轮询与 §6.1 一致。
+- 参数：`--from-run-id <UUID>`（必填）；可选 `--days`、`--end-date`、`--timeframe` 覆盖继承值；**`--wait`** / 轮询与 §6.1 一致（默认不轮询）。
 - 行为：调用 `POST /v1/market-data/sync-runs/{run_id}/retry-failed`（或等价 `POST /sync` + `retry_from_run_id`，以实现为准）。
 
 ### 6.2 新增参数（建议）
 
-- `--no-wait`：仅提交，打印 `run_id` 后退出。
-- `--poll-interval-ms`：默认 `1500`。
+- **`--wait`**：在本终端轮询直至终态；**不加则默认仅提交**，stderr 提示 + stdout JSON（含 `run_id`）。
+- `--poll-interval-ms`：与 **`--wait`** 合用时轮询间隔，默认 `1500`。
 - `--timeout-ms`：**语义调整**为「客户端愿意等待的总时长（轮询+提交）」或保留为「单次 HTTP 超时」并另增 `--wait-timeout-ms`——**实现计划与 CLI help 中必须写死一种**，避免与现网配置冲突。
 
 ### 6.3 `hf data universe-sync`
 
-- 与 `data sync` 对齐：提交 + 轮询 + `--no-wait`。
+- 与 `data sync` 对齐：默认提交即返回；需要阻塞时加 **`--wait`**（若该子命令实现轮询）。
 
 ---
 
@@ -444,7 +448,7 @@ sequenceDiagram
 
 - **Python**：`SyncWorker` 串行与 409 条件、`SyncService` 带 progress 回调的循环（mock store/repo）；**cancel**：在检查点退出并写入 `cancelled`；**progress**：断言 `current_symbol`、`symbols_*_count` 与截断列表、`symbol_lists_truncated` 行为；**失败队列与重试**：mock Provider 失败 N 次后成功、断言 `attempt_count` 与审计表 UPSERT；**retry-failed**：源 run 终态后新 run 仅含失败标的。
 - **Contract**：202/409/GET 单条 run；**POST cancel** 200 幂等、404；轮询到 `cancelled` 终态；GET 单条 **`progress` 含标的维度字段**；**POST retry-failed** 422/202。
-- **Rust**：mock server：202 → 轮询 → 终态；409；`--no-wait`；**sync cancel** 成功与幂等；轮询 UI/verbose 能消费 `symbols_done_for_run` / `symbols_pending_for_run`（或计数）；**sync retry-failed** 提交流程。
+- **Rust**：mock server：202 →（**`--wait`** 时）轮询 → 终态；409；默认不轮询 stdout JSON；**sync cancel** 成功与幂等；轮询 UI/verbose 能消费 `symbols_done_for_run` / `symbols_pending_for_run`（或计数）；**sync retry-failed** 提交流程。
 - 合入前：`make architecture-check` 与 `make check`。
 
 ---

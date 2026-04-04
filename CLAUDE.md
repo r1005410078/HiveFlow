@@ -68,13 +68,20 @@ make db-reset-db-volume                        # 清除数据卷（破坏性）
 #   timeout_ms = 10000
 #   retry = 1
 make run-server                                # 启动 Python HTTP 服务端
+make restart-run-server                        # 结束 HF_PORT（默认 8000）监听进程后启动 run-server
 make run-server-dev                            # 带热重载启动（uvicorn --reload）
 make run-pipeline AS_OF=2026-04-01            # 运行日频 pipeline（需服务端已启动）
 
-# ── CLI data query 输出模式 ─────────────────────────────
-# --output json|table|chart|tui（默认 json）
-cargo run -- data query --days 7 --output table
-cargo run -- data query --days 30 --symbols 600519.SH --output tui
+# ── CLI task / data query / data bars ───────────────────
+# task list：--output json|table，同步任务元数据；别名 task sync-runs
+cargo run -- task list --days 7 --output table
+# task progress：运行中进度；别名 task status；--watch 轮询至终态
+cargo run -- task progress
+cargo run -- task progress --run-id <run_id> --watch
+# data query：近窗 K 线，--output json|tui|table（默认 tui 分页）
+cargo run -- data query --days 7 --symbols 600519.SH --output tui
+# data bars：--output json|table|chart|tui（显式区间）
+cargo run -- data bars --symbols 600519.SH --timeframe 1d --start-date 2026-03-01 --end-date 2026-04-01 --output tui
 # TUI 键位：↑↓/jk 切换标的，←→/hl 移动光标，a/d 平移，+/- 缩放，0 重置，q 退出
 ```
 

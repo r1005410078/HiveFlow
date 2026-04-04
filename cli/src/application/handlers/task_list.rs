@@ -1,10 +1,10 @@
-use crate::application::requests::DataQueryRequest;
+use crate::application::requests::TaskListRequest;
 use crate::error::AppError;
 use crate::infrastructure::config_loader::load_default_config;
 use crate::infrastructure::http_client::get_market_data_sync_runs;
 use crate::infrastructure::table_renderer::render_sync_runs_table;
 
-pub fn handle(args: DataQueryRequest) -> Result<(), AppError> {
+pub fn handle(args: TaskListRequest) -> Result<(), AppError> {
     let cfg = load_default_config()?;
     let timeout_ms = args.timeout_ms.unwrap_or(cfg.timeout_ms);
     let out = get_market_data_sync_runs(
@@ -25,7 +25,7 @@ pub fn handle(args: DataQueryRequest) -> Result<(), AppError> {
         }
         other => {
             return Err(AppError::InvalidArgs(format!(
-                "unsupported --output value for data query: {other} (expected: json|table)"
+                "unsupported --output value for task list: {other} (expected: json|table)"
             )));
         }
     }

@@ -159,7 +159,8 @@ cd cli && cargo run -- factor replay --start-date YYYY-MM-DD --end-date YYYY-MM-
 - `POST /v1/market-data/sync-runs/{run_id}/cancel`：协作式取消
 - `POST /v1/market-data/sync-runs/{run_id}/retry-failed`：仅补拉失败标的
 - `POST /v1/market-data/universes/sync`：标的池同步（异步 202）
-- `GET /v1/market-data/sync-runs`：行情查询
+- `GET /v1/market-data/sync-runs`：同步任务列表（CLI：`hf task list`，别名 `hf task sync-runs`）
+- `GET /v1/market-data/sync-runs/{run_id}`：单任务详情含进度（CLI：`hf task progress`，别名 `hf task status`）
 - `GET /v1/market-data/bars`：行情 K 线查询
 - `POST /api/v1/signal/snapshot`：L3 信号快照
 - `POST /api/v1/signal/evaluate`：L3 信号质量评估（IC + 漂移检测，需 DB）
@@ -200,7 +201,7 @@ cd cli && cargo run -- factor replay --start-date YYYY-MM-DD --end-date YYYY-MM-
 - **Factor 回放**：`hf factor replay`，summary + daily_items，区分 fetch_status/release_gate_status
 - **CLI 可读性**：`--output table` 中文标题，top 候选最多 5 条
 - **L3 信号**：`signal_matrix`（coverage_rate、transform_stats）；`hf signal snapshot --as-of ... [--output json|table]`；信号评估 `hf signal evaluate --start-date ... --end-date ... [--forward-days N] [--output json|table]`（Rank IC + drift diagnostics）；详见 `--help` 与 `docs/CLI_OUTPUT_EXAMPLES.md`
-- **L1 异步同步**：`hf data sync` 提交→202→轮询进度条（current_symbol/done/pending/ETA）；`hf data sync cancel --run-id`；`hf data sync retry-failed --from-run-id`；失败队列自动重试（MAX_SYMBOL_ATTEMPTS=3）+ 审计表 `sync_run_symbol_failures`；startup 孤儿 run 收口为 `interrupted`
+- **L1 异步同步**：`hf data sync` 提交→202→**默认** stderr 提示 + stdout JSON（含 run_id）；**`hf task progress`**（别名 `hf task status`）查看运行中进度，**`--watch`** 轮询至终态（与 **`--wait`** 同类）；任务列表 **`hf task list`**（别名 `hf task sync-runs`）；取消/重试 **`hf task cancel` / `hf task retry-failed`**（与 `hf data sync-cancel`、`hf data sync-retry-failed` 等价）；近窗 K 线 **`hf data query`**（默认 TUI 分页）；失败队列自动重试（MAX_SYMBOL_ATTEMPTS=3）+ 审计表 `sync_run_symbol_failures`；startup 孤儿 run 收口为 `interrupted`
 
 ## 8. Superpowers 工作流（强约束）
 

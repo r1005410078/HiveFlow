@@ -161,6 +161,84 @@ pub fn render_sync_runs_table(payload: &Value, verbose: bool) -> String {
     format!("Sync Runs\n{}\n", table)
 }
 
+/// 单行同步任务详情的人类可读摘要（`hf task progress`）。
+pub fn render_sync_run_progress_summary(detail: &Value, verbose: bool) -> String {
+    let mut table = Table::new();
+    table
+        .load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec![Cell::new("field"), Cell::new("value")]);
+
+    let progress = detail.get("progress").unwrap_or(&Value::Null);
+    let total_sym = progress
+        .get("total_symbols")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let done_sym = progress
+        .get("completed_symbols")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let sym_progress = if total_sym > 0 {
+        format!("{done_sym}/{total_sym}")
+    } else {
+        format!("{done_sym}")
+    };
+    let total_days = progress
+        .get("total_days")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let done_days = progress
+        .get("completed_days")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let day_progress = if total_days > 0 {
+        format!("{done_days}/{total_days}")
+    } else {
+        String::new()
+    };
+
+    let mut rows: Vec<(String, String)> = vec![
+        ("run_id".into(), as_str(detail.get("run_id"))),
+        ("status".into(), as_str(detail.get("status"))),
+        ("phase".into(), as_str(detail.get("phase"))),
+        ("symbols_done/total".into(), sym_progress),
+        (
+            "current_symbol".into(),
+            as_str(progress.get("current_symbol")),
+        ),
+        ("selection_mode".into(), as_str(detail.get("selection_mode"))),
+        ("end_date".into(), as_str(detail.get("end_date"))),
+        ("timeframe".into(), as_str(detail.get("timeframe"))),
+        ("days".into(), as_i64(detail.get("days"))),
+        ("written_rows".into(), as_i64(detail.get("written_rows"))),
+    ];
+    if !day_progress.is_empty() {
+        rows.push(("days_done/total".into(), day_progress));
+    }
+    if verbose {
+        rows.push((
+            "request_id".into(),
+            as_str(detail.get("request_id")),
+        ));
+        rows.push(("started_at".into(), as_str(detail.get("started_at"))));
+        rows.push(("finished_at".into(), as_str(detail.get("finished_at"))));
+        rows.push(("error_code".into(), as_str(detail.get("error_code"))));
+        rows.push((
+            "error_message".into(),
+            truncate_middle(&as_str(detail.get("error_message")), 24, 16),
+        ));
+        rows.push((
+            "cancel_requested_at".into(),
+            as_str(detail.get("cancel_requested_at")),
+        ));
+    }
+    for (k, v) in rows {
+        table.add_row(vec![Cell::new(k), Cell::new(v)]);
+    }
+
+    format!("Sync run progress\n{}\n", table)
+}
+
 pub fn render_market_data_bars_table(payload: &Value, verbose: bool) -> String {
     let mut table = Table::new();
     table

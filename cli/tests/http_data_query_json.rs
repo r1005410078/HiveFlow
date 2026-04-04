@@ -1,8 +1,9 @@
 use hf_cli::infrastructure::http_client::get_market_data_sync_runs;
 use mockito::Server;
 
+/// HTTP client for sync-runs (`hf task list`); filename is historical.
 #[test]
-fn data_query_json_calls_sync_runs_endpoint() {
+fn task_list_client_calls_sync_runs_endpoint() {
     let mut server = Server::new();
     let _mock = server
         .mock("GET", "/v1/market-data/sync-runs")

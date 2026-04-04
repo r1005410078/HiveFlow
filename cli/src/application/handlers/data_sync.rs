@@ -42,16 +42,21 @@ pub fn handle(args: DataSyncRequest) -> Result<(), AppError> {
     match result {
         Ok(value) => {
             if is_async_accepted(&value) {
-                if args.no_wait {
-                    print!("{value}");
-                    return Ok(());
+                if args.wait {
+                    let run_id = value["run_id"].as_str().unwrap_or("unknown").to_string();
+                    return poll_sync_progress(&cfg.server_url, &run_id, timeout_ms, poll_interval);
                 }
-                let run_id = value["run_id"].as_str().unwrap_or("unknown").to_string();
-                poll_sync_progress(&cfg.server_url, &run_id, timeout_ms, poll_interval)
-            } else {
+                let run_id = value["run_id"].as_str().unwrap_or("unknown");
+                eprintln!("任务已提交，服务端后台执行中。");
+                eprintln!("run_id={run_id}");
+                eprintln!("查看进度: hf task progress --run-id {run_id}（或 hf task progress 自动发现）");
+                eprintln!("在本终端等到结束: hf task progress --run-id {run_id} --watch（或提交时加 --wait）");
+                eprintln!("历史列表: hf task list --days 7 --output table");
                 print!("{value}");
-                Ok(())
+                return Ok(());
             }
+            print!("{value}");
+            Ok(())
         }
         Err(AppError::Upstream(409, ref body)) => {
             let running_id = body["running_run_id"].as_str().unwrap_or("unknown");

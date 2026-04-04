@@ -141,9 +141,10 @@ class SyncService:
         manifest_ids: list[str],
         generated_at: str,
         run: dict | None = None,
+        **kwargs,
     ) -> dict:
         run = run or {}
-        return {
+        summary: dict = {
             "status": run.get("status", "success"),
             "run_id": run.get("run_id", ""),
             "request_id": run.get("request_id", request_id),
@@ -160,6 +161,12 @@ class SyncService:
             or run.get("started_at")
             or generated_at,
         }
+        for k in ("error_code", "error_message"):
+            if k in kwargs:
+                summary[k] = kwargs[k]
+            elif run.get(k) is not None:
+                summary[k] = run[k]
+        return summary
 
     def _resolve_effective_symbols(
         self,
@@ -328,8 +335,6 @@ class SyncService:
                     except ValueError:
                         continue
 
-        has_incremental_checkpoint = any(d > window_start for d in checkpoint_starts.values())
-
         # ── main fetch loop ───────────────────────────────────
         total_written_rows = 0
         has_any_rows = False
@@ -488,11 +493,15 @@ class SyncService:
         elif not has_any_rows and made_fetch_call:
             if last_provider_error is not None:
                 raise RuntimeError(str(last_provider_error)) from last_provider_error
-            if not has_incremental_checkpoint:
-                raise ValueError("no market data fetched for requested scope")
+            # Data source returned no rows but no errors (e.g., 1m not available
+            # for historical dates, non-trading days, or full-window holiday).
+            # This is not a programming error — succeed with a diagnostic code.
             final_status = "success"
-            error_code = None
-            error_message = None
+            error_code = "NO_DATA_RETURNED"
+            error_message = (
+                "data source returned no rows for the requested scope/timeframe "
+                f"(symbols={len(effective_symbols)}, days={days}, timeframe={timeframe})"
+            )
         else:
             final_status = "success"
             error_code = None
@@ -688,5 +697,7 @@ class SyncService:
             written_rows=result["written_rows"],
             manifest_ids=result["manifest_ids"],
             generated_at=result["generated_at"],
+            error_code=result.get("error_code"),
+            error_message=result.get("error_message"),
             run=sync_run_payload,
         )

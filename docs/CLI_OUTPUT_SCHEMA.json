@@ -120,7 +120,7 @@
     {
       "if": {
         "properties": {
-          "command": { "const": "hf data query" }
+          "command": { "const": "hf task list" }
         }
       },
       "then": {
@@ -150,6 +150,83 @@
                     "timeframe": { "type": "string", "enum": ["1d", "1m"] },
                     "symbols_count": { "type": "integer", "minimum": 0 },
                     "manifest_id": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "command": { "const": "hf task progress" }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["run_id", "status", "phase", "progress"],
+            "properties": {
+              "run_id": { "type": "string", "minLength": 1 },
+              "status": { "type": "string" },
+              "phase": { "type": "string" },
+              "progress": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "total_symbols": { "type": "integer", "minimum": 0 },
+                  "completed_symbols": { "type": "integer", "minimum": 0 },
+                  "current_symbol": { "type": "string" },
+                  "total_days": { "type": "integer", "minimum": 0 },
+                  "completed_days": { "type": "integer", "minimum": 0 }
+                }
+              },
+              "selection_mode": { "type": "string" },
+              "end_date": { "type": "string" },
+              "timeframe": { "type": "string" },
+              "days": { "type": "integer" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "command": { "const": "hf data query" }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["items"],
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "required": [
+                    "symbol",
+                    "timeframe",
+                    "bar_time",
+                    "close"
+                  ],
+                  "properties": {
+                    "symbol": { "type": "string", "minLength": 1 },
+                    "timeframe": { "type": "string" },
+                    "bar_time": { "type": "string", "minLength": 1 },
+                    "close": { "type": "number" },
+                    "open": { "type": "number" },
+                    "high": { "type": "number" },
+                    "low": { "type": "number" },
+                    "volume": { "type": "number" }
                   }
                 }
               }

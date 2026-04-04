@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0.0",
-  "command": "hf data query",
-  "run_id": "run_valid_data_query_001",
+  "command": "hf task list",
+  "run_id": "run_valid_task_list_001",
   "status": "ok",
   "generated_at": "2026-04-01T12:01:00+00:00",
   "source": "system",

@@ -12,7 +12,10 @@ use ratatui::{
     style::{Color, Modifier, Style},
     symbols,
     text::{Line, Span},
-    widgets::{Axis, Block, Borders, Chart, Dataset, List, ListItem, ListState, Paragraph},
+    widgets::{
+        Axis, Block, Borders, Cell, Chart, Dataset, List, ListItem, ListState, Paragraph, Row,
+        Table,
+    },
     Terminal,
 };
 use serde_json::Value;
@@ -425,6 +428,167 @@ fn run_tui_loop(
         }
     }
     Ok(())
+}
+
+/// Paged table TUI for merged bars `items` (from GET /v1/market-data/bars).
+/// Keys: PgUp/PgDn or `[`/`]` page, Home/End, q/Esc/Enter exit.
+pub fn render_market_data_bars_paged_table_tui(payload: &Value, verbose: bool) -> Result<(), String> {
+    let rows = collect_bars_table_rows(payload, verbose);
+    if rows.is_empty() {
+        return Err("no bar rows to display".to_string());
+    }
+
+    enable_raw_mode().map_err(|e| format!("enable raw mode failed: {e}"))?;
+    let mut stdout = std::io::stdout();
+    execute!(stdout, EnterAlternateScreen).map_err(|e| format!("enter alt screen failed: {e}"))?;
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend).map_err(|e| format!("create terminal failed: {e}"))?;
+
+    let mut offset: usize = 0;
+    let mut quit = false;
+    while !quit {
+        let size = terminal.size().map_err(|e| format!("terminal size: {e}"))?;
+        let page = (size.height.saturating_sub(5) as usize).max(3);
+        let max_scroll = rows.len().saturating_sub(page.min(rows.len()).max(1));
+        offset = offset.min(max_scroll);
+
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                let chunks = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Min(3), Constraint::Length(1)])
+                    .split(area);
+                let table_area = chunks[0];
+                let hint_area = chunks[1];
+
+                let block = Block::default()
+                    .title(" Market bars (paged) ")
+                    .borders(Borders::ALL);
+                let inner = block.inner(table_area);
+                frame.render_widget(block, table_area);
+
+                let header = Row::new(vec![
+                    Cell::from("bar_time"),
+                    Cell::from("symbol"),
+                    Cell::from("tf"),
+                    Cell::from("close"),
+                ])
+                .style(Style::default().add_modifier(Modifier::BOLD));
+                let data_rows: Vec<Row> = rows
+                    .iter()
+                    .skip(offset)
+                    .take(page)
+                    .map(|r| {
+                        Row::new(
+                            r.iter()
+                                .map(|c| Cell::from(c.as_str()))
+                                .collect::<Vec<_>>(),
+                        )
+                    })
+                    .collect();
+                let shown = data_rows.len();
+
+                let widths = [
+                    Constraint::Percentage(38),
+                    Constraint::Percentage(18),
+                    Constraint::Percentage(10),
+                    Constraint::Percentage(28),
+                ];
+                let table = Table::new(data_rows, widths)
+                    .header(header)
+                    .block(Block::default());
+                frame.render_widget(table, inner);
+
+                let hint = format!(
+                    "PgUp/PgDn [ ] Home/End | rows {}-{} / {} | q/Esc quit{}",
+                    offset + 1,
+                    offset + shown,
+                    rows.len(),
+                    if verbose { " | verbose" } else { "" }
+                );
+                let p = Paragraph::new(hint).style(Style::default().fg(Color::DarkGray));
+                frame.render_widget(p, hint_area);
+            })
+            .map_err(|e| format!("draw failed: {e}"))?;
+
+        if event::poll(Duration::from_millis(200)).map_err(|e| format!("poll: {e}"))? {
+            if let Event::Key(key) = event::read().map_err(|e| format!("read key: {e}"))? {
+                let page = (terminal.size().map_err(|e| format!("terminal size: {e}"))?
+                    .height
+                    .saturating_sub(5) as usize)
+                    .max(3);
+                let max_scroll = rows.len().saturating_sub(page.min(rows.len()).max(1));
+                match key.code {
+                    KeyCode::Char('q') | KeyCode::Esc | KeyCode::Enter => quit = true,
+                    KeyCode::PageDown | KeyCode::Char(']') | KeyCode::Char('}') => {
+                        offset = (offset + page).min(max_scroll);
+                    }
+                    KeyCode::PageUp | KeyCode::Char('[') | KeyCode::Char('{') => {
+                        offset = offset.saturating_sub(page);
+                    }
+                    KeyCode::Home => offset = 0,
+                    KeyCode::End => offset = max_scroll,
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    let _ = disable_raw_mode();
+    let _ = execute!(terminal.backend_mut(), LeaveAlternateScreen);
+    let _ = terminal.show_cursor();
+    Ok(())
+}
+
+fn collect_bars_table_rows(payload: &Value, verbose: bool) -> Vec<Vec<String>> {
+    let mut out: Vec<Vec<String>> = Vec::new();
+    let Some(items) = payload.get("items").and_then(Value::as_array) else {
+        return out;
+    };
+    for item in items {
+        let bar_time = item
+            .get("bar_time")
+            .and_then(Value::as_str)
+            .unwrap_or("-")
+            .to_string();
+        let symbol = item
+            .get("symbol")
+            .and_then(Value::as_str)
+            .unwrap_or("-")
+            .to_string();
+        let tf = item
+            .get("timeframe")
+            .and_then(Value::as_str)
+            .unwrap_or("-")
+            .to_string();
+        let close = item
+            .get("close")
+            .and_then(Value::as_f64)
+            .map(|v| format!("{v:.4}"))
+            .unwrap_or_else(|| "-".to_string());
+        out.push(vec![bar_time, symbol, tf, close]);
+        if verbose {
+            let open = item.get("open").and_then(Value::as_f64);
+            let high = item.get("high").and_then(Value::as_f64);
+            let low = item.get("low").and_then(Value::as_f64);
+            let vol = item.get("volume").and_then(Value::as_f64);
+            let detail = format!(
+                "o/h/l={}/{}/{} vol={}",
+                open.map(|v| format!("{v:.2}")).unwrap_or_default(),
+                high.map(|v| format!("{v:.2}")).unwrap_or_default(),
+                low.map(|v| format!("{v:.2}")).unwrap_or_default(),
+                vol.map(|v| format!("{v:.0}")).unwrap_or_default(),
+            );
+            out.push(vec![
+                "".to_string(),
+                detail,
+                "".to_string(),
+                "".to_string(),
+            ]);
+        }
+    }
+    out
 }
 
 pub fn render_sync_runs_tui(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 
 
@@ -28,6 +29,33 @@ def _row_to_run_dict(row: tuple) -> dict:
             d["progress"] = {}
     d.setdefault("progress", {})
     return d
+
+
+def enrich_sync_run_dict(d: dict) -> dict:
+    """When async insert used placeholders (universe/default), DB may still show
+    effective_symbols_count=0 and empty symbols_hash until finalize runs; also helps
+    older rows. Derive from progress JSON for API/CLI consistency."""
+    out = dict(d)
+    prog = out.get("progress")
+    if not isinstance(prog, dict):
+        return out
+    mode = out.get("selection_mode")
+    if mode not in ("universe", "default"):
+        return out
+    if out.get("effective_symbols_count", 0) == 0:
+        ts = prog.get("total_symbols")
+        if isinstance(ts, int) and ts > 0:
+            out["effective_symbols_count"] = ts
+    if not out.get("symbols_hash"):
+        done = prog.get("symbols_done_for_run") or []
+        pend = prog.get("symbols_pending_for_run") or []
+        if isinstance(done, list) and isinstance(pend, list):
+            syms = sorted(
+                {str(s) for s in done if s} | {str(s) for s in pend if s}
+            )
+            if syms:
+                out["symbols_hash"] = hashlib.sha256(",".join(syms).encode()).hexdigest()
+    return out
 
 
 class TimescaleBarStore:
@@ -78,7 +106,7 @@ class TimescaleBarStore:
             row = cur.fetchone()
         finally:
             cur.close()
-        return _row_to_run_dict(row) if row else None
+        return enrich_sync_run_dict(_row_to_run_dict(row)) if row else None
 
     def get_checkpoints(self, symbols: list[str], timeframe: str) -> dict[str, str]:
         if not symbols:
@@ -176,7 +204,7 @@ class TimescaleBarStore:
             rows = cur.fetchall()
         finally:
             cur.close()
-        return [_row_to_run_dict(row) for row in rows]
+        return [enrich_sync_run_dict(_row_to_run_dict(row)) for row in rows]
 
     # ── async sync 专用方法 ──────────────────────────────────────
 
@@ -214,7 +242,7 @@ class TimescaleBarStore:
             row = cur.fetchone()
         finally:
             cur.close()
-        return _row_to_run_dict(row) if row else None
+        return enrich_sync_run_dict(_row_to_run_dict(row)) if row else None
 
     def get_running_sync_run(self) -> dict | None:
         sql = f"select {_SYNC_RUN_COLUMNS} from sync_runs where status = 'running' order by started_at desc limit 1"
@@ -224,7 +252,7 @@ class TimescaleBarStore:
             row = cur.fetchone()
         finally:
             cur.close()
-        return _row_to_run_dict(row) if row else None
+        return enrich_sync_run_dict(_row_to_run_dict(row)) if row else None
 
     def update_sync_progress(self, run_id: str, phase: str, progress: dict) -> None:
         sql = """
@@ -250,27 +278,45 @@ class TimescaleBarStore:
         error_message: str | None = None,
         phase: str | None = None,
         progress: dict | None = None,
+        effective_symbols_count: int | None = None,
+        symbols_hash: str | None = None,
     ) -> None:
-        sql = """
+        """Persist terminal state. Optionally refresh symbol stats resolved at runtime (universe/default)."""
+        final_phase = phase or status
+        set_parts = [
+            "status = %s",
+            "phase = %s",
+            "written_rows = %s",
+            "manifest_ids = %s",
+            "error_code = %s",
+            "error_message = %s",
+            "progress = %s::jsonb",
+            "finished_at = now()",
+        ]
+        params: list[object] = [
+            status,
+            final_phase,
+            written_rows,
+            manifest_ids or [],
+            error_code,
+            error_message,
+            json.dumps(progress or {}),
+        ]
+        if effective_symbols_count is not None:
+            set_parts.append("effective_symbols_count = %s")
+            params.append(effective_symbols_count)
+        if symbols_hash is not None:
+            set_parts.append("symbols_hash = %s")
+            params.append(symbols_hash)
+        params.append(run_id)
+        sql = f"""
         update sync_runs
-        set status = %s,
-            phase = %s,
-            written_rows = %s,
-            manifest_ids = %s,
-            error_code = %s,
-            error_message = %s,
-            progress = %s::jsonb,
-            finished_at = now()
+        set {", ".join(set_parts)}
         where run_id = %s::uuid
         """
-        final_phase = phase or status
         cur = self._conn.cursor()
         try:
-            cur.execute(sql, [
-                status, final_phase, written_rows,
-                manifest_ids or [], error_code, error_message,
-                json.dumps(progress or {}), run_id,
-            ])
+            cur.execute(sql, params)
             self._conn.commit()
         finally:
             cur.close()

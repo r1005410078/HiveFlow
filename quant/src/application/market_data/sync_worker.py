@@ -145,6 +145,8 @@ class SyncWorker:
                 error_code=result.get("error_code"),
                 error_message=result.get("error_message"),
                 progress=result.get("progress"),
+                effective_symbols_count=result.get("effective_symbols_count"),
+                symbols_hash=result.get("symbols_hash"),
             )
 
         except Exception as exc:

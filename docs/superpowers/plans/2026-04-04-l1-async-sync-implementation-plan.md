@@ -40,7 +40,7 @@
 | 动作 | 路径 | 备注 |
 |------|------|------|
 | Modify | `cli/src/infrastructure/http_client.rs` | `post_data_sync`；`get_sync_run_detail`；**`post_sync_run_cancel`**；**`post_sync_run_retry_failed`** |
-| Modify | `cli/src/cmd/data.rs` | **`SyncCancel`**、`SyncRetryFailed`（`--from-run-id`）；另：`--no-wait`、`--poll-interval-ms` 等 |
+| Modify | `cli/src/cmd/data.rs` | **`SyncCancel`**、`SyncRetryFailed`（`--from-run-id`）；另：默认不轮询、**`--wait`**、`--poll-interval-ms` 等 |
 | Modify | `cli/src/application/handlers/data_sync.rs` | 提交 + 轮询 + 进度条（**展示 current_symbol、done/pending 计数；verbose/table 展示截断列表**）+ Ctrl+C 提示 |
 | Create | `cli/src/application/handlers/data_sync_cancel.rs` | cancel API |
 | Create | `cli/src/application/handlers/data_sync_retry_failed.rs` | retry-failed API + 轮询 |
@@ -177,13 +177,13 @@
 - Modify: `cli/src/application/handlers/data_sync.rs`
 - Modify: `cli/src/application/handlers/data_universe_sync.rs`
 
-- [ ] **Step 1:** `data sync`：提交短超时；轮询默认 1500ms；`--no-wait`。
-- [ ] **Step 2:** `indicatif` 进度：**`current_symbol`**、**done/pending 计数**、日进度、ETA、`symbol_errors` 截断；**`--verbose` 或 `--output table`（若与 data query 对齐）** 打印 `symbols_done_for_run` / `symbols_pending_for_run` 前缀列表及 `symbol_lists_truncated` 提示。
+- [ ] **Step 1:** `data sync`：提交短超时；默认不轮询；**`--wait`** 时轮询默认 1500ms（`--poll-interval-ms`）。
+- [ ] **Step 2:** `indicatif` 进度：**`current_symbol`**、**done/pending 计数**、日进度、ETA、`symbol_errors` 截断；**`--verbose` 或 `--output table`（若与 `data sync-runs` 对齐）** 打印 `symbols_done_for_run` / `symbols_pending_for_run` 前缀列表及 `symbol_lists_truncated` 提示。
 - [ ] **Step 3:** Ctrl+C 提示 `run_id`。
 - [ ] **Step 4:** `universe-sync` 对齐。
 - [ ] **Step 5:** 最终 stdout 仍为合法 JSON（若外层 schema 不变，仅 `data` 字段内嵌服务端摘要，需确认 validator）。
 - [ ] **Step 6:** 子命令 **`hf data sync cancel --run-id`**：包装 CLI 输出；子命令名以实现为准（如 `sync-cancel` 与 clap 命名一致）。
-- [ ] **Step 7:** 子命令 **`hf data sync retry-failed --from-run-id`**：调用 `post_sync_run_retry_failed`；成功后 202 → 进入轮询（复用 Step 1–2 逻辑）或 `--no-wait` 打印 `run_id`。
+- [ ] **Step 7:** 子命令 **`hf data sync retry-failed --from-run-id`**：调用 `post_sync_run_retry_failed`；成功后默认打印 JSON；**`--wait`** 时进入轮询（复用 Step 1–2 逻辑）。
 
 ---
 

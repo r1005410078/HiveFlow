@@ -1,4 +1,7 @@
-from interfaces.adapters.market_data.timescale_bar_store import TimescaleBarStore
+from interfaces.adapters.market_data.timescale_bar_store import (
+    TimescaleBarStore,
+    enrich_sync_run_dict,
+)
 
 
 class _FakeCursor:
@@ -132,3 +135,58 @@ def test_insert_sync_run_executes_insert_and_commits():
     assert "insert into sync_runs" in sql_text.lower()
     assert params["run_id"] == payload["run_id"]
     assert params["manifest_ids"] == payload["manifest_ids"]
+
+
+def test_finalize_sync_run_updates_effective_symbols_count_and_hash():
+    conn = _FakeConn()
+    store = TimescaleBarStore(conn)
+    rid = "550e8400-e29b-41d4-a716-446655440000"
+    store.finalize_sync_run(
+        rid,
+        "success",
+        written_rows=0,
+        manifest_ids=["mf_x"],
+        progress={"total_symbols": 3},
+        effective_symbols_count=3,
+        symbols_hash="a" * 64,
+    )
+    assert conn.committed is True
+    sql_text, params = conn.cursor_obj.executed[-1]
+    assert "effective_symbols_count" in sql_text
+    assert "symbols_hash" in sql_text
+    assert params[-1] == rid
+    assert 3 in params
+    assert ("a" * 64) in params
+
+
+def test_enrich_sync_run_dict_fills_universe_placeholders_from_progress():
+    d = {
+        "selection_mode": "universe",
+        "effective_symbols_count": 0,
+        "symbols_hash": "",
+        "progress": {
+            "total_symbols": 3,
+            "symbols_done_for_run": ["600519.SH", "000001.SZ", "600036.SH"],
+            "symbols_pending_for_run": [],
+        },
+    }
+    out = enrich_sync_run_dict(d)
+    assert out["effective_symbols_count"] == 3
+    assert len(out["symbols_hash"]) == 64
+
+
+def test_finalize_sync_run_omits_optional_symbol_columns_when_not_passed():
+    conn = _FakeConn()
+    store = TimescaleBarStore(conn)
+    rid = "550e8400-e29b-41d4-a716-446655440001"
+    store.finalize_sync_run(
+        rid,
+        "failed",
+        written_rows=0,
+        error_code="X",
+        error_message="y",
+        progress={},
+    )
+    sql_text, _params = conn.cursor_obj.executed[-1]
+    assert "effective_symbols_count" not in sql_text
+    assert "symbols_hash" not in sql_text

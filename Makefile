@@ -1,7 +1,7 @@
 RUST_CLI_DIR := cli
 COMPOSE := docker compose
 
-.PHONY: help sync test lint architecture-check rust-test validate-cli-output validate-cli-output-one check run-pipeline run-server run-server-dev db-up db-down db-logs db-psql db-reset-db-volume db-init-env db-migrate
+.PHONY: help sync test lint architecture-check rust-test validate-cli-output validate-cli-output-one check run-pipeline run-server restart-run-server run-server-dev db-up db-down db-logs db-psql db-reset-db-volume db-init-env db-migrate db-clear-l1
 
 help:
 	@echo "Available targets:"
@@ -14,6 +14,7 @@ help:
 	@echo "  make validate-cli-output-one FILE=... # Validate one CLI output JSON"
 	@echo "  make check                          # test + lint + fixture validation + rust tests"
 	@echo "  make run-server                     # Run quant HTTP server"
+	@echo "  make restart-run-server             # Kill listener on HF_PORT (default 8000), then run-server"
 	@echo "  make run-server-dev                 # Run quant HTTP server with auto-reload"
 	@echo "  make run-pipeline AS_OF=YYYY-MM-DD  # Run daily pipeline command"
 	@echo "  make db-init-env                    # Create .env.db from template"
@@ -22,6 +23,7 @@ help:
 	@echo "  make db-logs                        # Tail TimescaleDB logs"
 	@echo "  make db-psql                        # Open psql in TimescaleDB container"
 	@echo "  make db-migrate                     # Apply all SQL migrations in quant/db/migrations"
+	@echo "  make db-clear-l1                    # TRUNCATE bars + sync_* (retest sync; needs db-up)"
 	@echo "  make db-reset-db-volume             # Drop DB data volume (destructive)"
 
 sync:
@@ -88,6 +90,15 @@ db-migrate:
 		cat "$$f" | $(COMPOSE) exec -T timescaledb psql -v ON_ERROR_STOP=1 -U "$${POSTGRES_USER:-hiveflow}" -d "$${POSTGRES_DB:-hiveflow}"; \
 	done
 
+# 清空 K 线与同步元数据（表结构保留），用于重新测 data sync
+db-clear-l1:
+	@if [ ! -f ".env.db" ]; then \
+		echo "Missing .env.db (run: make db-init-env)"; exit 1; \
+	fi
+	@set -a; . ./.env.db; set +a; \
+	echo "Truncating bars, sync_checkpoints, sync_runs, sync_run_symbol_failures..."; \
+	cat scripts/db_clear_l1_stock_data.sql | $(COMPOSE) exec -T timescaledb psql -v ON_ERROR_STOP=1 -U "$${POSTGRES_USER:-hiveflow}" -d "$${POSTGRES_DB:-hiveflow}"
+
 db-reset-db-volume:
 	@echo "WARNING: This will remove Timescale data volume permanently."
 	$(COMPOSE) down -v
@@ -100,6 +111,27 @@ run-server:
 	else \
 		cd quant && HTTP_PROXY= HTTPS_PROXY= ALL_PROXY= http_proxy= https_proxy= all_proxy= HF_HOST=$${HF_HOST:-0.0.0.0} HF_PORT=$${HF_PORT:-8000} uv run python bin/server.py; \
 	fi
+
+# Stop whatever is listening on HF_PORT (default 8000), then start run-server in the foreground.
+restart-run-server:
+	@set -a; \
+	if [ -f ".env.db" ]; then . ./.env.db; fi; \
+	set +a; \
+	PORT="$${HF_PORT:-8000}"; \
+	PIDS=$$(lsof -tiTCP:$$PORT -sTCP:LISTEN 2>/dev/null || true); \
+	if [ -n "$$PIDS" ]; then \
+		echo "Stopping listener(s) on port $$PORT: $$PIDS"; \
+		kill $$PIDS 2>/dev/null || true; \
+		sleep 0.3; \
+		PIDS2=$$(lsof -tiTCP:$$PORT -sTCP:LISTEN 2>/dev/null || true); \
+		if [ -n "$$PIDS2" ]; then \
+			echo "Force killing: $$PIDS2"; \
+			kill -9 $$PIDS2 2>/dev/null || true; \
+		fi; \
+	else \
+		echo "No listener on port $$PORT"; \
+	fi
+	$(MAKE) run-server
 
 run-server-dev:
 	@if [ -f ".env.db" ]; then \

@@ -12,10 +12,17 @@ pub fn handle(args: DataSyncRetryFailedRequest) -> Result<(), AppError> {
     let is_async = out.get("run_id").is_some()
         && out.get("status").and_then(|s| s.as_str()) == Some("running");
 
-    if is_async && !args.no_wait {
+    if is_async && args.wait {
         let run_id = out["run_id"].as_str().unwrap_or("unknown").to_string();
         poll_sync_progress(&cfg.server_url, &run_id, timeout_ms, 1500)
     } else {
+        if is_async {
+            let run_id = out["run_id"].as_str().unwrap_or("unknown");
+            eprintln!("重试任务已提交，服务端后台执行中。");
+            eprintln!("run_id={run_id}");
+            eprintln!("查看进度: hf task progress --run-id {run_id}；阻塞等待: hf task progress --run-id {run_id} --wait 或提交时加 --wait");
+            eprintln!("历史列表: hf task list --days 7 --output table");
+        }
         print!("{out}");
         Ok(())
     }

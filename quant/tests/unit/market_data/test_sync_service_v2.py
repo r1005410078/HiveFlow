@@ -349,19 +349,17 @@ def test_sync_service_can_sync_universe_from_provider() -> None:
     assert out["file_path"].endswith("quant/config/universes/csi300.txt")
 
 
-def test_sync_service_raises_when_no_rows_fetched() -> None:
-    """验证同步 0 条数据时返回失败，避免误报成功。"""
+def test_sync_service_succeeds_with_warning_when_no_rows_fetched() -> None:
+    """数据源合法返回空（如分钟线不覆盖历史）时应 success + 诊断码，而非崩溃。"""
     class _EmptyQuoteRepo:
         def fetch(self, symbols, as_of, timeframe):
             return []
 
     svc = SyncService(quote_repo=_EmptyQuoteRepo(), bar_store=_FakeBarStore())
-    try:
-        svc.sync(days=1, end_date="2026-04-01", timeframe="1d", symbols=["600519.SH"])
-    except ValueError as exc:
-        assert "no market data fetched" in str(exc)
-    else:
-        raise AssertionError("expected ValueError for empty sync result")
+    out = svc.sync(days=1, end_date="2026-04-01", timeframe="1d", symbols=["600519.SH"])
+    assert out["status"] == "success"
+    assert out["error_code"] == "NO_DATA_RETURNED"
+    assert out["written_rows"] == 0
 
 
 def test_sync_service_days_changes_written_rows() -> None:

@@ -291,12 +291,14 @@ jq -e 'if .source=="web_search" then (.advice_only==true and .decision_weight==0
 
 ---
 
-## 6. hf data query --output json（JSON 示例）
+## 6. hf task list --output json（JSON 示例）
+
+子命令 **`task list`** 列出同步任务元数据；别名 **`hf task sync-runs`**。近窗 K 线用 **`hf data query`**；显式区间用 **`hf data bars`**。
 
 ```json
 {
   "schema_version": "1.0.0",
-  "command": "hf data query",
+  "command": "hf task list",
   "run_id": "run_7ec4f94ab221",
   "status": "ok",
   "generated_at": "2026-04-01T12:01:00+00:00",
@@ -323,6 +325,74 @@ jq -e 'if .source=="web_search" then (.advice_only==true and .decision_weight==0
         "finished_at": "2026-04-01T09:31:00+08:00",
         "error_code": null,
         "error_message": null
+      }
+    ]
+  },
+  "warnings": [],
+  "errors": []
+}
+```
+
+### hf task progress --output json（信封示例）
+
+CLI 默认 **`--output table`** 为可读摘要；**`--output json`** 时 stdout 为 **服务端单条 sync-run 详情**（与 `GET /v1/market-data/sync-runs/{run_id}` 一致）。下列为 Skills 校验用信封示例（字段与 `task_progress_ok.json` fixture 对齐）。
+
+```json
+{
+  "schema_version": "1.0.0",
+  "command": "hf task progress",
+  "run_id": "run_valid_task_progress_001",
+  "status": "ok",
+  "generated_at": "2026-04-01T12:01:00+00:00",
+  "source": "system",
+  "advice_only": false,
+  "decision_weight": 1,
+  "data": {
+    "run_id": "run_demo_running_001",
+    "status": "running",
+    "phase": "fetching_bars",
+    "progress": {
+      "total_symbols": 100,
+      "completed_symbols": 42,
+      "current_symbol": "600519.SH",
+      "total_days": 30,
+      "completed_days": 12
+    },
+    "selection_mode": "universe",
+    "end_date": "2026-04-01",
+    "timeframe": "1d",
+    "days": 30
+  },
+  "warnings": [],
+  "errors": []
+}
+```
+
+### hf data query --output json
+
+`hf data query` 打印 **服务端 bars 形状** 的 JSON（`data.items`）；默认 **`--output tui`** 为分页表格，脚本用 **`--output json`**。
+
+```json
+{
+  "schema_version": "1.0.0",
+  "command": "hf data query",
+  "run_id": "run_valid_data_query_bars_001",
+  "status": "ok",
+  "generated_at": "2026-04-01T12:01:00+00:00",
+  "source": "system",
+  "advice_only": false,
+  "decision_weight": 1,
+  "data": {
+    "items": [
+      {
+        "symbol": "600519.SH",
+        "timeframe": "1d",
+        "bar_time": "2026-04-01T15:00:00+08:00",
+        "open": 1450.0,
+        "high": 1468.0,
+        "low": 1442.0,
+        "close": 1459.44,
+        "volume": 29125.0
       }
     ]
   },

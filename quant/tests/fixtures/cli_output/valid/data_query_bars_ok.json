@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0.0",
+  "command": "hf data query",
+  "run_id": "run_valid_data_query_bars_001",
+  "status": "ok",
+  "generated_at": "2026-04-01T12:01:00+00:00",
+  "source": "system",
+  "advice_only": false,
+  "decision_weight": 1,
+  "data": {
+    "items": [
+      {
+        "symbol": "600519.SH",
+        "timeframe": "1d",
+        "bar_time": "2026-04-01T15:00:00+08:00",
+        "open": 1450.0,
+        "high": 1468.0,
+        "low": 1442.0,
+        "close": 1459.44,
+        "volume": 29125.0
+      }
+    ]
+  },
+  "warnings": [],
+  "errors": []
+}

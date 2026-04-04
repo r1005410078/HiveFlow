@@ -84,22 +84,22 @@ cargo run -- factor optimize --start-date 2026-01-01 --end-date 2026-04-01 --fac
 ```bash
 cd cli
 cargo run -- data sync --days 30 --end-date 2026-04-01 --symbols 600519.SH,000001.SZ
-cargo run -- data query --days 7 --output table
+cargo run -- task list --days 7 --output table
 cargo run -- data bars --symbols 600519.SH --start-date 2026-03-01 --end-date 2026-04-01 --output table
 ```
 
-**L1 行情同步是异步任务**（服务端先接单、后台跑；CLI 默认会**轮询**直到成功/失败/取消等终态）：
+**L1 行情同步是异步任务**（服务端先接单、后台跑；CLI **默认不轮询**，避免长时间卡在 resolving_symbols 等阶段）：
 
-- 默认行为：`data sync` 会显示进度提示，结束时打印**最终一次**任务详情（JSON）。长时间同步请适当增大 `~/.hiveflow/config.toml` 里的 `timeout_ms`，或临时传 `--timeout-ms`。
-- **只提交不等待**：加 `--no-wait`，会立刻打印含 `run_id` 的受理结果；之后用 `data query` 看列表里的状态。
-- **轮询间隔**：`--poll-interval-ms`（默认约 1500ms）。
-- **Ctrl+C**：只结束本地轮询，**服务端任务会继续**；终端会提示 `run_id`，可用 `data query` 跟进。
-- **已有任务在跑**（HTTP 409）：CLI 会提示当前 `run_id`，可 `cargo run -- data sync-cancel --run-id <run_id>` 取消后再发新同步，或等当前任务结束。
-- **部分标的失败**：可用 `cargo run -- data sync-retry-failed --from-run-id <run_id>` 仅重试失败队列（默认同样会等到终态；加 `--no-wait` 只拿新 `run_id`）。
+- **默认行为**：`data sync` 提交成功后，终端用中文提示「任务已提交」并给出 **run_id**，stdout 打印受理 JSON；用 **`task progress`**（别名 `task status`）看**当前运行中**的 phase/标的进度，用 **`task list`**（别名 `task sync-runs`）看近期任务列表与终态。
+- **在本终端等到结束**：提交时加 **`--wait`**，或事后 **`task progress --run-id <run_id> --watch`**，会显示进度并轮询直到成功/失败/取消等终态。长时间同步请适当增大 `~/.hiveflow/config.toml` 里的 `timeout_ms`，或临时传 `--timeout-ms`。
+- **轮询间隔**：`data sync --wait` 与 **`task progress --watch`** 均可用 **`--poll-interval-ms`**（默认约 1500ms）。
+- **Ctrl+C**（仅 `--wait` / **`--watch`** 时）：只结束本地轮询，**服务端任务会继续**；终端会提示 `run_id`，可用 **`task progress --run-id <run_id>`** 或 **`task list`** 跟进。
+- **已有任务在跑**（HTTP 409）：CLI 会提示当前 `run_id`，可 `cargo run -- task cancel --run-id <run_id>`（或 `data sync-cancel`）取消后再发新同步，或等当前任务结束。
+- **部分标的失败**：`cargo run -- task retry-failed --from-run-id <run_id>`（或 `data sync-retry-failed`）默认只提交并返回新 `run_id`；加 **`--wait`** 则在终端等到终态。
 
 排查顺序建议：
-- `data sync`（或 `--no-wait` + 稍后 `data query`）确认任务是否进入终态、失败原因摘要
-- `data query` 看最近任务元数据与错误信息
+- `data sync` 拿 `run_id` 后，用 **`task progress --run-id <run_id>`** 看实时进度，用 **`task list`** 看列表与终态、失败原因摘要（需要阻塞式完成则 **`task progress ... --watch`** 或提交时 **`--wait`**）
+- **`task list`** 看最近同步任务；**近窗 K 线**用 **`data query`**（默认 TUI 分页）或 **`data bars`**（显式区间/chart）
 - `data bars` 看具体 K 线是否落库
 
 ### 场景 E：你想先更新标的池，再跑同步
@@ -120,7 +120,7 @@ cargo run -- data sync --days 30 --end-date 2026-04-01 --universe csi300
 
 - `--output table`：人工看结果时优先用它。
 - `--output json`：写脚本、做回归、接自动化时用它。
-- `data query` 支持 `json|table`（同步任务元数据查询）。
+- `task list` 支持 `json|table`（同步任务元数据）；`task progress` 支持 `json|table` 与 **`--watch`**（运行中进度/轮询）；`data query` 支持 `json|tui|table`（K 线窗口查询）。
 - `data bars` 支持 `json|table|chart|tui`（K 线明细查询）。
 
 ## 4. 常见错误与处理
@@ -141,7 +141,7 @@ cargo run -- data sync --days 30 --end-date 2026-04-01 --universe csi300
 确认已执行 `make db-migrate`（见「第一次启动」1.1）。
 
 6. 查询不到数据  
-先执行 `data sync`（或确认历史 `run_id` 已成功），再执行 `data query` 或 `data bars`。
+先执行 `data sync`（或确认历史 `run_id` 已成功），再执行 **`task list`** 或 **`data query`** / **`data bars`**。
 
 ## 5. 当前能力边界
 

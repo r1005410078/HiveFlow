@@ -39,7 +39,7 @@ pub struct DataSyncRequest {
     pub universe: Option<String>,
     pub request_id: Option<String>,
     pub timeout_ms: Option<u64>,
-    pub no_wait: bool,
+    pub wait: bool,
     pub poll_interval_ms: Option<u64>,
 }
 
@@ -53,7 +53,7 @@ pub struct DataSyncCancelRequest {
 pub struct DataSyncRetryFailedRequest {
     pub from_run_id: String,
     pub timeout_ms: Option<u64>,
-    pub no_wait: bool,
+    pub wait: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -64,11 +64,41 @@ pub struct DataUniverseSyncRequest {
 }
 
 #[derive(Debug, Clone)]
-pub struct DataQueryRequest {
+pub struct TaskListRequest {
     pub days: i32,
     pub timeframe: String,
     pub status: Option<String>,
     pub request_id: Option<String>,
+    pub limit: Option<i32>,
+    pub output: String,
+    pub verbose: bool,
+    pub timeout_ms: Option<u64>,
+}
+
+/// `hf task progress`：查看运行中同步任务进度（列表发现或指定 run_id）
+#[derive(Debug, Clone)]
+pub struct TaskProgressRequest {
+    pub run_id: Option<String>,
+    pub days: i32,
+    pub timeframe: Option<String>,
+    pub limit: i32,
+    pub output: String,
+    pub verbose: bool,
+    pub timeout_ms: Option<u64>,
+    pub watch: bool,
+    pub poll_interval_ms: Option<u64>,
+}
+
+/// `hf data query`：按窗口查 K 线（bars API）
+#[derive(Debug, Clone)]
+pub struct DataMarketQueryRequest {
+    /// 与 end_date 一起确定窗口；若同时给了 start_date+end_date 则可忽略
+    pub days: i32,
+    pub end_date: Option<String>,
+    pub start_date: Option<String>,
+    pub symbols: Option<String>,
+    pub universe: Option<String>,
+    pub timeframe: String,
     pub limit: Option<i32>,
     pub output: String,
     pub verbose: bool,
@@ -112,7 +142,11 @@ pub enum AppCommand {
     DataSyncCancel(DataSyncCancelRequest),
     DataSyncRetryFailed(DataSyncRetryFailedRequest),
     DataUniverseSync(DataUniverseSyncRequest),
-    DataQuery(DataQueryRequest),
+    TaskList(TaskListRequest),
+    TaskProgress(TaskProgressRequest),
+    TaskCancel(DataSyncCancelRequest),
+    TaskRetryFailed(DataSyncRetryFailedRequest),
+    DataQuery(DataMarketQueryRequest),
     DataBars(DataBarsRequest),
     SignalSnapshot(SignalSnapshotRequest),
     SignalEvaluate(SignalEvaluateRequest),
