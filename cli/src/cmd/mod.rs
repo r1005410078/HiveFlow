@@ -1,6 +1,7 @@
 pub mod data;
 pub mod factor;
 pub mod pipeline;
+pub mod portfolio;
 pub mod signal;
 pub mod task;
 
@@ -24,6 +25,8 @@ pub enum Commands {
     Task(task::TaskArgs),
     /// L3 信号工程：因子截面 → signal_matrix（需 quant 服务与 ~/.hiveflow/config.toml）
     Signal(signal::SignalArgs),
+    /// L4 组合优化：信号 → 目标权重（需 quant 服务与 ~/.hiveflow/config.toml）
+    Portfolio(portfolio::PortfolioArgs),
 }
 
 impl From<Cli> for AppCommand {
@@ -67,6 +70,11 @@ impl From<Cli> for AppCommand {
                 }
                 signal::SignalSubcommand::Evaluate(evaluate) => {
                     AppCommand::SignalEvaluate(evaluate.into())
+                }
+            },
+            Commands::Portfolio(args) => match args.command {
+                portfolio::PortfolioSubcommand::Optimize(optimize) => {
+                    AppCommand::PortfolioOptimize(optimize.into())
                 }
             },
         }
