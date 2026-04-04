@@ -1,13 +1,18 @@
 # HiveFlow 新手使用手册
 
 > 文档目标：给第一次使用 HiveFlow 的同学一份可直接照做的“场景化操作手册”。
-> 状态快照日期：2026-04-03
+> 状态快照日期：2026-04-04
 
 ## 1. 第一次启动（按顺序做）
 
 1. 启动数据库
 ```bash
 make db-up
+```
+
+1.1 应用迁移（**首次**联调或刚 `git pull` 后出现新的 `quant/db/migrations/*.sql` 时必做）
+```bash
+make db-migrate
 ```
 
 2. 启动 quant 服务端
@@ -83,9 +88,18 @@ cargo run -- data query --days 7 --output table
 cargo run -- data bars --symbols 600519.SH --start-date 2026-03-01 --end-date 2026-04-01 --output table
 ```
 
+**L1 行情同步是异步任务**（服务端先接单、后台跑；CLI 默认会**轮询**直到成功/失败/取消等终态）：
+
+- 默认行为：`data sync` 会显示进度提示，结束时打印**最终一次**任务详情（JSON）。长时间同步请适当增大 `~/.hiveflow/config.toml` 里的 `timeout_ms`，或临时传 `--timeout-ms`。
+- **只提交不等待**：加 `--no-wait`，会立刻打印含 `run_id` 的受理结果；之后用 `data query` 看列表里的状态。
+- **轮询间隔**：`--poll-interval-ms`（默认约 1500ms）。
+- **Ctrl+C**：只结束本地轮询，**服务端任务会继续**；终端会提示 `run_id`，可用 `data query` 跟进。
+- **已有任务在跑**（HTTP 409）：CLI 会提示当前 `run_id`，可 `cargo run -- data sync-cancel --run-id <run_id>` 取消后再发新同步，或等当前任务结束。
+- **部分标的失败**：可用 `cargo run -- data sync-retry-failed --from-run-id <run_id>` 仅重试失败队列（默认同样会等到终态；加 `--no-wait` 只拿新 `run_id`）。
+
 排查顺序建议：
-- `data sync` 看是否写入成功
-- `data query` 看最近任务状态与错误信息
+- `data sync`（或 `--no-wait` + 稍后 `data query`）确认任务是否进入终态、失败原因摘要
+- `data query` 看最近任务元数据与错误信息
 - `data bars` 看具体 K 线是否落库
 
 ### 场景 E：你想先更新标的池，再跑同步
@@ -120,21 +134,30 @@ cargo run -- data sync --days 30 --end-date 2026-04-01 --universe csi300
 3. `INVALID_ARGUMENT`  
 常见于参数缺失或组合参数冲突（例如不合法的组合大小区间）。
 
-4. 查询不到数据  
-先执行 `hf data sync`，再执行 `hf data query` 或 `hf data bars`。
+4. 同步报「已有任务在跑」/ HTTP 409  
+同一 `timeframe` + 标的集合维度上已有 `running` 任务。用 CLI 提示的 `run_id` 执行 `data sync-cancel`，或等待该任务结束后再发 `data sync`。
+
+5. 迁移未执行导致同步或查询异常  
+确认已执行 `make db-migrate`（见「第一次启动」1.1）。
+
+6. 查询不到数据  
+先执行 `data sync`（或确认历史 `run_id` 已成功），再执行 `data query` 或 `data bars`。
 
 ## 5. 当前能力边界
 
 - `factor optimize` 固定是建议态：`advice_only=true`、`decision_weight=0`。
 - `pipeline daily` 当前 `execution_plan.orders` 仍为空数组（执行层未进入实盘自动化）。
-- 目前主线是 L2 能力已可用，L3 信号工程是后续阶段。
+- L1 行情：`data sync` 为异步任务 + CLI 轮询；失败标的可用 `data sync-retry-failed` 续跑。
+- L2 因子与 L3 信号（快照/评估等）已在主线可用；更细的层状态见仓库根目录 `AGENTS.md` 表格。
 
 ## 6. 深入文档
 
-1. 输出字段合同：[`CLI_OUTPUT_SCHEMA.json`](CLI_OUTPUT_SCHEMA.json)
-2. 输出样例：[`CLI_OUTPUT_EXAMPLES.md`](CLI_OUTPUT_EXAMPLES.md)
-3. 架构总览：[`ARCHITECTURE.md`](ARCHITECTURE.md)
-4. 因子优化细节：[`FACTOR_OPTIMIZATION_P1_USAGE.md`](FACTOR_OPTIMIZATION_P1_USAGE.md)、[`FACTOR_OPTIMIZATION_P2_USAGE.md`](FACTOR_OPTIMIZATION_P2_USAGE.md)
+1. 10 分钟最小闭环（依赖与 `make check`）：[`GETTING_STARTED.md`](../GETTING_STARTED.md)
+2. 输出字段合同：[`CLI_OUTPUT_SCHEMA.json`](CLI_OUTPUT_SCHEMA.json)
+3. 输出样例：[`CLI_OUTPUT_EXAMPLES.md`](CLI_OUTPUT_EXAMPLES.md)
+4. 架构总览：[`ARCHITECTURE.md`](ARCHITECTURE.md)
+5. 因子优化细节：[`FACTOR_OPTIMIZATION_P1_USAGE.md`](FACTOR_OPTIMIZATION_P1_USAGE.md)、[`FACTOR_OPTIMIZATION_P2_USAGE.md`](FACTOR_OPTIMIZATION_P2_USAGE.md)
+6. L1 异步同步设计（可选）：[`superpowers/specs/2026-04-04-l1-async-sync-design.md`](superpowers/specs/2026-04-04-l1-async-sync-design.md)
 
 ## 7. 情景故事：怎么看 `factor optimize --output table`
 

@@ -35,6 +35,16 @@ make db-up
 make db-logs
 ```
 
+## 4.1 应用数据库迁移（首次或有新迁移时）
+
+在**第一次**本地联调、或拉取代码后出现新的 `quant/db/migrations/*.sql` 时执行：
+
+```bash
+make db-migrate
+```
+
+未迁移时，行情同步等依赖表结构的接口可能报错或行为异常。
+
 ## 5. 启动 quant 服务端
 
 ```bash
@@ -74,7 +84,9 @@ cargo run -- --help
 cargo run -- pipeline daily --as-of 2026-04-01
 ```
 
-### 8.2 数据同步
+### 8.2 数据同步（异步任务 + CLI 轮询）
+
+服务端对 `POST /v1/market-data/sync` 采用**异步执行**：先返回 `run_id`，后台拉数写库。Rust CLI **默认会轮询** `GET /v1/market-data/sync-runs/{run_id}` 直到终态（`success` / `failed` / `cancelled` / `interrupted` 等），再打印最终 JSON。
 
 ```bash
 cargo run -- data sync --days 5 --end-date 2026-04-01
@@ -90,10 +102,34 @@ cargo run -- data sync \
   --symbols 600519.SH,000001.SZ
 ```
 
+常用可选参数：
+
+- `--no-wait`：只打印受理结果（含 `run_id`），不轮询；适合脚本里自行查状态。
+- `--poll-interval-ms <毫秒>`：轮询间隔（默认约 1500）。
+- **Ctrl+C**：结束本地轮询，**不取消**服务端任务；可按提示的 `run_id` 用 `data query` 查看进度。
+
 临时覆盖超时（不改配置文件）：
 
 ```bash
 cargo run -- data sync --days 90 --end-date 2026-04-01 --timeout-ms 120000
+```
+
+若同维度已有运行中任务，接口返回 **409**；CLI 会提示 `run_id`，可先取消再同步：
+
+```bash
+cargo run -- data sync-cancel --run-id <run_id>
+```
+
+若某次同步**部分标的失败**，可基于该次 `run_id` 只重试失败队列（默认同样轮询到终态）：
+
+```bash
+cargo run -- data sync-retry-failed --from-run-id <run_id>
+```
+
+只发起重试、不等待结束：
+
+```bash
+cargo run -- data sync-retry-failed --from-run-id <run_id> --no-wait
 ```
 
 ### 8.3 数据查询
@@ -117,7 +153,7 @@ cargo run -- data query --days 7 --status success --output table
 ```
 
 说明：
-- `data query` 对应 `GET /v1/market-data/sync-runs`，用于查看同步任务元数据。
+- `data query` 对应 `GET /v1/market-data/sync-runs`，用于查看**近期**同步任务列表与元数据（含各次 `run_id`、状态）。
 - `--output` 仅支持 `json|table`。
 - 常用过滤参数：`--timeframe`、`--status`、`--request-id`、`--limit`。
 
@@ -192,5 +228,11 @@ make test
 ## 11. 常见问题
 
 - 数据库拉镜像失败：通常是网络问题，重试 `make db-up`。
+- 表不存在 / 同步异常：确认已执行 `make db-migrate`（见 4.1）。
 - CLI 报配置缺失：确认 `~/.hiveflow/config.toml` 已创建。
 - 端口冲突：修改 `.env.db` 的 `HF_DB_PORT`，或释放占用端口。
+- 同步提示「已有任务在跑」：使用 `data sync-cancel` 或等待该 `run_id` 结束后再发 `data sync`。
+
+## 12. 场景化手册（推荐阅读）
+
+更偏「按场景照做」的说明见 [docs/BEGINNER_QUICKSTART.md](docs/BEGINNER_QUICKSTART.md)。

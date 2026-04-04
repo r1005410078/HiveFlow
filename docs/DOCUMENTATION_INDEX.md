@@ -29,6 +29,8 @@
 
 ## 该看哪份文档
 
+- 看 10 分钟跑通与命令清单：仓库根目录 `GETTING_STARTED.md`
+- 看场景化新手操作（含异步行情同步说明）：`BEGINNER_QUICKSTART.md`
 - 看系统全局设计：`ARCHITECTURE.md`
 - 看 AI 如何介入：`AI_SKILLS_INTEGRATION.md`
 - 看技术选型结论：`TECH_STACK_DECISION.md`
