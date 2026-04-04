@@ -26,6 +26,8 @@ _INDUSTRY_MAP: dict[str, str] = {
     "000333.SZ": "appliance",
 }
 
+_logger = logging.getLogger(__name__)
+
 
 def _fill_missing_cross_sectional(
     wide: pd.DataFrame,
@@ -42,9 +44,6 @@ def _fill_missing_cross_sectional(
             filled[col] = filled[col].fillna(median)
         fill_counts[col] = n_missing
     return filled, fill_counts
-
-
-_logger = logging.getLogger(__name__)
 
 
 def _series_stats(s: pd.Series) -> dict:
