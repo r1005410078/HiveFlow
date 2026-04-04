@@ -1,6 +1,5 @@
 """SyncWorker 单元测试：串行互斥、双提交 409、异常写 run 终态。"""
 
-import threading
 import time
 
 from application.market_data.sync_worker import SyncWorker

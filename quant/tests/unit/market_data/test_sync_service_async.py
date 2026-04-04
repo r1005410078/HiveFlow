@@ -1,6 +1,6 @@
 """SyncService.execute_sync 异步相关测试：progress 回调、cancel、failure queue。"""
 
-from application.market_data.sync_service import SyncService, MAX_SYMBOL_ATTEMPTS
+from application.market_data.sync_service import SyncService
 
 
 class _FakeQuoteRepo:
