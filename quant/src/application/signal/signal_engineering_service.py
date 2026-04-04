@@ -104,8 +104,8 @@ def compute_signal_matrix(factor_snapshot: dict) -> dict:
         }
 
     df = pd.DataFrame(rows)
-    wide = df.pivot_table(
-        index="symbol", columns="factor_name", values="raw_value", aggfunc="first",
+    wide = df.pivot(
+        index="symbol", columns="factor_name", values="raw_value",
     )
 
     direction_map: dict[str, int] = {}
@@ -120,12 +120,16 @@ def compute_signal_matrix(factor_snapshot: dict) -> dict:
         if direction_map.get(fn, 1) == -1:
             wide[fn] = wide[fn] * -1
 
+    # Phase 2b: fill missing values then neutralize industry exposure
+    filled_wide, fill_counts = _fill_missing_cross_sectional(wide[active_factors])
+    neutral_wide = _neutralize_industry(filled_wide, _INDUSTRY_MAP)
+
     signal_wide = pd.DataFrame(index=wide.index)
     transform_stats: list[dict] = []
 
     for fn in active_factors:
-        col = wide[fn]
-        pre_stats = _series_stats(col)
+        col = neutral_wide[fn]                  # zscore input: neutralized values
+        pre_stats = _series_stats(wide[fn])     # pre-stats: original direction-aligned raw values
 
         if col.dropna().nunique() <= 1:
             signal_col = pd.Series(np.nan, index=col.index)
@@ -141,6 +145,7 @@ def compute_signal_matrix(factor_snapshot: dict) -> dict:
 
         transform_stats.append({
             "factor_name": fn,
+            "fill_count": fill_counts.get(fn, 0),
             "pre_winsorize": pre_stats,
             "post_zscore": post_stats,
         })

@@ -187,3 +187,41 @@ def test_neutralize_removes_industry_mean_with_multi_symbol():
     # Within "tech": A=3, B=1, industry mean=2 → residuals A=+1, B=-1, sum=0
     residual_sum = result.loc["A", "factor_a"] + result.loc["B", "factor_a"]
     assert abs(residual_sum) < 1e-9, f"industry residuals must sum to 0, got {residual_sum}"
+
+
+def test_compute_signal_matrix_fill_count_in_transform_stats():
+    """transform_stats entries must include fill_count when a value is missing."""
+    from application.signal.signal_engineering_service import compute_signal_matrix
+
+    rows = [
+        {"symbol": sym, "factor_name": "f1", "factor_version": "v1",
+         "raw_value": float("nan") if sym == "C" else float(i + 1),
+         "direction": 1, "unit": "ratio", "missing_strategy": "none", "source": "real"}
+        for i, sym in enumerate(["A", "B", "C", "D", "E"])
+    ]
+    snapshot = {"rows": rows, "factor_names": ["f1"], "coverage_rate": 0.8}
+    result = compute_signal_matrix(snapshot)
+
+    ts = result["transform_stats"][0]
+    assert "fill_count" in ts, "fill_count must be present in transform_stats entry"
+    assert ts["fill_count"] == 1, f"expected 1 fill, got {ts['fill_count']}"
+
+
+def test_compute_signal_matrix_end_to_end_no_nan_composite():
+    """When a factor value is missing, fill restores coverage so composite_score is not NaN."""
+    import math
+    from application.signal.signal_engineering_service import compute_signal_matrix
+
+    rows = [
+        {"symbol": sym, "factor_name": "f1", "factor_version": "v1",
+         "raw_value": float("nan") if sym == "C" else float(i + 1),
+         "direction": 1, "unit": "ratio", "missing_strategy": "none", "source": "real"}
+        for i, sym in enumerate(["A", "B", "C", "D", "E"])
+    ]
+    snapshot = {"rows": rows, "factor_names": ["f1"], "coverage_rate": 0.8}
+    result = compute_signal_matrix(snapshot)
+
+    for cs in result["composite_scores"]:
+        assert not math.isnan(cs["composite_score"]), (
+            f"{cs['symbol']} composite_score is NaN after fill should have restored it"
+        )
