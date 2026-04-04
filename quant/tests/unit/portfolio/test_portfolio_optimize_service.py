@@ -1,5 +1,4 @@
 from __future__ import annotations
-import math
 
 
 def _make_bar_store_with_25_bars():
