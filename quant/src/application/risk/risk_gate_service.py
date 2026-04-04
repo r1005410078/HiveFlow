@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from application.contracts.cli_output import ok_output
+from application.portfolio.covariance_service import compute_covariance_matrix
 
 _logger = logging.getLogger(__name__)
 
@@ -188,7 +189,6 @@ def run_risk_check(
     cov_matrix: pd.DataFrame | None = None
     if bar_store is not None and symbols:
         try:
-            from application.portfolio.covariance_service import compute_covariance_matrix
             cov_matrix = compute_covariance_matrix(
                 symbols=symbols, as_of=as_of, bar_store=bar_store
             )
