@@ -114,6 +114,10 @@ pub struct DataMarketQueryRequest {
     pub timeout_ms: Option<u64>,
 }
 
+/// `hf tui`：全屏行情预览（无额外参数）
+#[derive(Debug, Clone, Default)]
+pub struct TuiShellRequest {}
+
 #[derive(Debug, Clone)]
 pub struct DataBarsRequest {
     pub symbols: Option<String>,
@@ -152,6 +156,7 @@ pub struct PortfolioOptimizeRequest {
 
 #[derive(Debug)]
 pub enum AppCommand {
+    Tui(TuiShellRequest),
     PipelineDaily(PipelineDailyRequest),
     PipelineCompare(PipelineCompareRequest),
     FactorOptimize(FactorOptimizeRequest),

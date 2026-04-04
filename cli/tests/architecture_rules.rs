@@ -30,6 +30,7 @@ fn cmd_layer_must_not_import_infrastructure() {
         "cmd/portfolio.rs",
         "cmd/signal.rs",
         "cmd/task.rs",
+        "cmd/tui.rs",
     ];
     for file in cmd_files {
         let content = read(&src_path(file));

@@ -1,9 +1,11 @@
-//! 超过 `SYMBOL_BATCH`（30）只标的时，`fetch_bars_merged_items` 应分多批请求并合并排序。
+//! 超过 `SYMBOL_BATCH`（30）只标的时，`fetch_bars_merged_items_with_options` 应分多批请求并合并排序。
 //!
 //! 注意：mockito 的 `UrlEncoded` + `AllOf` 无法表达多个同名 `symbols` 参数（`serde_urlencoded`
 //! 解析为 `HashMap` 会丢重复键），因此这里用 `Matcher::Exact` 匹配整段 query。
 
-use hf_cli::application::bars_fetch::{fetch_bars_merged_items, SYMBOL_BATCH};
+use hf_cli::application::bars_fetch::{
+    fetch_bars_merged_items_with_options, BarsFetchOptions, SYMBOL_BATCH,
+};
 use mockito::{Matcher, Server};
 
 fn bars_query_exact(symbols: &[String]) -> String {
@@ -48,7 +50,7 @@ fn fetch_bars_merged_splits_into_two_http_requests_when_over_batch_size() {
         .expect(1)
         .create();
 
-    let merged = fetch_bars_merged_items(
+    let merged = fetch_bars_merged_items_with_options(
         &server.url(),
         &symbols,
         Some("1d"),
@@ -56,6 +58,7 @@ fn fetch_bars_merged_splits_into_two_http_requests_when_over_batch_size() {
         Some("2026-04-01"),
         Some(200),
         5000,
+        BarsFetchOptions::default(),
     )
     .expect("merged fetch should succeed");
 

@@ -1,4 +1,4 @@
-use hf_cli::infrastructure::http_client::get_market_data_bars;
+use hf_cli::infrastructure::http_client::{get_market_data_bars, BarsQueryOptions};
 use hf_cli::infrastructure::table_renderer::render_market_data_bars_table;
 use mockito::Server;
 
@@ -19,7 +19,16 @@ fn data_bars_table_renders_market_data_columns() {
         .create();
 
     let out =
-        get_market_data_bars(&server.url(), Some(&["600519.SH".to_string()]), Some("1d"), None, None, None, 1000)
+        get_market_data_bars(
+            &server.url(),
+            Some(&["600519.SH".to_string()]),
+            Some("1d"),
+            None,
+            None,
+            None,
+            1000,
+            BarsQueryOptions::default(),
+        )
             .expect("bars query ok");
     let table = render_market_data_bars_table(&out, false);
 

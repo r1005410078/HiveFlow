@@ -4,11 +4,13 @@ use crate::application::handlers::{
     pipeline_daily,
     portfolio_optimize, signal_evaluate, signal_snapshot, task_list, task_progress,
 };
+use crate::application::tui_app;
 use crate::application::requests::AppCommand;
 use crate::error::AppError;
 
 pub fn run(command: AppCommand) -> Result<(), AppError> {
     match command {
+        AppCommand::Tui(_) => tui_app::run_tui_shell(),
         AppCommand::PipelineDaily(args) => pipeline_daily::handle(args),
         AppCommand::PipelineCompare(args) => pipeline_compare::handle(args),
         AppCommand::FactorOptimize(args) => factor_optimize::handle(args),

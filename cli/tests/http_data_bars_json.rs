@@ -1,4 +1,4 @@
-use hf_cli::infrastructure::http_client::get_market_data_bars;
+use hf_cli::infrastructure::http_client::{get_market_data_bars, BarsQueryOptions};
 use mockito::Server;
 
 #[test]
@@ -28,6 +28,7 @@ fn data_bars_json_calls_bars_endpoint() {
         Some("2026-04-01"),
         Some(200),
         1000,
+        BarsQueryOptions::default(),
     )
     .expect("bars query should succeed");
 

@@ -4,6 +4,7 @@ pub mod pipeline;
 pub mod portfolio;
 pub mod signal;
 pub mod task;
+pub mod tui;
 
 use crate::application::requests::AppCommand;
 use clap::{Parser, Subcommand};
@@ -18,6 +19,8 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
+    /// 全屏 TUI：instruments + bars（需 TTY）
+    Tui(tui::TuiArgs),
     Pipeline(pipeline::PipelineArgs),
     Factor(factor::FactorArgs),
     Data(data::DataArgs),
@@ -32,6 +35,7 @@ pub enum Commands {
 impl From<Cli> for AppCommand {
     fn from(cli: Cli) -> Self {
         match cli.command {
+            Commands::Tui(_) => AppCommand::Tui(Default::default()),
             Commands::Pipeline(args) => match args.command {
                 pipeline::PipelineSubcommand::Daily(daily) => {
                     AppCommand::PipelineDaily(daily.into())

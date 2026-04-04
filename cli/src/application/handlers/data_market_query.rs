@@ -1,7 +1,9 @@
 use chrono::{Duration, Local, NaiveDate};
 use serde_json::json;
 
-use crate::application::bars_fetch::{fetch_bars_merged_items, resolve_bar_symbols};
+use crate::application::bars_fetch::{
+    fetch_bars_merged_items_with_options, resolve_bar_symbols, BarsFetchOptions,
+};
 use crate::application::requests::DataMarketQueryRequest;
 use crate::error::AppError;
 use crate::infrastructure::config_loader::load_default_config;
@@ -63,7 +65,8 @@ pub fn handle(args: DataMarketQueryRequest) -> Result<(), AppError> {
     let symbols = resolve_bar_symbols(args.symbols.as_deref(), args.universe.as_deref())?;
     let per_request_limit = args.limit.unwrap_or(5000).min(10_000);
 
-    let mut merged = fetch_bars_merged_items(
+    let follow_cursor_pages = args.output == "tui" && symbols.len() == 1;
+    let mut merged = fetch_bars_merged_items_with_options(
         &cfg.server_url,
         &symbols,
         Some(args.timeframe.as_str()),
@@ -71,6 +74,10 @@ pub fn handle(args: DataMarketQueryRequest) -> Result<(), AppError> {
         Some(end_date.as_str()),
         Some(per_request_limit),
         timeout_ms,
+        BarsFetchOptions {
+            follow_cursor_pages,
+            ..Default::default()
+        },
     )?;
 
     if let Some(lim) = args.limit {

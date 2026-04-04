@@ -250,6 +250,14 @@ pub fn get_market_data_sync_runs(
     parse_json(&body_text)
 }
 
+/// Optional query parameters for `GET /v1/market-data/bars` (session / cursor pagination).
+#[derive(Clone, Copy, Default)]
+pub struct BarsQueryOptions<'a> {
+    pub session_date: Option<&'a str>,
+    pub cursor_bar_time: Option<&'a str>,
+    pub cursor_symbol: Option<&'a str>,
+}
+
 pub fn get_market_data_bars(
     server_url: &str,
     symbols: Option<&[String]>,
@@ -258,6 +266,7 @@ pub fn get_market_data_bars(
     end_date: Option<&str>,
     limit: Option<i32>,
     timeout_ms: u64,
+    opts: BarsQueryOptions<'_>,
 ) -> Result<Value, AppError> {
     let url = format!("{}/v1/market-data/bars", server_url.trim_end_matches('/'));
     let client = build_client(server_url, timeout_ms)?;
@@ -275,10 +284,72 @@ pub fn get_market_data_bars(
     if let Some(lim) = limit {
         request = request.query(&[("limit", lim.to_string())]);
     }
+    if let Some(sd) = opts.session_date {
+        request = request.query(&[("session_date", sd)]);
+    }
+    if let Some(cbt) = opts.cursor_bar_time {
+        request = request.query(&[("cursor_bar_time", cbt)]);
+    }
+    if let Some(cs) = opts.cursor_symbol {
+        request = request.query(&[("cursor_symbol", cs)]);
+    }
     if let Some(list) = symbols {
         for s in list {
             request = request.query(&[("symbols", s)]);
         }
+    }
+
+    let response = request.send().map_err(AppError::HttpClient)?;
+    let status_code = response.status();
+    let body_text = response.text().map_err(AppError::HttpClient)?;
+    if !status_code.is_success() {
+        let body =
+            serde_json::from_str(&body_text).unwrap_or_else(|_| json!({ "raw_body": body_text }));
+        return Err(AppError::Upstream(status_code.as_u16(), body));
+    }
+    parse_json(&body_text)
+}
+
+/// `GET /v1/market-data/instruments` — universe file listing or DB symbol discovery.
+pub fn get_market_data_instruments(
+    server_url: &str,
+    mode: &str,
+    universe: Option<&str>,
+    start_date: Option<&str>,
+    end_date: Option<&str>,
+    min_bars: Option<i32>,
+    storage_timeframe: Option<&str>,
+    limit: Option<i32>,
+    cursor_symbol: Option<&str>,
+    timeout_ms: u64,
+) -> Result<Value, AppError> {
+    let url = format!(
+        "{}/v1/market-data/instruments",
+        server_url.trim_end_matches('/')
+    );
+    let client = build_client(server_url, timeout_ms)?;
+
+    let mut request = client.get(url).query(&[("mode", mode)]);
+    if let Some(u) = universe {
+        request = request.query(&[("universe", u)]);
+    }
+    if let Some(s) = start_date {
+        request = request.query(&[("start_date", s)]);
+    }
+    if let Some(e) = end_date {
+        request = request.query(&[("end_date", e)]);
+    }
+    if let Some(m) = min_bars {
+        request = request.query(&[("min_bars", m.to_string())]);
+    }
+    if let Some(stf) = storage_timeframe {
+        request = request.query(&[("storage_timeframe", stf)]);
+    }
+    if let Some(lim) = limit {
+        request = request.query(&[("limit", lim.to_string())]);
+    }
+    if let Some(c) = cursor_symbol {
+        request = request.query(&[("cursor_symbol", c)]);
     }
 
     let response = request.send().map_err(AppError::HttpClient)?;

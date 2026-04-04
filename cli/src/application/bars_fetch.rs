@@ -5,11 +5,21 @@ use std::collections::BTreeSet;
 use serde_json::Value;
 
 use crate::error::AppError;
-use crate::infrastructure::http_client::get_market_data_bars;
+use crate::infrastructure::http_client::{get_market_data_bars, BarsQueryOptions};
 use crate::infrastructure::repo_root::hiveflow_repo_root;
 use crate::infrastructure::universe_loader::load_universe_symbols;
 
 pub const SYMBOL_BATCH: usize = 30;
+
+/// Max HTTP round-trips when following `next_cursor_bar_time` for a single symbol.
+const MAX_BAR_CURSOR_PAGES: usize = 10_000;
+
+/// Extra bars query behavior (session/cursor + optional multi-page fetch for one symbol).
+#[derive(Clone, Copy, Default)]
+pub struct BarsFetchOptions<'a> {
+    pub query: BarsQueryOptions<'a>,
+    pub follow_cursor_pages: bool,
+}
 
 pub fn parse_csv_symbols(input: Option<&str>) -> Vec<String> {
     input
@@ -65,7 +75,7 @@ pub fn sort_items(items: &mut [Value]) {
     });
 }
 
-pub fn fetch_bars_merged_items(
+pub fn fetch_bars_merged_items_with_options(
     server_url: &str,
     symbols: &[String],
     timeframe: Option<&str>,
@@ -73,20 +83,82 @@ pub fn fetch_bars_merged_items(
     end_date: Option<&str>,
     limit: Option<i32>,
     timeout_ms: u64,
+    options: BarsFetchOptions<'_>,
 ) -> Result<Vec<Value>, AppError> {
     let mut merged: Vec<Value> = Vec::new();
     for chunk in symbols.chunks(SYMBOL_BATCH) {
         let batch: Vec<String> = chunk.to_vec();
-        let v = get_market_data_bars(
-            server_url,
-            Some(&batch),
-            timeframe,
-            start_date,
-            end_date,
-            limit,
-            timeout_ms,
-        )?;
-        merge_items(&mut merged, &v);
+        if options.follow_cursor_pages && batch.len() == 1 {
+            let sym = batch[0].clone();
+            let mut cursor_bt: Option<String> = options
+                .query
+                .cursor_bar_time
+                .filter(|s| !s.is_empty())
+                .map(String::from);
+            let mut pages = 0usize;
+            loop {
+                pages += 1;
+                if pages > MAX_BAR_CURSOR_PAGES {
+                    return Err(AppError::InvalidArgs(format!(
+                        "bars cursor pagination exceeded {MAX_BAR_CURSOR_PAGES} pages"
+                    )));
+                }
+                let q = BarsQueryOptions {
+                    session_date: options.query.session_date,
+                    cursor_bar_time: cursor_bt.as_deref(),
+                    cursor_symbol: Some(
+                        options
+                            .query
+                            .cursor_symbol
+                            .unwrap_or(sym.as_str()),
+                    ),
+                };
+                let v = get_market_data_bars(
+                    server_url,
+                    Some(&batch),
+                    timeframe,
+                    start_date,
+                    end_date,
+                    limit,
+                    timeout_ms,
+                    q,
+                )?;
+                merge_items(&mut merged, &v);
+                let has_more = v
+                    .get("has_more")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                let next = v
+                    .get("next_cursor_bar_time")
+                    .and_then(Value::as_str)
+                    .filter(|s| !s.is_empty());
+                if !has_more || next.is_none() {
+                    break;
+                }
+                cursor_bt = next.map(String::from);
+            }
+        } else {
+            let q = if batch.len() == 1 {
+                options.query
+            } else {
+                BarsQueryOptions {
+                    session_date: options.query.session_date,
+                    cursor_bar_time: None,
+                    cursor_symbol: None,
+                }
+            };
+            let v = get_market_data_bars(
+                server_url,
+                Some(&batch),
+                timeframe,
+                start_date,
+                end_date,
+                limit,
+                timeout_ms,
+                q,
+            )?;
+            merge_items(&mut merged, &v);
+        }
     }
     sort_items(&mut merged);
     Ok(merged)

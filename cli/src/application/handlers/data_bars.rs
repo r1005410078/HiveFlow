@@ -1,6 +1,8 @@
 use serde_json::{json, Value};
 
-use crate::application::bars_fetch::{fetch_bars_merged_items, resolve_bar_symbols};
+use crate::application::bars_fetch::{
+    fetch_bars_merged_items_with_options, resolve_bar_symbols, BarsFetchOptions,
+};
 use crate::application::bars_tui_aggregate::aggregate_market_bars_payload_for_tui;
 use crate::application::requests::DataBarsRequest;
 use crate::error::AppError;
@@ -42,7 +44,8 @@ pub fn handle(args: DataBarsRequest) -> Result<(), AppError> {
         Some(DEFAULT_BENCHMARK_SYMBOL)
     };
 
-    let merged = fetch_bars_merged_items(
+    let follow_cursor_pages = args.output == "tui" && symbols.len() == 1;
+    let merged = fetch_bars_merged_items_with_options(
         &cfg.server_url,
         &symbols,
         Some(args.timeframe.as_str()),
@@ -50,6 +53,10 @@ pub fn handle(args: DataBarsRequest) -> Result<(), AppError> {
         args.end_date.as_deref(),
         args.limit,
         timeout_ms,
+        BarsFetchOptions {
+            follow_cursor_pages,
+            ..Default::default()
+        },
     )?;
 
     let raw_payload = json!({ "items": merged });
