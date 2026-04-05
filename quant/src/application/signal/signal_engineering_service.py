@@ -14,18 +14,13 @@ from application.factor.basic_factor_service import (
     compute_basic_factor_snapshot_from_bars,
 )
 from application.technical.ma_cross_service import build_ma_cross_technical
+from domain.universe.universe_loader import load_industry_map
 from hiveflow.signal.application.normalize_use_case import winsorize_then_zscore
 
 _SIGNAL_VERSION = "l3-signal-v1.0"
 _BENCHMARK_SYMBOL = "000300.SH"
 
-_INDUSTRY_MAP: dict[str, str] = {
-    "000001.SZ": "banking",
-    "600519.SH": "food_beverage",
-    "300750.SZ": "new_energy",
-    "601318.SH": "insurance",
-    "000333.SZ": "appliance",
-}
+_INDUSTRY_MAP: dict[str, str] = load_industry_map()
 
 _logger = logging.getLogger(__name__)
 

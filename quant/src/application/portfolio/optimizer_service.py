@@ -7,15 +7,11 @@ import cvxpy as cp
 import numpy as np
 import pandas as pd
 
+from domain.universe.universe_loader import load_industry_map
+
 _logger = logging.getLogger(__name__)
 
-_INDUSTRY_MAP: dict[str, str] = {
-    "000001.SZ": "banking",
-    "600519.SH": "food_beverage",
-    "300750.SZ": "new_energy",
-    "601318.SH": "insurance",
-    "000333.SZ": "appliance",
-}
+_INDUSTRY_MAP: dict[str, str] = load_industry_map()
 
 
 def solve_portfolio(

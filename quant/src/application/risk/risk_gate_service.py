@@ -9,6 +9,7 @@ import pandas as pd
 
 from application.contracts.cli_output import ok_output
 from application.portfolio.covariance_service import compute_covariance_matrix
+from domain.universe.universe_loader import load_industry_map
 
 _logger = logging.getLogger(__name__)
 
@@ -17,13 +18,7 @@ _DEFAULT_SYMBOLS = ["000001.SZ", "600519.SH", "300750.SZ", "601318.SH", "000333.
 _MIN_REGIME_RETURNS = 20
 _REGIME_LOOKBACK_BARS = 31  # fetch 31 bars → 30 returns, take tail(20)
 
-_INDUSTRY_MAP: dict[str, str] = {
-    "000001.SZ": "banking",
-    "600519.SH": "food_beverage",
-    "300750.SZ": "new_energy",
-    "601318.SH": "insurance",
-    "000333.SZ": "appliance",
-}
+_INDUSTRY_MAP: dict[str, str] = load_industry_map()
 
 _THRESHOLDS: dict[str, dict[str, float]] = {
     "normal":  {"portfolio_vol": 0.30, "single_asset_max": 0.35, "industry_max": 0.45, "turnover": 0.80},
