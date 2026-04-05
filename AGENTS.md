@@ -185,7 +185,7 @@ cd cli && cargo run -- factor replay --start-date YYYY-MM-DD --end-date YYYY-MM-
 | L2 | 因子层 | ✅ Phase 2 完成 | 6 因子，per-factor 独立版本（FactorMeta TypedDict）、rows 含 direction/unit/missing_strategy/source、真实基准计算（000300.SH）、per-factor stability_metrics（coverage_rate/drift 检测）、FactorValue domain model 对齐、Pydantic schema 同步（FactorStabilityMetric） |
 | L3 | 信号工程 | ✅ Phase 2b 完成 | Phase 1: winsorize+zscore+等权 composite、signal_matrix、snapshot CLI；Phase 2a: Rank IC（per-factor+composite）、信号分布漂移检测、`POST /api/v1/signal/evaluate` + `hf signal evaluate`；Phase 2b: 横截面中位数缺失值填补 + 行业哑变量 OLS 中性化框架（守卫：单行业单标的时透传） |
 | L4 | 组合优化 | ✅ Phase 1 完成 | 均值-方差 QP（cvxpy CLARABEL）+ 换手成本惩罚 + 单标的/行业约束；`POST /api/v1/portfolio/optimize` + `hf portfolio optimize`；daily pipeline 接入（data.portfolio 字段） |
-| L5 | 风险门控 | 🔲 未开始 | — |
+| L5 | 风险门控 | ✅ Phase 1 完成 | 三态市场状态机（normal/warning/crisis，基于 000300.SH 年化波动率，降级等权组合，兜底 normal）+ 四项硬约束检查（portfolio_vol/single_asset_max/industry_max/turnover，全态执行）；`POST /api/v1/risk/check` + `hf risk check`（两跳：先调 L4 取权重，再调 L5）；daily pipeline 接入（data.risk_gate 字段，L5 block 不阻断 pipeline） |
 | L5.5 | 预交易模拟 | 🔲 未开始 | — |
 | L6 | 执行 | 🔲 未开始 | Phase 1 orders 固定为空数组 |
 | L7 | 回测/验证 | 🚧 部分完成 | compare 回放、factor replay 已完成；walk-forward 未开始 |
@@ -194,7 +194,7 @@ cd cli && cargo run -- factor replay --start-date YYYY-MM-DD --end-date YYYY-MM-
 | G2 | 实验治理 | 🔲 未开始 | — |
 | G3 | 执行安全 | 🚧 部分完成 | advice_only/decision_weight 框架已建，审批流未实现 |
 
-**当前工作位置**：L3 Phase 2b（缺失值填补 + 行业中性化框架）已合入 master → L5 风险门控待 spec；或扩展标的池使行业中性化生效待 spec。
+**当前工作位置**：L5 风险门控 Phase 1 已合入 master → 下一步候选：L5.5 预交易模拟 Phase 1；或扩展标的池使行业中性化生效。
 
 ### 7.9 已交付能力摘要
 
