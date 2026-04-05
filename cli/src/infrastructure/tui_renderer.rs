@@ -643,16 +643,44 @@ fn run_tui_loop(
                     } else {
                         1
                     };
+                    let cur_tf = timeframe_cycle.map(|(_, c)| c).unwrap_or("1d");
+                    let format_ts = |ts: &str| -> String {
+                        if cur_tf == "1m" {
+                            // 2026-04-01T09:30:00+08:00 -> 09:30
+                            if ts.len() >= 16 {
+                                &ts[11..16]
+                            } else {
+                                ts
+                            }
+                        } else {
+                            // 2026-04-01T15:00:00+08:00 -> 2026-04-01
+                            if ts.len() >= 10 {
+                                &ts[0..10]
+                            } else {
+                                ts
+                            }
+                        }.to_string()
+                    };
+
+                    let (cursor_ts, cursor_price) = points
+                        .get(state.chart_view.cursor)
+                        .map(|(t, p)| (t.as_str(), *p))
+                        .unwrap_or(("-", 0.0));
+
+                    let start_ts = format_ts(points.get(state.chart_view.window_start).map(|(t, _)| t.as_str()).unwrap_or(""));
+                    let end_ts = format_ts(points.get(window_end.saturating_sub(1)).map(|(t, _)| t.as_str()).unwrap_or(""));
+                    let cursor_ts_fmt = format_ts(cursor_ts);
+
                     let x_labels: Vec<Span<'static>> = if cursor_visible == 0 || cursor_visible == x_end_idx {
                         vec![
-                            Span::raw("0".to_string()),
-                            Span::raw(format!("{}", x_end_idx)),
+                            Span::raw(start_ts),
+                            Span::raw(end_ts),
                         ]
                     } else {
                         vec![
-                            Span::raw("0".to_string()),
-                            Span::raw(format!("{}", cursor_visible)),
-                            Span::raw(format!("{}", x_end_idx)),
+                            Span::raw(start_ts),
+                            Span::raw(cursor_ts_fmt),
+                            Span::raw(end_ts),
                         ]
                     };
                     let y_labels: Vec<Span<'static>> = if (cursor_y - y_min).abs() < f64::EPSILON
@@ -724,11 +752,6 @@ fn run_tui_loop(
                                 .labels(y_labels),
                         );
                     frame.render_widget(chart, cols[1]);
-                    let (cursor_ts, cursor_price) = series
-                        .points
-                        .get(state.chart_view.cursor)
-                        .map(|(t, p)| (t.as_str(), *p))
-                        .unwrap_or(("-", 0.0));
                     let nav_hint = if state.filter_editing {
                         format!(
                             "筛选: \"{}\" | Enter 结束编辑  Esc 清空并退出筛选  |  {} {:.2}  [{}..{}]{}{}",
