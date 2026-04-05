@@ -566,6 +566,7 @@ pub fn post_portfolio_optimize(
 pub fn post_risk_check(
     server_url: &str,
     as_of: &str,
+    target_weights: serde_json::Value,
     timeout_ms: u64,
 ) -> Result<Value, AppError> {
     let url = format!(
@@ -576,7 +577,7 @@ pub fn post_risk_check(
 
     let response = client
         .post(url)
-        .json(&json!({ "as_of": as_of, "target_weights": {} }))
+        .json(&json!({ "as_of": as_of, "target_weights": target_weights }))
         .send()
         .map_err(AppError::HttpClient)?;
 

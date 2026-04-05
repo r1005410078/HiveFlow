@@ -46,7 +46,7 @@ pub struct CheckArgs {
         long,
         default_value = "json",
         value_name = "MODE",
-        help = "输出形式：json = 标准 CLI envelope（默认）；table = 终端表格"
+        help = "输出形式：json = 标准 CLI envelope（默认）；table = 终端中文表格"
     )]
     pub output: String,
 }
