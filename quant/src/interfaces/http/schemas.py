@@ -374,10 +374,12 @@ class PipelineCompareData(BaseModel):
 
 class DailyRunData(BaseModel):
     as_of: str
-    data_manifest_id: str
-    factor_snapshot: FactorSnapshot
-    execution_plan: ExecutionPlan
-    l2_decision: L2Decision
+    skipped: bool | None = None
+    skip_reason: str | None = None
+    data_manifest_id: str | None = None
+    factor_snapshot: FactorSnapshot | None = None
+    execution_plan: ExecutionPlan | None = None
+    l2_decision: L2Decision | None = None
     signal_matrix: SignalMatrix | None = None
     portfolio: dict | None = None
     risk_gate: dict | None = None

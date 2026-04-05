@@ -10,10 +10,14 @@ def test_daily_pipeline_includes_signal_matrix():
     assert "signal_matrix" in data
     sm = data["signal_matrix"]
     assert sm is not None
+    from domain.universe.universe_loader import load_universe
+
+    universe_size = len(load_universe("default"))
+    factor_count = 6  # l2-basic-v1.1 has 6 factors
     assert sm["schema_version"] == "1.0"
     assert sm["signal_version"] == "l3-signal-v1.0"
-    assert len(sm["rows"]) == 30
-    assert len(sm["composite_scores"]) == 5
+    assert len(sm["rows"]) == universe_size * factor_count
+    assert len(sm["composite_scores"]) == universe_size
 
 
 def test_daily_pipeline_signal_matrix_failure_resilient():

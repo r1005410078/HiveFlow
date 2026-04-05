@@ -13,6 +13,8 @@ from application.portfolio.portfolio_optimize_service import run_portfolio_optim
 from application.risk.risk_gate_service import run_risk_check
 from application.signal.signal_engineering_service import compute_signal_matrix
 from application.technical.ma_cross_service import build_ma_cross_technical
+from domain.market_data.sse_calendar import is_sse_trading_day
+from domain.universe.universe_loader import load_universe
 
 
 _FACTOR_AVAILABILITY_WARN_THRESHOLD = 0.8
@@ -47,13 +49,15 @@ def run_daily(
 ) -> dict:
     # root 预留给后续持久化与工作目录上下文使用。
     run_id = f"run_{as_of.replace('-', '')}_{str(uuid4())[:8]}"
-    symbols = [
-        "000001.SZ",
-        "600519.SH",
-        "300750.SZ",
-        "601318.SH",
-        "000333.SZ",
-    ]
+
+    if not is_sse_trading_day(as_of):
+        return ok_output(
+            command="hf pipeline daily",
+            run_id=run_id,
+            data={"as_of": as_of, "skipped": True, "skip_reason": "non_trading_day"},
+        )
+
+    symbols = load_universe("default")
     # 默认先构造 deterministic 快照，保证无依赖场景也可稳定运行。
     factor_snapshot = compute_basic_factor_snapshot(as_of=as_of, symbols=symbols)
     bar_rows_real: list[dict] | None = None

@@ -44,3 +44,24 @@ def test_http_daily_response_schema_includes_l2_decision() -> None:
     assert isinstance(l2d["factor_availability"], list)
     scores = [c["score"] for c in l2d["top_candidates"]]
     assert scores == sorted(scores, reverse=True)
+
+
+def test_daily_skips_non_trading_day():
+    """非交易日（周日）返回 skipped=true，不触发任何计算"""
+    from unittest.mock import patch
+
+    app = create_app()
+    client = TestClient(app)
+
+    with patch("application.daily_run_service.is_sse_trading_day", return_value=False):
+        resp = client.post("/api/v1/pipeline/daily", json={"as_of": "2026-04-05"})
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["status"] == "ok"
+    assert payload["schema_version"] == "1.0.0"
+    assert payload["command"] == "hf pipeline daily"
+    assert payload["data"]["as_of"] == "2026-04-05"
+    assert payload["data"]["skipped"] is True
+    assert payload["data"]["skip_reason"] == "non_trading_day"
+    assert "factor_snapshot" not in payload["data"]

@@ -98,13 +98,10 @@ def test_daily_pipeline_prefers_real_bars_when_available() -> None:
     assert ma["schema_version"] == "1.0.0"
     assert ma["definition"] == "sma_close_5_10"
     assert ma["as_of"] == "2026-04-01"
-    assert set(ma["by_symbol"]) == {
-        "000001.SZ",
-        "600519.SH",
-        "300750.SZ",
-        "601318.SH",
-        "000333.SZ",
-    }
+    from domain.universe.universe_loader import load_universe
+
+    expected_symbols = set(load_universe("default"))
+    assert set(ma["by_symbol"]) == expected_symbols
     for st in ma["by_symbol"].values():
         assert "golden_cross" in st
         assert "death_cross" in st
@@ -112,7 +109,7 @@ def test_daily_pipeline_prefers_real_bars_when_available() -> None:
         assert st["available"] is True
     rows = out["data"]["factor_snapshot"]["rows"]
     trend_rows = [r for r in rows if r["factor_name"] == "trend_stability_20"]
-    assert len(trend_rows) == 5
+    assert len(trend_rows) == len(expected_symbols)
     assert all(r["raw_value"] == 1.0 for r in trend_rows)
 
 

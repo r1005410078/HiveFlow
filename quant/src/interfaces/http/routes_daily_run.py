@@ -115,9 +115,15 @@ router = APIRouter(prefix="/api/v1/pipeline", tags=["pipeline"])
 def post_daily(
     req: DailyRunRequest,
     service: DailyRunService = Depends(get_daily_run_service),
-) -> DailyRunResponse:
+):
+    from fastapi.responses import JSONResponse
+
     data = to_daily_input(req)
-    return DailyRunResponse.model_validate(service(data["as_of"]))
+    raw = service(data["as_of"])
+    # Non-trading-day shortcut: return raw dict directly (skipped response has no factor fields)
+    if raw.get("data", {}).get("skipped"):
+        return JSONResponse(content=raw)
+    return DailyRunResponse.model_validate(raw)
 
 
 @router.post(
