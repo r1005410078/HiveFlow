@@ -24,7 +24,8 @@ router = APIRouter(prefix="/api/v1/pipeline", tags=["pipeline"])
         "1. **L1 因子计算**：计算 6 因子快照（`momentum_20`、`inv_volatility_20`、`turnover_rate`、"
         "`max_drawdown_60`、`trend_stability_20`、`relative_strength_vs_index`）\n"
         "2. **L2 候选排名**：对标的池打分并输出 Top-5 可解释候选，含 `score_breakdown`\n"
-        "3. **执行计划**：生成订单列表（当前 Phase 1 为空数组）\n\n"
+        "3. **执行计划**：生成订单列表（当前 Phase 1 为空数组）\n"
+        "4. **L3 与技术面**：`data.signal_matrix` 为标准化信号矩阵；有 bar 时 `data.technical.ma5_ma10` 为 MA5/MA10 交叉，否则 `technical` 可为 null。\n\n"
         "响应遵循 CLI Output Schema v1.0.0，`data.l2_decision` 含完整打分明细。"
     ),
     response_description="日频流水线完整输出，含因子快照、L2 候选排名与执行计划",
@@ -101,6 +102,7 @@ router = APIRouter(prefix="/api/v1/pipeline", tags=["pipeline"])
                                 ],
                             },
                             "execution_plan": {"orders": []},
+                            "technical": None,
                         },
                         "warnings": [],
                         "errors": [],

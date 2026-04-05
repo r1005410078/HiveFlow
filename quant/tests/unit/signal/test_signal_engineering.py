@@ -11,6 +11,22 @@ def _snapshot_5symbols() -> dict:
     )
 
 
+def test_run_signal_snapshot_data_envelope():
+    """HTTP/CLI：data 为 { signal_matrix, technical }，不再将矩阵放在 data 根上。"""
+    from application.signal.signal_engineering_service import run_signal_snapshot
+
+    out = run_signal_snapshot(as_of="2026-04-01", bar_store=None)
+    assert out["status"] == "ok"
+    data = out["data"]
+    assert "signal_matrix" in data
+    assert "technical" in data
+    sm = data["signal_matrix"]
+    assert sm["signal_version"] == "l3-signal-v1.0"
+    assert len(sm["rows"]) == 30
+    # 无 bar_store 时不计算 MA 块
+    assert data["technical"] is None
+
+
 def test_signal_matrix_structure():
     from application.signal.signal_engineering_service import compute_signal_matrix
 

@@ -36,7 +36,9 @@ def run_portfolio_optimize(
 
     if alpha is None:
         snapshot = run_signal_snapshot(as_of=as_of, bar_store=bar_store)
-        composite_scores = snapshot.get("data", {}).get("composite_scores", [])
+        data = snapshot.get("data") or {}
+        signal_matrix = data.get("signal_matrix") or {}
+        composite_scores = signal_matrix.get("composite_scores", [])
         alpha = {
             cs["symbol"]: float(cs["composite_score"])
             for cs in composite_scores

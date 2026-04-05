@@ -8,6 +8,8 @@ def test_daily_run_includes_l2_decision() -> None:
     """验证 daily 编排包含 l2_decision 输出"""
     result = run_daily(as_of="2026-04-01", root=None)
 
+    assert "technical" in result["data"]
+    assert result["data"]["technical"] is None
     assert "l2_decision" in result["data"]
     l2d = result["data"]["l2_decision"]
 
@@ -37,6 +39,8 @@ def test_daily_pipeline_end_to_end(tmp_path):
     assert out["data"]["factor_snapshot"]["coverage_rate"] == 1.0
     assert "execution_plan" in out["data"]
     assert out["data"]["as_of"] == "2026-04-01"
+    assert "technical" in out["data"]
+    assert out["data"]["technical"] is None
     assert out["data"]["execution_plan"]["orders"] == []
 
 
@@ -88,6 +92,24 @@ def test_daily_pipeline_prefers_real_bars_when_available() -> None:
             return ([], False)
 
     out = run_daily(as_of="2026-04-01", root=None, bar_store=_BarStore())
+    tech = out["data"]["technical"]
+    assert tech is not None
+    ma = tech["ma5_ma10"]
+    assert ma["schema_version"] == "1.0.0"
+    assert ma["definition"] == "sma_close_5_10"
+    assert ma["as_of"] == "2026-04-01"
+    assert set(ma["by_symbol"]) == {
+        "000001.SZ",
+        "600519.SH",
+        "300750.SZ",
+        "601318.SH",
+        "000333.SZ",
+    }
+    for st in ma["by_symbol"].values():
+        assert "golden_cross" in st
+        assert "death_cross" in st
+        assert "available" in st
+        assert st["available"] is True
     rows = out["data"]["factor_snapshot"]["rows"]
     trend_rows = [r for r in rows if r["factor_name"] == "trend_stability_20"]
     assert len(trend_rows) == 5

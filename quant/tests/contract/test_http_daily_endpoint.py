@@ -18,6 +18,11 @@ def test_post_daily_contract():
     assert "factor_snapshot" in payload["data"]
     assert payload["data"]["factor_snapshot"]["snapshot_version"] == "l2-basic-v1.1"
     assert "execution_plan" in payload["data"]
+    assert "technical" in payload["data"]
+    tech = payload["data"]["technical"]
+    assert tech is None or (
+        isinstance(tech, dict) and "ma5_ma10" in tech and isinstance(tech["ma5_ma10"], dict)
+    )
 
 
 def test_http_daily_response_schema_includes_l2_decision() -> None:
@@ -29,6 +34,7 @@ def test_http_daily_response_schema_includes_l2_decision() -> None:
 
     assert resp.status_code == 200
     payload = resp.json()
+    assert "technical" in payload["data"]
     assert "l2_decision" in payload["data"]
     l2d = payload["data"]["l2_decision"]
     assert l2d["score_version"] == "l2-score-v1.1"

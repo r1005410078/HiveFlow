@@ -13,6 +13,7 @@ from application.factor.basic_factor_service import (
     compute_basic_factor_snapshot,
     compute_basic_factor_snapshot_from_bars,
 )
+from application.technical.ma_cross_service import build_ma_cross_technical
 from hiveflow.signal.application.normalize_use_case import winsorize_then_zscore
 
 _SIGNAL_VERSION = "l3-signal-v1.0"
@@ -200,6 +201,7 @@ def run_signal_snapshot(as_of: str, bar_store=None) -> dict:
         "000001.SZ", "600519.SH", "300750.SZ", "601318.SH", "000333.SZ",
     ]
     factor_snapshot = compute_basic_factor_snapshot(as_of=as_of, symbols=symbols)
+    bar_rows_real: list[dict] | None = None
     if bar_store is not None:
         try:
             start_date = (date.fromisoformat(as_of) - timedelta(days=180)).isoformat()
@@ -207,6 +209,7 @@ def run_signal_snapshot(as_of: str, bar_store=None) -> dict:
                 symbols=symbols, timeframe="1d",
                 start_date=start_date, end_date=as_of, limit=10000,
             )
+            bar_rows_real = bar_rows
             try:
                 benchmark_start = (date.fromisoformat(as_of) - timedelta(days=60)).isoformat()
                 benchmark_rows = bar_store.list_bars(
@@ -226,9 +229,21 @@ def run_signal_snapshot(as_of: str, bar_store=None) -> dict:
             )
 
     signal_matrix = compute_signal_matrix(factor_snapshot)
+    technical: dict | None = None
+    extra_warnings: list[dict] = []
+    if bar_rows_real:
+        try:
+            technical = {"ma5_ma10": build_ma_cross_technical(as_of, symbols, bar_rows_real)}
+        except Exception:
+            _logger.warning("signal snapshot: MA cross technical failed", exc_info=True)
+            extra_warnings.append({
+                "code": "MA_CROSS_FAILED",
+                "message": "MA5/MA10 cross technical block failed; omitted from response",
+            })
     run_id = f"run_{as_of.replace('-', '')}_{str(uuid4())[:8]}"
     return ok_output(
         command="hf signal snapshot",
         run_id=run_id,
-        data=signal_matrix,
+        data={"signal_matrix": signal_matrix, "technical": technical},
+        warnings=extra_warnings or None,
     )

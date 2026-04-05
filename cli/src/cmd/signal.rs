@@ -15,8 +15,8 @@ pub enum SignalSubcommand {
     #[command(
         about = "请求服务端计算指定日期的标准化信号矩阵，并打印 JSON 或表格",
         long_about = "调用 POST /api/v1/signal/snapshot。\
-data 内为 signal_matrix：含 rows（逐标的×因子信号）、composite_scores（等权综合分）、\
-transform_stats（去极值前后诊断）。\
+data 为对象：signal_matrix（rows、composite_scores、transform_stats）\
+与可选 technical.ma5_ma10（服务端有 bar 时）。\
 l2_decision / 排序逻辑不受影响，本命令仅用于观测与联调。"
     )]
     Snapshot(SnapshotArgs),

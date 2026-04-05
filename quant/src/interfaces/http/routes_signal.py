@@ -20,8 +20,9 @@ router = APIRouter(prefix="/api/v1/signal", tags=["signal"])
     "/snapshot",
     summary="获取 L3 信号快照",
     description=(
-        "对指定日期计算标准化信号矩阵（去极值 + zscore + 等权聚合），"
-        "返回 signal_matrix 含 rows、composite_scores、transform_stats。"
+        "对指定日期计算标准化信号矩阵（去极值 + zscore + 等权聚合）。"
+        "响应 `data` 含 `signal_matrix`（rows、composite_scores、transform_stats）"
+        "与可选 `technical.ma5_ma10`（有 bar 数据时 MA5/MA10 金叉死叉；否则 `technical` 为 null）。"
     ),
     response_description="L3 信号快照，含标准化信号与诊断指标",
 )

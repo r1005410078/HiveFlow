@@ -397,9 +397,44 @@ pub fn render_pipeline_daily_table(payload: &Value) -> String {
         }
     }
 
+    let mut ma_cross = Table::new();
+    ma_cross
+        .load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec![
+            Cell::new("标的"),
+            Cell::new("金叉"),
+            Cell::new("死叉"),
+            Cell::new("SMA5"),
+            Cell::new("SMA10"),
+            Cell::new("可用"),
+        ]);
+    if let Some(by) = payload
+        .get("data")
+        .and_then(|d| d.get("technical"))
+        .and_then(|t| t.get("ma5_ma10"))
+        .and_then(|m| m.get("by_symbol"))
+        .and_then(Value::as_object)
+    {
+        let mut keys: Vec<&String> = by.keys().collect();
+        keys.sort();
+        for sym in keys {
+            if let Some(v) = by.get(sym) {
+                ma_cross.add_row(vec![
+                    sym.clone(),
+                    json_bool_label(v.get("golden_cross")),
+                    json_bool_label(v.get("death_cross")),
+                    as_f64(v.get("sma5")),
+                    as_f64(v.get("sma10")),
+                    json_bool_label(v.get("available")),
+                ]);
+            }
+        }
+    }
+
     format!(
-        "日频管线摘要\n{}\n候选标的（最多5）\n{}\n因子可用性\n{}\n",
-        summary, top, availability
+        "日频管线摘要\n{}\n候选标的（最多5）\n{}\n因子可用性\n{}\nMA5/MA10\n{}\n",
+        summary, top, availability, ma_cross
     )
 }
 
@@ -929,8 +964,9 @@ pub fn render_factor_replay_table(payload: &Value) -> String {
 
 pub fn render_signal_snapshot_table(payload: &Value) -> String {
     let data = payload.get("data");
-    let signal_version = as_str(data.and_then(|d| d.get("signal_version")));
-    let coverage = as_f64(data.and_then(|d| d.get("coverage_rate")));
+    let sm = data.and_then(|d| d.get("signal_matrix"));
+    let signal_version = as_str(sm.and_then(|d| d.get("signal_version")));
+    let coverage = as_f64(sm.and_then(|d| d.get("coverage_rate")));
 
     let mut header = Table::new();
     header
@@ -951,7 +987,7 @@ pub fn render_signal_snapshot_table(payload: &Value) -> String {
             Cell::new("方向"),
         ]);
 
-    if let Some(items) = data.and_then(|d| d.get("rows")).and_then(Value::as_array) {
+    if let Some(items) = sm.and_then(|d| d.get("rows")).and_then(Value::as_array) {
         for item in items {
             rows_table.add_row(vec![
                 as_str(item.get("symbol")),
@@ -973,10 +1009,7 @@ pub fn render_signal_snapshot_table(payload: &Value) -> String {
             Cell::new("参与因子数"),
         ]);
 
-    if let Some(items) = data
-        .and_then(|d| d.get("composite_scores"))
-        .and_then(Value::as_array)
-    {
+    if let Some(items) = sm.and_then(|d| d.get("composite_scores")).and_then(Value::as_array) {
         for item in items {
             composite.add_row(vec![
                 as_str(item.get("symbol")),
@@ -986,10 +1019,52 @@ pub fn render_signal_snapshot_table(payload: &Value) -> String {
         }
     }
 
+    let mut ma_cross = Table::new();
+    ma_cross
+        .load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec![
+            Cell::new("标的"),
+            Cell::new("金叉"),
+            Cell::new("死叉"),
+            Cell::new("SMA5"),
+            Cell::new("SMA10"),
+            Cell::new("可用"),
+        ]);
+    if let Some(by) = data
+        .and_then(|d| d.get("technical"))
+        .and_then(|t| t.get("ma5_ma10"))
+        .and_then(|m| m.get("by_symbol"))
+        .and_then(Value::as_object)
+    {
+        let mut keys: Vec<&String> = by.keys().collect();
+        keys.sort();
+        for sym in keys {
+            if let Some(v) = by.get(sym) {
+                ma_cross.add_row(vec![
+                    sym.clone(),
+                    json_bool_label(v.get("golden_cross")),
+                    json_bool_label(v.get("death_cross")),
+                    as_f64(v.get("sma5")),
+                    as_f64(v.get("sma10")),
+                    json_bool_label(v.get("available")),
+                ]);
+            }
+        }
+    }
+
     format!(
-        "L3 信号快照\n{}\n信号明细\n{}\n综合分排名\n{}\n",
-        header, rows_table, composite
+        "L3 信号快照\n{}\n信号明细\n{}\n综合分排名\n{}\nMA5/MA10\n{}\n",
+        header, rows_table, composite, ma_cross
     )
+}
+
+fn json_bool_label(v: Option<&Value>) -> String {
+    match v.and_then(Value::as_bool) {
+        Some(true) => "是".to_string(),
+        Some(false) => "否".to_string(),
+        None => "—".to_string(),
+    }
 }
 
 fn ic_rating(ic_ir: f64) -> &'static str {

@@ -29,27 +29,45 @@
   "advice_only": false,
   "decision_weight": 1,
   "data": {
-    "schema_version": "1.0",
-    "generated_at": "2026-04-01T09:00:00+00:00",
-    "producer_version": "quant-l3",
-    "signal_version": "l3-signal-v1.0",
-    "factor_names": ["momentum_20", "inv_volatility_20", "turnover_rate", "max_drawdown_60", "trend_stability_20", "relative_strength_vs_index"],
-    "coverage_rate": 1.0,
-    "rows": [
-      {"symbol": "600519.SH", "factor_name": "momentum_20", "raw_value": 0.02, "signal_value": 1.23, "direction": 1},
-      {"symbol": "600519.SH", "factor_name": "inv_volatility_20", "raw_value": 2.9, "signal_value": 0.87, "direction": 1}
-    ],
-    "composite_scores": [
-      {"symbol": "600519.SH", "composite_score": 0.54, "factor_count": 6},
-      {"symbol": "000001.SZ", "composite_score": -0.12, "factor_count": 6}
-    ],
-    "transform_stats": [
-      {
-        "factor_name": "momentum_20",
-        "pre_winsorize": {"count": 5, "mean": 0.03, "std": 0.02, "min": -0.01, "max": 0.08},
-        "post_zscore": {"count": 5, "mean": 0.0, "std": 1.0, "min": -1.5, "max": 1.8}
+    "signal_matrix": {
+      "schema_version": "1.0",
+      "generated_at": "2026-04-01T09:00:00+00:00",
+      "producer_version": "quant-l3",
+      "signal_version": "l3-signal-v1.0",
+      "factor_names": ["momentum_20", "inv_volatility_20", "turnover_rate", "max_drawdown_60", "trend_stability_20", "relative_strength_vs_index"],
+      "coverage_rate": 1.0,
+      "rows": [
+        {"symbol": "600519.SH", "factor_name": "momentum_20", "raw_value": 0.02, "signal_value": 1.23, "direction": 1},
+        {"symbol": "600519.SH", "factor_name": "inv_volatility_20", "raw_value": 2.9, "signal_value": 0.87, "direction": 1}
+      ],
+      "composite_scores": [
+        {"symbol": "600519.SH", "composite_score": 0.54, "factor_count": 6},
+        {"symbol": "000001.SZ", "composite_score": -0.12, "factor_count": 6}
+      ],
+      "transform_stats": [
+        {
+          "factor_name": "momentum_20",
+          "pre_winsorize": {"count": 5, "mean": 0.03, "std": 0.02, "min": -0.01, "max": 0.08},
+          "post_zscore": {"count": 5, "mean": 0.0, "std": 1.0, "min": -1.5, "max": 1.8}
+        }
+      ]
+    },
+    "technical": {
+      "ma5_ma10": {
+        "schema_version": "1.0.0",
+        "definition": "sma_close_5_10",
+        "as_of": "2026-04-01",
+        "by_symbol": {
+          "600519.SH": {
+            "golden_cross": false,
+            "death_cross": false,
+            "sma5": 1800.12,
+            "sma10": 1795.0,
+            "available": true
+          }
+        }
       }
-    ]
+    }
   },
   "warnings": [],
   "errors": []
@@ -505,7 +523,8 @@ CLI 默认 **`--output table`** 为可读摘要；**`--output json`** 时 stdout
           "post_zscore": {"count": 5, "mean": 0.0, "std": 1.0, "min": -1.5, "max": 1.8}
         }
       ]
-    }
+    },
+    "technical": null
   },
   "warnings": [],
   "errors": []

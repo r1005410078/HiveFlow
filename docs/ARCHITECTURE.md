@@ -85,6 +85,7 @@ L7 回测/验证层（贯穿 L0~L6）
   - 每个因子独立版本号
   - 因子可用率与稳定性监控
 - 输出：`factor_matrix(as_of, symbol, factor_name, raw_value, factor_version)`。
+- 术语对齐：**因子** = 各标的、各 `as_of` 上可重复计算的特征值（输入侧）；**权重/打分系数** = 策略参数（如 L2 profile）。矩阵视角下 **行≈标的、列≈因子名**。说明见 `quant/src/application/factor/basic_factor_service.py` 中 `FACTOR_METADATA` 上方注释。
 
 ### L3 信号工程层
 

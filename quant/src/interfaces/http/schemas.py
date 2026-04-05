@@ -150,6 +150,32 @@ class SignalMatrix(BaseModel):
     transform_stats: list[SignalTransformStats]
 
 
+class MaCrossSymbolState(BaseModel):
+    golden_cross: bool
+    death_cross: bool
+    sma5: float | None = None
+    sma10: float | None = None
+    available: bool
+
+
+class MaCrossBlock(BaseModel):
+    schema_version: str
+    definition: str
+    as_of: str
+    by_symbol: dict[str, MaCrossSymbolState]
+
+
+class TechnicalIndicators(BaseModel):
+    ma5_ma10: MaCrossBlock | None = None
+
+
+class SignalSnapshotData(BaseModel):
+    """L3 矩阵 + 非 L3 技术字段（如 MA 交叉）；与 ``run_signal_snapshot`` 返回的 ``data`` 对齐。"""
+
+    signal_matrix: SignalMatrix
+    technical: TechnicalIndicators | None = None
+
+
 class SignalSnapshotResponse(BaseModel):
     schema_version: str
     command: str
@@ -159,7 +185,7 @@ class SignalSnapshotResponse(BaseModel):
     source: str
     advice_only: bool
     decision_weight: int
-    data: SignalMatrix
+    data: SignalSnapshotData
     warnings: list[dict]
     errors: list[dict]
 
@@ -355,6 +381,7 @@ class DailyRunData(BaseModel):
     signal_matrix: SignalMatrix | None = None
     portfolio: dict | None = None
     risk_gate: dict | None = None
+    technical: TechnicalIndicators | None = None
 
 
 class PipelineCompareResponse(BaseModel):

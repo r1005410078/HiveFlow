@@ -12,6 +12,7 @@ from application.factor.basic_factor_service import (
 from application.portfolio.portfolio_optimize_service import run_portfolio_optimize
 from application.risk.risk_gate_service import run_risk_check
 from application.signal.signal_engineering_service import compute_signal_matrix
+from application.technical.ma_cross_service import build_ma_cross_technical
 
 
 _FACTOR_AVAILABILITY_WARN_THRESHOLD = 0.8
@@ -55,6 +56,7 @@ def run_daily(
     ]
     # 默认先构造 deterministic 快照，保证无依赖场景也可稳定运行。
     factor_snapshot = compute_basic_factor_snapshot(as_of=as_of, symbols=symbols)
+    bar_rows_real: list[dict] | None = None
     if bar_store is not None:
         try:
             # 优先使用真实 bars 计算因子（近 180 天窗口，覆盖 60/20 日特征需求）。
@@ -66,6 +68,7 @@ def run_daily(
                 end_date=as_of,
                 limit=10000,
             )
+            bar_rows_real = bar_rows
             # Query benchmark bars (need >= 21 bars; query 40 days to be safe)
             try:
                 benchmark_start = (date.fromisoformat(as_of) - timedelta(days=60)).isoformat()
@@ -90,12 +93,26 @@ def run_daily(
                 "daily run: bar_store path failed; using deterministic factor snapshot",
                 exc_info=True,
             )
+    technical: dict | None = None
+    ma_cross_failed = False
+    if bar_rows_real:
+        try:
+            ma_block = build_ma_cross_technical(as_of, symbols, bar_rows_real)
+            technical = {"ma5_ma10": ma_block}
+        except Exception:
+            _logger.warning("daily run: MA cross technical failed", exc_info=True)
+            ma_cross_failed = True
     l2_decision = compute_l2_decision_from_snapshot(
         factor_snapshot=factor_snapshot,
         top_n=top_n,
         score_version=score_version,
     )
     warnings = _build_factor_quality_warnings(l2_decision)
+    if ma_cross_failed:
+        warnings.append({
+            "code": "MA_CROSS_FAILED",
+            "message": "MA5/MA10 cross technical block failed; omitted from response",
+        })
     signal_matrix = None
     try:
         signal_matrix = compute_signal_matrix(factor_snapshot)
@@ -160,6 +177,7 @@ def run_daily(
             "signal_matrix": signal_matrix,
             "portfolio": portfolio,
             "risk_gate": risk_gate_result.get("data") if risk_gate_result else None,
+            "technical": technical,
         },
         warnings=warnings,
     )

@@ -6,6 +6,7 @@ from application.daily_run_service import run_daily
 def test_daily_pipeline_includes_signal_matrix():
     result = run_daily(as_of="2026-04-01", root=None)
     data = result["data"]
+    assert "technical" in data
     assert "signal_matrix" in data
     sm = data["signal_matrix"]
     assert sm is not None

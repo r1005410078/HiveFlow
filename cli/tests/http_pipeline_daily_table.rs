@@ -21,6 +21,7 @@ fn pipeline_daily_table_renders_top_candidates_and_factor_availability() {
     assert!(table.contains("日频管线摘要"));
     assert!(table.contains("候选标的（最多5）"));
     assert!(table.contains("因子可用性"));
+    assert!(table.contains("MA5/MA10"));
     assert!(table.contains("l2-score-v1.1"));
     assert!(table.contains("600519.SH"));
     assert!(table.contains("trend_stability_20"));
