@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-
 import pytest
 
 from domain.universe.universe_loader import load_industry_map, load_universe
