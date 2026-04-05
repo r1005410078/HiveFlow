@@ -180,7 +180,7 @@ cd cli && cargo run -- factor replay --start-date YYYY-MM-DD --end-date YYYY-MM-
 
 | 层 | 名称 | 状态 | 说明 |
 |---|---|---|---|
-| L0 | 标的池 | ✅ Phase 1 完成 | A 股 universe，静态快照 |
+| L0 | 标的池 | ✅ Phase 2 完成 | Phase 1: A 股 universe，静态快照；Phase 2: 精选 28 只（new_energy/robotics/semiconductor/pcb/power/power_grid 6 行业）+ industry_map.json 集中管理 + 非交易日守卫（daily pipeline 跳过非交易日） |
 | L1 | 数据层 | ✅ Phase 2 完成 | Phase 1: TimescaleDB + bars 同步，180 天窗口；Phase 2: 异步作业（202+轮询）、协作式取消（cancel）、标的失败队列+自动重试+审计表、retry-failed 补拉、进度追踪（current_symbol/done/pending）、孤儿 run 收口 |
 | L2 | 因子层 | ✅ Phase 2 完成 | 6 因子，per-factor 独立版本（FactorMeta TypedDict）、rows 含 direction/unit/missing_strategy/source、真实基准计算（000300.SH）、per-factor stability_metrics（coverage_rate/drift 检测）、FactorValue domain model 对齐、Pydantic schema 同步（FactorStabilityMetric） |
 | L3 | 信号工程 | ✅ Phase 2b 完成 | Phase 1: winsorize+zscore+等权 composite、signal_matrix、snapshot CLI；Phase 2a: Rank IC（per-factor+composite）、信号分布漂移检测、`POST /api/v1/signal/evaluate` + `hf signal evaluate`；Phase 2b: 横截面中位数缺失值填补 + 行业哑变量 OLS 中性化框架（守卫：单行业单标的时透传） |
@@ -194,7 +194,7 @@ cd cli && cargo run -- factor replay --start-date YYYY-MM-DD --end-date YYYY-MM-
 | G2 | 实验治理 | 🔲 未开始 | — |
 | G3 | 执行安全 | 🚧 部分完成 | advice_only/decision_weight 框架已建，审批流未实现 |
 
-**当前工作位置**：L5 风险门控 Phase 1 已合入 master → 下一步候选：L5.5 预交易模拟 Phase 1；或扩展标的池使行业中性化生效。
+**当前工作位置**：L0 Phase 2（标的池扩展至 28 只 + 非交易日守卫）已合入 master → 下一步候选：L7 Walk-forward 回测；或 L5.5 预交易模拟 Phase 1。
 
 ### 7.9 已交付能力摘要
 
