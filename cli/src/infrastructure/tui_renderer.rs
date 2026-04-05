@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::io::{self, stdout};
 use std::time::Duration;
 
 use crossterm::{
@@ -8,17 +9,79 @@ use crossterm::{
 };
 use ratatui::{
     backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout},
+    layout::{Alignment, Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     symbols,
     text::{Line, Span},
     widgets::{
-        Axis, Block, Borders, Cell, Chart, Dataset, List, ListItem, ListState, Paragraph, Row,
-        Table,
+        Axis, Block, Borders, Cell, Chart, Clear, Dataset, List, ListItem, ListState, Paragraph,
+        Row, Table,
     },
     Terminal,
 };
 use serde_json::Value;
+
+/// 全屏 K 线 TUI 终端句柄（raw mode + alternate screen）。由 [`sync_runs_tui_enter`] 创建，结束时须 [`sync_runs_tui_leave`]。
+pub type SyncRunsTuiTerminal = Terminal<CrosstermBackend<io::Stdout>>;
+
+/// 进入 raw mode 与 alternate screen，供多次 [`run_sync_runs_tui_iteration`] 复用（切换颗粒度时不应反复 enter/leave）。
+pub fn sync_runs_tui_enter() -> Result<SyncRunsTuiTerminal, String> {
+    enable_raw_mode().map_err(|e| format!("enable raw mode failed: {e}"))?;
+    let mut out = stdout();
+    execute!(out, EnterAlternateScreen).map_err(|e| format!("enter alt screen failed: {e}"))?;
+    let backend = CrosstermBackend::new(out);
+    Terminal::new(backend).map_err(|e| format!("create terminal failed: {e}"))
+}
+
+/// 与 [`sync_runs_tui_enter`] 配对；离开全屏并恢复终端状态。
+pub fn sync_runs_tui_leave(terminal: &mut SyncRunsTuiTerminal) {
+    let _ = disable_raw_mode();
+    let _ = execute!(terminal.backend_mut(), LeaveAlternateScreen);
+    let _ = terminal.show_cursor();
+}
+
+const TUI_LOADING_SPINNER: &[&str] =
+    &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+/// 全屏清屏并绘制加载行（切换颗粒度拉数时由 application 轮询调用以显示动画）。
+pub fn sync_runs_tui_draw_loading(
+    terminal: &mut SyncRunsTuiTerminal,
+    detail: &str,
+    tick: usize,
+) -> Result<(), String> {
+    let spin = TUI_LOADING_SPINNER[tick % TUI_LOADING_SPINNER.len()];
+    let line = format!("{spin}  加载行情…  {detail}");
+    terminal
+        .draw(move |f| {
+            let a = f.area();
+            f.render_widget(Clear, a);
+            let p = Paragraph::new(line)
+                .alignment(Alignment::Center)
+                .style(Style::default().fg(Color::Cyan));
+            f.render_widget(p, a);
+        })
+        .map(|_| ())
+        .map_err(|e| format!("draw loading failed: {e}"))
+}
+
+/// 在已打开的会话中跑一轮事件循环，直到用户退出或切换颗粒度（不关闭 alternate screen）。
+pub fn run_sync_runs_tui_iteration(
+    terminal: &mut SyncRunsTuiTerminal,
+    payload: &Value,
+    preferred_symbol: Option<&str>,
+    benchmark_symbol: Option<&str>,
+    timeframe_cycle: Option<(&[&str], &str)>,
+) -> Result<SyncRunsTuiClose, String> {
+    let symbols = build_symbol_series(payload);
+    run_tui_loop(
+        terminal,
+        &symbols,
+        payload,
+        preferred_symbol,
+        benchmark_symbol,
+        timeframe_cycle,
+    )
+}
 
 #[derive(Debug, Clone)]
 struct SymbolSeries {
@@ -39,7 +102,11 @@ struct ChartViewState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SyncRunsTuiClose {
     Quit,
-    TimeframeChanged(String),
+    TimeframeChanged {
+        timeframe: String,
+        /// 当前左侧选中的标的，供上层下一轮仍作为 `preferred_symbol`。
+        selected_symbol: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -242,6 +309,12 @@ impl TuiState {
     }
 }
 
+/// 左侧股票列表固定列宽（字符格）；右侧走势图占剩余宽度。
+const TUI_STOCK_LIST_COL_WIDTH: u16 = 30;
+
+/// 顶栏右侧：数字键快捷键与颗粒度档位（与 `TUI_TIMEFRAMES` 顺序一致；`[n]` 表示按该键）。
+const TUI_TF_KEY_LEGEND: &str = "[1]分时 [2]日K [3]周K [4]月K [5]年K";
+
 /// API `timeframe` → 界面用中文（K 线颗粒度）。
 fn timeframe_label_zh(tf: &str) -> &'static str {
     match tf {
@@ -263,26 +336,8 @@ fn tf_title_suffix(tf: &str) -> String {
     }
 }
 
-/// `choices` 须为 **细 → 粗**（如 1m … 1y）。`+` 更细，`−` 更粗；已在端点则不变。
-fn step_granularity(choices: &[&str], current: &str, finer: bool) -> String {
-    if choices.is_empty() {
-        return current.to_string();
-    }
-    let idx = choices.iter().position(|&c| c == current).unwrap_or_else(|| {
-        choices
-            .iter()
-            .position(|&c| c == "1d")
-            .unwrap_or(choices.len() / 2)
-    });
-    let next = if finer {
-        idx.saturating_sub(1)
-    } else {
-        (idx + 1).min(choices.len() - 1)
-    };
-    choices[next].to_string()
-}
-
-fn timeframe_hint_suffix(cycle: Option<(&[&str], &str)>) -> String {
+/// 底栏仅保留当前档位（颗粒度键位在顶栏右侧）。
+fn timeframe_footer_hint(cycle: Option<(&[&str], &str)>) -> String {
     let Some((_choices, cur)) = cycle else {
         return String::new();
     };
@@ -292,10 +347,20 @@ fn timeframe_hint_suffix(cycle: Option<(&[&str], &str)>) -> String {
     } else {
         format!("{z}·{cur}")
     };
-    format!(
-        "  +/- 颗粒度(细←→粗) 当前{}  阶梯：分时→日K→周K→月K→年K",
-        cur_part
-    )
+    format!("  当前{}", cur_part)
+}
+
+fn selected_symbol_for_close(
+    state: &TuiState,
+    symbols: &[SymbolSeries],
+    preferred_fallback: Option<&str>,
+) -> String {
+    state
+        .selected_series(symbols)
+        .map(|s| s.symbol.clone())
+        .or_else(|| preferred_fallback.map(str::to_string))
+        .or_else(|| symbols.first().map(|s| s.symbol.clone()))
+        .unwrap_or_default()
 }
 
 fn filtered_items_payload(payload: &Value, symbol: &str) -> Value {
@@ -329,33 +394,55 @@ fn run_tui_loop(
     let tf_suffix: String = timeframe_cycle
         .map(|(_, c)| tf_title_suffix(c))
         .unwrap_or_default();
-    let tf_bar_hint = timeframe_hint_suffix(timeframe_cycle);
+    let tf_bar_hint = timeframe_footer_hint(timeframe_cycle);
 
     loop {
         terminal
             .draw(|frame| {
                 let area = frame.area();
-                let rows = Layout::default()
+                let show_tf_header = timeframe_cycle.is_some();
+                let v_rows = Layout::default()
                     .direction(Direction::Vertical)
-                    .constraints([
-                        Constraint::Min(10),
-                        Constraint::Length(2),
-                    ])
+                    .constraints(if show_tf_header {
+                        vec![
+                            Constraint::Length(1),
+                            Constraint::Min(10),
+                            Constraint::Length(2),
+                        ]
+                    } else {
+                        vec![Constraint::Min(10), Constraint::Length(2)]
+                    })
                     .split(area);
+
+                let (main_row, hint_row) = if show_tf_header {
+                    let header_r = v_rows[0];
+                    let legend = Paragraph::new(Line::from(Span::styled(
+                        TUI_TF_KEY_LEGEND,
+                        Style::default().fg(Color::DarkGray),
+                    )))
+                    .alignment(Alignment::Right);
+                    frame.render_widget(legend, header_r);
+                    (v_rows[1], v_rows[2])
+                } else {
+                    (v_rows[0], v_rows[1])
+                };
 
                 if symbols.is_empty() {
                     let empty = Paragraph::new("没有可绘制数据，请先执行 data sync。")
                         .style(Style::default().fg(Color::Gray));
-                    frame.render_widget(empty, rows[0]);
+                    frame.render_widget(empty, main_row);
                     let hint = Paragraph::new("q/Esc/Enter 退出").style(Style::default().fg(Color::DarkGray));
-                    frame.render_widget(hint, rows[1]);
+                    frame.render_widget(hint, hint_row);
                     return;
                 }
 
                 let cols = Layout::default()
                     .direction(Direction::Horizontal)
-                    .constraints([Constraint::Percentage(28), Constraint::Percentage(72)])
-                    .split(rows[0]);
+                    .constraints([
+                        Constraint::Length(TUI_STOCK_LIST_COL_WIDTH),
+                        Constraint::Min(0),
+                    ])
+                    .split(main_row);
 
                 let items: Vec<ListItem> = state
                     .filtered_indices
@@ -483,7 +570,7 @@ fn run_tui_loop(
                             tf_bar_hint
                         ))
                         .style(Style::default().fg(Color::DarkGray));
-                        frame.render_widget(hint, rows[1]);
+                        frame.render_widget(hint, hint_row);
                     } else if total == 0 {
                         let msg = Paragraph::new(
                             "该标的暂无 K 线点（检查 data sync、timeframe 与日期窗）。",
@@ -495,7 +582,7 @@ fn run_tui_loop(
                             tf_bar_hint
                         ))
                         .style(Style::default().fg(Color::DarkGray));
-                        frame.render_widget(nav_hint, rows[1]);
+                        frame.render_widget(nav_hint, hint_row);
                     } else {
                     let window_end = (state.chart_view.window_start + state.chart_view.window_len).min(total);
                     let visible = &points[state.chart_view.window_start..window_end];
@@ -659,7 +746,7 @@ fn run_tui_loop(
                         )
                     } else {
                         format!(
-                            "标的: ↑/↓  Tab/t 表格  /:筛选  图: ←/→  平移: a/d  窗口缩放: [/]  基准: b  复位: 0  退出: q/Esc  |  {} {:.2}  [{}..{}]{}{}",
+                            "标的: ↑/↓  Tab/t 表格  /:筛选  图: ←/→  平移: a/d  缩放: +/-  基准: b  复位: 0  退出: q/Esc  |  {} {:.2}  [{}..{}]{}{}",
                             cursor_ts,
                             cursor_price,
                             state.chart_view.window_start,
@@ -673,7 +760,7 @@ fn run_tui_loop(
                         )
                     };
                     let hint = Paragraph::new(nav_hint).style(Style::default().fg(Color::DarkGray));
-                    frame.render_widget(hint, rows[1]);
+                    frame.render_widget(hint, hint_row);
                     }
                 } else if !symbols.is_empty() && state.filtered_indices.is_empty() {
                     let msg = Paragraph::new(
@@ -690,7 +777,7 @@ fn run_tui_loop(
                         Paragraph::new("按 / 打开筛选，或修改筛选条件。")
                     }
                     .style(Style::default().fg(Color::DarkGray));
-                    frame.render_widget(hint, rows[1]);
+                    frame.render_widget(hint, hint_row);
                 }
             })
             .map_err(|e| format!("draw tui failed: {e}"))?;
@@ -729,18 +816,24 @@ fn run_tui_loop(
                     state.table_scroll = 0;
                 } else {
                     if let Some((choices, cur)) = timeframe_cycle {
-                        match key.code {
-                            KeyCode::Char('+') | KeyCode::Char('=') => {
-                                return Ok(SyncRunsTuiClose::TimeframeChanged(
-                                    step_granularity(choices, cur, true),
-                                ));
+                        if let KeyCode::Char(c) = key.code {
+                            if ('1'..='5').contains(&c) {
+                                let i = (c as u8 - b'1') as usize;
+                                if i < choices.len() {
+                                    let next = choices[i];
+                                    if next != cur {
+                                        let selected_symbol = selected_symbol_for_close(
+                                            &state,
+                                            symbols,
+                                            preferred_symbol,
+                                        );
+                                        return Ok(SyncRunsTuiClose::TimeframeChanged {
+                                            timeframe: next.to_string(),
+                                            selected_symbol,
+                                        });
+                                    }
+                                }
                             }
-                            KeyCode::Char('-') | KeyCode::Char('_') => {
-                                return Ok(SyncRunsTuiClose::TimeframeChanged(
-                                    step_granularity(choices, cur, false),
-                                ));
-                            }
-                            _ => {}
                         }
                     }
                     if state.main_view == MainView::Table {
@@ -785,10 +878,10 @@ fn run_tui_loop(
                         }
                         KeyCode::Char('a') => state.chart_view.pan_left(selected_points_len),
                         KeyCode::Char('d') => state.chart_view.pan_right(selected_points_len),
-                        KeyCode::Char(']') | KeyCode::Char('}') => {
+                        KeyCode::Char('+') | KeyCode::Char('=') => {
                             state.chart_view.zoom_in(selected_points_len)
                         }
-                        KeyCode::Char('[') | KeyCode::Char('{') => {
+                        KeyCode::Char('-') | KeyCode::Char('_') => {
                             state.chart_view.zoom_out(selected_points_len)
                         }
                         KeyCode::Char('b') => {
@@ -1010,33 +1103,26 @@ pub fn render_sync_runs_tui(
     .map(|_| ())
 }
 
-/// 与 [`render_sync_runs_tui`] 相同，但底栏用 **`+` / `−`** 在 `choices`（须 **细→粗**）上逐级变颗粒度，
-/// 并以 [`SyncRunsTuiClose::TimeframeChanged`] 交回上层重新拉数（端点不再循环）。
+/// 与 [`render_sync_runs_tui`] 相同，但提供 `timeframe_cycle` 时：数字键 **`1`–`5`** 直接选 `choices[0..]` 对应颗粒度
+///（须 **细→粗**，与阶梯下标一致），并以 [`SyncRunsTuiClose::TimeframeChanged`] 带回当前选中标的供上层保持左侧高亮；
+/// 走势图内 **`+` / `−`** 为窗口缩放（表格模式翻页仍用 `[/]` 等）。
+///
+/// `hf tui` 使用 [`sync_runs_tui_enter`] + 多次 [`run_sync_runs_tui_iteration`]，切换颗粒度时不反复进出全屏，避免整屏闪烁。
 pub fn render_sync_runs_tui_with_timeframes(
     payload: &Value,
     preferred_symbol: Option<&str>,
     benchmark_symbol: Option<&str>,
     timeframe_cycle: Option<(&[&str], &str)>,
 ) -> Result<SyncRunsTuiClose, String> {
-    let symbols = build_symbol_series(payload);
-    enable_raw_mode().map_err(|e| format!("enable raw mode failed: {e}"))?;
-    let mut stdout = std::io::stdout();
-    execute!(stdout, EnterAlternateScreen).map_err(|e| format!("enter alt screen failed: {e}"))?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend).map_err(|e| format!("create terminal failed: {e}"))?;
-
-    let run_res = run_tui_loop(
+    let mut terminal = sync_runs_tui_enter()?;
+    let run_res = run_sync_runs_tui_iteration(
         &mut terminal,
-        &symbols,
         payload,
         preferred_symbol,
         benchmark_symbol,
         timeframe_cycle,
     );
-
-    let _ = disable_raw_mode();
-    let _ = execute!(terminal.backend_mut(), LeaveAlternateScreen);
-    let _ = terminal.show_cursor();
+    sync_runs_tui_leave(&mut terminal);
     run_res
 }
 
