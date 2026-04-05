@@ -9,12 +9,12 @@ import pandas as pd
 
 from application.contracts.cli_output import ok_output
 from application.portfolio.covariance_service import compute_covariance_matrix
-from domain.universe.universe_loader import load_industry_map
+from domain.universe.universe_loader import load_industry_map, load_universe
 
 _logger = logging.getLogger(__name__)
 
 _BENCHMARK_SYMBOL = "000300.SH"
-_DEFAULT_SYMBOLS = ["000001.SZ", "600519.SH", "300750.SZ", "601318.SH", "000333.SZ"]
+_DEFAULT_SYMBOLS = load_universe("default")
 _MIN_REGIME_RETURNS = 20
 _REGIME_LOOKBACK_BARS = 31  # fetch 31 bars → 30 returns, take tail(20)
 

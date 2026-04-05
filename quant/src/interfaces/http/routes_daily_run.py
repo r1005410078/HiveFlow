@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from interfaces.http.dependencies import (
     DailyRunService,
     PipelineCompareService,
@@ -116,8 +117,6 @@ def post_daily(
     req: DailyRunRequest,
     service: DailyRunService = Depends(get_daily_run_service),
 ):
-    from fastapi.responses import JSONResponse
-
     data = to_daily_input(req)
     raw = service(data["as_of"])
     # Non-trading-day shortcut: return raw dict directly (skipped response has no factor fields)

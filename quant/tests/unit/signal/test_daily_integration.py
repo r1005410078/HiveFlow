@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 from application.daily_run_service import run_daily
+from domain.universe.universe_loader import load_universe
 
 
 def test_daily_pipeline_includes_signal_matrix():
@@ -10,8 +11,6 @@ def test_daily_pipeline_includes_signal_matrix():
     assert "signal_matrix" in data
     sm = data["signal_matrix"]
     assert sm is not None
-    from domain.universe.universe_loader import load_universe
-
     universe_size = len(load_universe("default"))
     factor_count = 6  # l2-basic-v1.1 has 6 factors
     assert sm["schema_version"] == "1.0"

@@ -2,6 +2,7 @@ from datetime import date, timedelta
 
 import application.daily_run_service as daily_run_module
 from application.daily_run_service import run_daily
+from domain.universe.universe_loader import load_universe
 
 
 def test_daily_run_includes_l2_decision() -> None:
@@ -98,8 +99,6 @@ def test_daily_pipeline_prefers_real_bars_when_available() -> None:
     assert ma["schema_version"] == "1.0.0"
     assert ma["definition"] == "sma_close_5_10"
     assert ma["as_of"] == "2026-04-01"
-    from domain.universe.universe_loader import load_universe
-
     expected_symbols = set(load_universe("default"))
     assert set(ma["by_symbol"]) == expected_symbols
     for st in ma["by_symbol"].values():

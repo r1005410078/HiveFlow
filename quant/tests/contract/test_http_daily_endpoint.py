@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from fastapi.testclient import TestClient
 
 from interfaces.http.app import create_app
@@ -48,8 +50,6 @@ def test_http_daily_response_schema_includes_l2_decision() -> None:
 
 def test_daily_skips_non_trading_day():
     """非交易日（周日）返回 skipped=true，不触发任何计算"""
-    from unittest.mock import patch
-
     app = create_app()
     client = TestClient(app)
 

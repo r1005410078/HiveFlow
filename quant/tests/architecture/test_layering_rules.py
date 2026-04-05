@@ -137,3 +137,19 @@ def test_domain_portfolio_does_not_import_application():
     imports = _imports(portfolio_file)
     violations = [name for name in imports if name == "application" or name.startswith("application.")]
     assert not violations, f"domain.models.portfolio must not import application: {violations}"
+
+
+def test_application_can_import_domain_universe():
+    """application/* 层允许导入 domain.universe（universe loader 集中管理标的池）"""
+    universe_loader = SRC / "domain" / "universe" / "universe_loader.py"
+    assert universe_loader.exists(), "domain/universe/universe_loader.py must exist"
+    # Verify that application services DO import from domain.universe (positive assertion)
+    app_files_importing_universe = []
+    for py in APP_DIR.rglob("*.py"):
+        imports = _imports(py)
+        if any("domain.universe" in name for name in imports):
+            app_files_importing_universe.append(str(py.relative_to(ROOT)))
+    assert len(app_files_importing_universe) >= 3, (
+        f"At least 3 application files should import from domain.universe "
+        f"(optimizer, risk_gate, signal_engineering services). Found: {app_files_importing_universe}"
+    )
