@@ -37,3 +37,11 @@ class MarketDataBarsQuery(BaseModel):
     start_date: str | None = None
     end_date: str | None = None
     limit: int = Field(default=5000, ge=1, le=10000)
+
+
+class MarketDataBarsBundleRequest(BaseModel):
+    symbols: list[str] = Field(min_length=1, description="至少一个标的代码")
+    timeframes: list[str] = Field(min_length=1, description="至少一个输出周期")
+    start_date: str | None = None
+    end_date: str | None = None
+    limit_per_timeframe: int = Field(default=5000, ge=1, le=10000)

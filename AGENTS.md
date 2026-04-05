@@ -164,6 +164,7 @@ cd cli && cargo run -- factor replay --start-date YYYY-MM-DD --end-date YYYY-MM-
 - `GET /v1/market-data/sync-runs`：同步任务列表（CLI：`hf task list`，别名 `hf task sync-runs`）
 - `GET /v1/market-data/sync-runs/{run_id}`：单任务详情含进度（CLI：`hf task progress`，别名 `hf task status`）
 - `GET /v1/market-data/bars`：行情 K 线查询
+- `POST /v1/market-data/bars-bundle`：同一批标的、同一日期窗单次读库 1m，再按多个 `timeframes` 分别聚合；响应 `schema_version` + `by_timeframe`（`hf tui` 按需多周期）
 - `POST /api/v1/signal/snapshot`：L3 信号快照
 - `POST /api/v1/signal/evaluate`：L3 信号质量评估（IC + 漂移检测，需 DB）
 - `POST /api/v1/portfolio/optimize`：L4 组合优化（均值-方差 QP，含换手成本惩罚）

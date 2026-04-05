@@ -31,6 +31,7 @@ MarketDataUniverseSyncService = Callable[..., dict]
 MarketDataSymbolNamesSyncService = Callable[..., dict]
 MarketDataQueryService = Callable[..., dict]
 MarketDataBarsQueryService = Callable[..., dict]
+MarketDataBarsBundleQueryService = Callable[..., dict]
 MarketDataInstrumentsListService = Callable[..., dict]
 SignalSnapshotService = Callable[[str], dict]
 SignalEvaluateService = Callable[[str, str, int], dict]
@@ -400,6 +401,11 @@ def get_market_data_query_service() -> MarketDataQueryService:
 def get_market_data_bars_query_service() -> MarketDataBarsQueryService:
     service = BarsQueryService(bar_store=_build_read_bar_store())
     return service.query
+
+
+def get_market_data_bars_bundle_query_service() -> MarketDataBarsBundleQueryService:
+    service = BarsQueryService(bar_store=_build_read_bar_store())
+    return service.query_bundle
 
 
 def _try_read_bar_store_optional() -> TimescaleBarStore | None:

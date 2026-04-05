@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::io::{self, stdout};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crossterm::{
     event::{self, Event, KeyCode},
@@ -9,12 +9,12 @@ use crossterm::{
 };
 use ratatui::{
     backend::CrosstermBackend,
-    layout::{Alignment, Constraint, Direction, Layout},
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     symbols,
-    text::{Line, Span},
+    text::{Line, Span, Text},
     widgets::{
-        Axis, Block, Borders, Cell, Chart, Clear, Dataset, List, ListItem, ListState, Paragraph,
+        Axis, Block, Borders, Cell, Chart, Dataset, List, ListItem, ListState, Paragraph,
         Row, Table,
     },
     Terminal,
@@ -40,46 +40,45 @@ pub fn sync_runs_tui_leave(terminal: &mut SyncRunsTuiTerminal) {
     let _ = terminal.show_cursor();
 }
 
-const TUI_LOADING_SPINNER: &[&str] =
-    &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-
-/// 全屏清屏并绘制加载行（切换颗粒度拉数时由 application 轮询调用以显示动画）。
-pub fn sync_runs_tui_draw_loading(
-    terminal: &mut SyncRunsTuiTerminal,
-    detail: &str,
-    tick: usize,
-) -> Result<(), String> {
-    let spin = TUI_LOADING_SPINNER[tick % TUI_LOADING_SPINNER.len()];
-    let line = format!("{spin}  加载行情…  {detail}");
-    terminal
-        .draw(move |f| {
-            let a = f.area();
-            f.render_widget(Clear, a);
-            let p = Paragraph::new(line)
-                .alignment(Alignment::Center)
-                .style(Style::default().fg(Color::Cyan));
-            f.render_widget(p, a);
-        })
-        .map(|_| ())
-        .map_err(|e| format!("draw loading failed: {e}"))
-}
-
-/// 在已打开的会话中跑一轮事件循环，直到用户退出或切换颗粒度（不关闭 alternate screen）。
-pub fn run_sync_runs_tui_iteration(
+/// 在已打开的会话中跑一轮事件循环，直到用户退出、切换颗粒度或（可选）换标防抖触发。
+///
+/// `awaiting_initial_bars`：尚无 bundle 缓存、正在等后台 POST 的首帧（右侧无 K 线点时用静态文案，不用旋转 spinner 冒充加载）。
+///
+/// 当 `!awaiting_initial_bars`（本轮初始 payload 来自暖缓存）时，**首帧不执行** `poll`，避免后台 SWR 先到的一条空包覆盖刚传入的 K 线，右侧误显示空白说明。
+///
+/// `poll_background_payload`：每帧轮询；若返回 `Some(新 items payload)`，则替换右侧图/表数据（用于缓存先显、后台静默刷新）。
+pub fn run_sync_runs_tui_iteration<P: FnMut() -> Option<Value>>(
     terminal: &mut SyncRunsTuiTerminal,
     payload: &Value,
+    instruments_full: Option<&[(String, String)]>,
     preferred_symbol: Option<&str>,
     benchmark_symbol: Option<&str>,
     timeframe_cycle: Option<(&[&str], &str)>,
+    data_anchor_symbol: Option<&str>,
+    awaiting_initial_bars: bool,
+    mut poll_background_payload: P,
 ) -> Result<SyncRunsTuiClose, String> {
-    let symbols = build_symbol_series(payload);
+    let mut bars_payload = payload.clone();
+    let mut list_series = if let Some(inv) = instruments_full {
+        build_universe_list_series(inv, &bars_payload)
+    } else {
+        build_symbol_series(&bars_payload)
+    };
+    let mut benchmark_chart = extract_benchmark_series_for_chart(&bars_payload, benchmark_symbol);
+    let defer_poll_until_after_first_draw = !awaiting_initial_bars;
     run_tui_loop(
         terminal,
-        &symbols,
-        payload,
+        &mut list_series,
+        &mut benchmark_chart,
+        &mut bars_payload,
+        instruments_full,
         preferred_symbol,
         benchmark_symbol,
         timeframe_cycle,
+        data_anchor_symbol,
+        awaiting_initial_bars,
+        defer_poll_until_after_first_draw,
+        &mut poll_background_payload,
     )
 }
 
@@ -107,6 +106,10 @@ pub enum SyncRunsTuiClose {
         /// 当前左侧选中的标的，供上层下一轮仍作为 `preferred_symbol`。
         selected_symbol: String,
     },
+    /// 左侧选中已稳定变化（防抖后），上层应重新拉 bundle。
+    SymbolChanged { symbol: String },
+    /// 用户按 R/r：上层应丢弃当前标的缓存并重新请求 bundle。
+    RefreshRequested,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -125,14 +128,32 @@ impl MainView {
 }
 
 impl ChartViewState {
-    fn new(total: usize) -> Self {
-        let default_window = total.clamp(40, 300);
-        let window_start = total.saturating_sub(default_window);
+    fn new(points: &[(String, f64)], timeframe: Option<&str>) -> Self {
+        let total = points.len();
+        if total == 0 {
+            return Self {
+                cursor: 0,
+                window_start: 0,
+                window_len: 1,
+            };
+        }
+
+        let is_1m = timeframe == Some("1m");
+        let (window_start, window_len) = if is_1m && total > 0 {
+            let last_day_start = find_last_day_start(points);
+            let len = total - last_day_start;
+            (last_day_start, len.max(1))
+        } else {
+            let default_window = total.clamp(40, 300);
+            let start = total.saturating_sub(default_window);
+            (start, default_window.max(1))
+        };
+
         let cursor = total.saturating_sub(1);
         Self {
             cursor,
             window_start,
-            window_len: default_window.max(1),
+            window_len,
         }
     }
 
@@ -188,6 +209,17 @@ impl ChartViewState {
     }
 }
 
+fn find_last_day_start(points: &[(String, f64)]) -> usize {
+    if points.is_empty() { return 0; }
+    let last_date = &points[points.len() - 1].0[0..10];
+    for i in (0..points.len()).rev() {
+        if &points[i].0[0..10] != last_date {
+            return i + 1;
+        }
+    }
+    0
+}
+
 /// Indices into `symbols` whose `symbol` or `name_zh` matches the trimmed query (substring, symbol ASCII-insensitive).
 fn filtered_symbol_indices(symbols: &[SymbolSeries], query: &str) -> Vec<usize> {
     let q = query.trim();
@@ -227,6 +259,7 @@ impl TuiState {
         symbols: &[SymbolSeries],
         preferred_symbol: Option<&str>,
         benchmark_enabled: bool,
+        timeframe: Option<&str>,
     ) -> Self {
         let filter_query = String::new();
         let filtered_indices = filtered_symbol_indices(symbols, &filter_query);
@@ -238,17 +271,17 @@ impl TuiState {
             })
             .unwrap_or(0)
             .min(filtered_indices.len().saturating_sub(1));
-        let points_len = filtered_indices
+        let pts = filtered_indices
             .get(selected_list_idx)
             .and_then(|&i| symbols.get(i))
-            .map(|s| s.points.len())
-            .unwrap_or(0);
+            .map(|s| s.points.as_slice())
+            .unwrap_or(&[]);
         Self {
             selected_list_idx,
             filtered_indices,
             filter_query,
             filter_editing: false,
-            chart_view: ChartViewState::new(points_len),
+            chart_view: ChartViewState::new(pts, timeframe),
             show_benchmark: benchmark_enabled,
             main_view: MainView::Chart,
             table_scroll: 0,
@@ -270,7 +303,7 @@ impl TuiState {
         self.table_scroll = 0;
         if self.filtered_indices.is_empty() {
             self.selected_list_idx = 0;
-            self.chart_view = ChartViewState::new(0);
+            self.chart_view = ChartViewState::new(&[], None);
             self.chart_view.normalize(0);
             return;
         }
@@ -278,34 +311,67 @@ impl TuiState {
             .and_then(|pi| self.filtered_indices.iter().position(|&i| i == pi))
             .unwrap_or(0)
             .min(self.filtered_indices.len().saturating_sub(1));
-        self.reset_chart(symbols);
+        self.reset_chart(symbols, None);
     }
 
-    fn move_symbol_up(&mut self, symbols: &[SymbolSeries]) {
+    fn move_symbol_up(&mut self, symbols: &[SymbolSeries], timeframe: Option<&str>) {
         if self.filtered_indices.is_empty() {
             return;
         }
         self.selected_list_idx = self.selected_list_idx.saturating_sub(1);
         self.table_scroll = 0;
-        self.reset_chart(symbols);
+        self.reset_chart(symbols, timeframe);
     }
 
-    fn move_symbol_down(&mut self, symbols: &[SymbolSeries]) {
+    fn move_symbol_down(&mut self, symbols: &[SymbolSeries], timeframe: Option<&str>) {
         if self.filtered_indices.is_empty() {
             return;
         }
         self.selected_list_idx = (self.selected_list_idx + 1).min(self.filtered_indices.len() - 1);
         self.table_scroll = 0;
-        self.reset_chart(symbols);
+        self.reset_chart(symbols, timeframe);
     }
 
-    fn reset_chart(&mut self, symbols: &[SymbolSeries]) {
-        let points_len = self
+    fn reset_chart(&mut self, symbols: &[SymbolSeries], timeframe: Option<&str>) {
+        let pts = self
             .selected_series(symbols)
-            .map(|s| s.points.len())
-            .unwrap_or(0);
-        self.chart_view = ChartViewState::new(points_len);
-        self.chart_view.normalize(points_len);
+            .map(|s| s.points.as_slice())
+            .unwrap_or(&[]);
+        self.chart_view = ChartViewState::new(pts, timeframe);
+        self.chart_view.normalize(pts.len());
+    }
+
+    /// 后台刷新拿到新 `bars_payload` 后：保持当前选中代码与视图缩放比例，仅更新点数与表格滚动。
+    fn apply_symbol_points_refresh(
+        &mut self,
+        symbols: &[SymbolSeries],
+        bars_payload: &Value,
+        keep_symbol: &str,
+    ) {
+        self.filtered_indices = filtered_symbol_indices(symbols, &self.filter_query);
+        if self.filtered_indices.is_empty() {
+            self.selected_list_idx = 0;
+            self.chart_view = ChartViewState::new(&[], None);
+            self.chart_view.normalize(0);
+            self.table_scroll = 0;
+            return;
+        }
+        let pos = self.filtered_indices.iter().position(|&i| {
+            symbols
+                .get(i)
+                .is_some_and(|s| s.symbol.as_str() == keep_symbol)
+        });
+        self.selected_list_idx = pos
+            .unwrap_or(self.selected_list_idx)
+            .min(self.filtered_indices.len().saturating_sub(1));
+        let pts = self
+            .selected_series(symbols)
+            .map(|s| s.points.as_slice())
+            .unwrap_or(&[]);
+        self.chart_view.normalize(pts.len());
+        let sub = filtered_items_payload(bars_payload, keep_symbol);
+        let row_count = collect_bars_table_rows(&sub, false).len();
+        self.table_scroll = self.table_scroll.min(row_count.saturating_sub(1));
     }
 }
 
@@ -350,6 +416,117 @@ fn timeframe_footer_hint(cycle: Option<(&[&str], &str)>) -> String {
     format!("  当前{}", cur_part)
 }
 
+fn tui_split_layout_areas(
+    area: Rect,
+    show_tf_header: bool,
+) -> (Option<Rect>, Rect, Rect, Rect) {
+    let v_rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(if show_tf_header {
+            vec![
+                Constraint::Length(1),
+                Constraint::Min(10),
+                Constraint::Length(2),
+            ]
+        } else {
+            vec![Constraint::Min(10), Constraint::Length(2)]
+        })
+        .split(area);
+
+    let header = if show_tf_header { Some(v_rows[0]) } else { None };
+    let (main_row, hint_row) = if show_tf_header {
+        (v_rows[1], v_rows[2])
+    } else {
+        (v_rows[0], v_rows[1])
+    };
+
+    let cols = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Length(TUI_STOCK_LIST_COL_WIDTH),
+            Constraint::Min(0),
+        ])
+        .split(main_row);
+
+    (header, cols[0], cols[1], hint_row)
+}
+
+fn render_tui_tf_key_legend(frame: &mut ratatui::Frame<'_>, header_r: Rect) {
+    let legend = Paragraph::new(Line::from(Span::styled(
+        TUI_TF_KEY_LEGEND,
+        Style::default().fg(Color::DarkGray),
+    )))
+    .alignment(Alignment::Right);
+    frame.render_widget(legend, header_r);
+}
+
+fn render_stock_list_column(
+    frame: &mut ratatui::Frame<'_>,
+    list_col: Rect,
+    symbols: &[SymbolSeries],
+    state: &TuiState,
+) {
+    let items: Vec<ListItem> = state
+        .filtered_indices
+        .iter()
+        .enumerate()
+        .filter_map(|(row_i, &idx)| symbols.get(idx).map(|s| (row_i, s)))
+        .map(|(row_i, s)| {
+            let name_tail: String = s.name_zh.chars().take(8).collect();
+            let left = if name_tail.is_empty() {
+                format!("{:<10}", s.symbol)
+            } else {
+                format!("{:<10} {}", s.symbol, name_tail)
+            };
+            let price_span = if row_i == state.selected_list_idx && s.points.last().is_some() {
+                let latest = s.points.last().map(|(_, p)| *p).unwrap_or(0.0);
+                Span::styled(
+                    format!("  {:>10.2}", latest),
+                    Style::default().fg(Color::DarkGray),
+                )
+            } else {
+                Span::styled(
+                    "         —".to_string(),
+                    Style::default().fg(Color::DarkGray),
+                )
+            };
+            ListItem::new(Line::from(vec![
+                Span::styled(left, Style::default().fg(Color::DarkGray)),
+                price_span,
+            ]))
+        })
+        .collect();
+    let mut list_state = ListState::default();
+    list_state.select(if state.filtered_indices.is_empty() {
+        None
+    } else {
+        Some(state.selected_list_idx)
+    });
+    let list_title = if state.filter_query.trim().is_empty() {
+        format!("Stocks ({})", symbols.len())
+    } else {
+        format!(
+            "Stocks {}/{}",
+            state.filtered_indices.len(),
+            symbols.len()
+        )
+    };
+    let list = List::new(items)
+        .block(
+            Block::default()
+                .borders(Borders::NONE)
+                .title(list_title)
+                .title_style(Style::default().fg(Color::Gray)),
+        )
+        .highlight_style(
+            Style::default()
+                .fg(Color::LightYellow)
+                .add_modifier(Modifier::BOLD),
+        )
+        .highlight_symbol(">> ");
+    frame.render_stateful_widget(list, list_col, &mut list_state);
+}
+
 fn selected_symbol_for_close(
     state: &TuiState,
     symbols: &[SymbolSeries],
@@ -382,138 +559,155 @@ fn filtered_items_payload(payload: &Value, symbol: &str) -> Value {
     serde_json::json!({ "items": items })
 }
 
-fn run_tui_loop(
-    terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
-    symbols: &[SymbolSeries],
+fn rebuild_list_series_for_payload(
     bars_payload: &Value,
+    instruments_full: Option<&[(String, String)]>,
+) -> Vec<SymbolSeries> {
+    if let Some(inv) = instruments_full {
+        build_universe_list_series(inv, bars_payload)
+    } else {
+        build_symbol_series(bars_payload)
+    }
+}
+
+fn run_tui_loop<P: FnMut() -> Option<Value>>(
+    terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
+    list_series: &mut Vec<SymbolSeries>,
+    benchmark_chart: &mut Option<SymbolSeries>,
+    bars_payload: &mut Value,
+    instruments_full: Option<&[(String, String)]>,
     preferred_symbol: Option<&str>,
     benchmark_symbol: Option<&str>,
     timeframe_cycle: Option<(&[&str], &str)>,
+    data_anchor_symbol: Option<&str>,
+    awaiting_initial_bars: bool,
+    defer_poll_until_after_first_draw: bool,
+    poll_background_payload: &mut P,
 ) -> Result<SyncRunsTuiClose, String> {
-    let mut state = TuiState::new(symbols, preferred_symbol, benchmark_symbol.is_some());
+    let mut state = TuiState::new(
+        list_series.as_slice(),
+        preferred_symbol,
+        benchmark_symbol.is_some(),
+        timeframe_cycle.map(|(_, c)| c),
+    );
     let tf_suffix: String = timeframe_cycle
         .map(|(_, c)| tf_title_suffix(c))
         .unwrap_or_default();
     let tf_bar_hint = timeframe_footer_hint(timeframe_cycle);
+    let mut debounce_until: Option<Instant> = None;
+    let mut is_first_event_loop_pass = true;
 
     loop {
+        if let (Some(anchor_s), Some(until)) = (data_anchor_symbol, debounce_until) {
+            if Instant::now() >= until {
+                let sel =
+                    selected_symbol_for_close(&state, list_series.as_slice(), preferred_symbol);
+                if !sel.is_empty() && sel != anchor_s {
+                    return Ok(SyncRunsTuiClose::SymbolChanged { symbol: sel });
+                }
+                debounce_until = None;
+            }
+        }
+
+        if !(defer_poll_until_after_first_draw && is_first_event_loop_pass) {
+            while let Some(new_payload) = poll_background_payload() {
+                let keep_symbol = state
+                    .selected_series(list_series.as_slice())
+                    .map(|s| s.symbol.clone());
+                *bars_payload = new_payload;
+                *list_series = rebuild_list_series_for_payload(bars_payload, instruments_full);
+                *benchmark_chart =
+                    extract_benchmark_series_for_chart(bars_payload, benchmark_symbol);
+                if let Some(ref sym) = keep_symbol {
+                    state.apply_symbol_points_refresh(
+                        list_series.as_slice(),
+                        bars_payload,
+                        sym.as_str(),
+                    );
+                } else if !list_series.is_empty() {
+                    state.apply_filter_update(list_series.as_slice());
+                }
+            }
+        }
+
         terminal
             .draw(|frame| {
                 let area = frame.area();
                 let show_tf_header = timeframe_cycle.is_some();
-                let v_rows = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints(if show_tf_header {
-                        vec![
-                            Constraint::Length(1),
-                            Constraint::Min(10),
-                            Constraint::Length(2),
-                        ]
-                    } else {
-                        vec![Constraint::Min(10), Constraint::Length(2)]
-                    })
-                    .split(area);
+                let (header_opt, list_col, right_col, hint_row) =
+                    tui_split_layout_areas(area, show_tf_header);
+                if let Some(hr) = header_opt {
+                    render_tui_tf_key_legend(frame, hr);
+                }
 
-                let (main_row, hint_row) = if show_tf_header {
-                    let header_r = v_rows[0];
-                    let legend = Paragraph::new(Line::from(Span::styled(
-                        TUI_TF_KEY_LEGEND,
-                        Style::default().fg(Color::DarkGray),
-                    )))
-                    .alignment(Alignment::Right);
-                    frame.render_widget(legend, header_r);
-                    (v_rows[1], v_rows[2])
-                } else {
-                    (v_rows[0], v_rows[1])
-                };
+                if list_series.is_empty() {
+                    let empty = Paragraph::new("\n\n\n数据已就绪：列表为空。请先执行 data sync 或检查 universe。")
+                        .style(Style::default().fg(Color::Gray))
+                        .alignment(Alignment::Center);
+                    frame.render_widget(empty, right_col);
 
-                if symbols.is_empty() {
-                    let empty = Paragraph::new("没有可绘制数据，请先执行 data sync。")
-                        .style(Style::default().fg(Color::Gray));
-                    frame.render_widget(empty, main_row);
-                    let hint = Paragraph::new("q/Esc/Enter 退出").style(Style::default().fg(Color::DarkGray));
+                    // Still show an empty list on the left to maintain layout
+                    let empty_list = List::new(Vec::<ListItem>::new())
+                        .block(Block::default().borders(Borders::RIGHT).border_style(Style::default().fg(Color::DarkGray)));
+                    frame.render_widget(empty_list, list_col);
+
+                    let hint = Paragraph::new("q/Esc 退出").style(Style::default().fg(Color::DarkGray));
                     frame.render_widget(hint, hint_row);
                     return;
                 }
 
-                let cols = Layout::default()
-                    .direction(Direction::Horizontal)
-                    .constraints([
-                        Constraint::Length(TUI_STOCK_LIST_COL_WIDTH),
-                        Constraint::Min(0),
-                    ])
-                    .split(main_row);
+                render_stock_list_column(frame, list_col, list_series.as_slice(), &state);
 
-                let items: Vec<ListItem> = state
-                    .filtered_indices
-                    .iter()
-                    .filter_map(|&idx| symbols.get(idx))
-                    .map(|s| {
-                        let latest = s.points.last().map(|(_, p)| *p).unwrap_or(0.0);
-                        let name_tail: String = s.name_zh.chars().take(8).collect();
-                        let left = if name_tail.is_empty() {
-                            format!("{:<10}", s.symbol)
-                        } else {
-                            format!("{:<10} {}", s.symbol, name_tail)
-                        };
-                        ListItem::new(Line::from(vec![
-                            Span::styled(left, Style::default().fg(Color::DarkGray)),
-                            Span::styled(
-                                format!("  {:>10.2}", latest),
-                                Style::default().fg(Color::DarkGray),
-                            ),
-                        ]))
-                    })
-                    .collect();
-                let mut list_state = ListState::default();
-                list_state.select(if state.filtered_indices.is_empty() {
-                    None
+                let display_series = if debounce_until.is_some() {
+                    data_anchor_symbol
+                        .and_then(|a| list_series.iter().find(|s| s.symbol == a))
+                        .or_else(|| state.selected_series(list_series.as_slice()))
                 } else {
-                    Some(state.selected_list_idx)
-                });
-                let list_title = if state.filter_query.trim().is_empty() {
-                    format!("Stocks ({})", symbols.len())
-                } else {
-                    format!(
-                        "Stocks {}/{}",
-                        state.filtered_indices.len(),
-                        symbols.len()
-                    )
+                    state.selected_series(list_series.as_slice())
                 };
-                let list = List::new(items)
-                    .block(
-                        Block::default()
-                            .borders(Borders::NONE)
-                            .title(list_title)
-                            .title_style(Style::default().fg(Color::Gray)),
-                    )
-                    .highlight_style(
-                        Style::default()
-                            .fg(Color::LightYellow)
-                            .add_modifier(Modifier::BOLD),
-                    )
-                    .highlight_symbol(">> ");
-                frame.render_stateful_widget(list, cols[0], &mut list_state);
 
-                if let Some(series) = state.selected_series(symbols) {
+                if let Some(series) = display_series {
                     let points = &series.points;
                     let total = points.len();
 
                     if state.main_view == MainView::Table {
-                        let sub = filtered_items_payload(bars_payload, series.symbol.as_str());
+                        let sub =
+                            filtered_items_payload(&*bars_payload, series.symbol.as_str());
                         let bar_rows = collect_bars_table_rows(&sub, false);
                         let block = Block::default()
                             .title(format!(" Table — {} ", series.symbol))
                             .borders(Borders::ALL);
-                        let inner = block.inner(cols[1]);
-                        frame.render_widget(block, cols[1]);
+                        let inner = block.inner(right_col);
+                        frame.render_widget(block, right_col);
                         let page = (inner.height as usize).saturating_sub(2).max(3);
                         let max_scroll =
                             bar_rows.len().saturating_sub(page.min(bar_rows.len()).max(1));
                         state.table_scroll = state.table_scroll.min(max_scroll);
                         if bar_rows.is_empty() {
-                            let empty = Paragraph::new("该标的暂无 bar 行（与左侧列表同一 payload）。")
-                                .style(Style::default().fg(Color::Yellow));
+                            let empty = if awaiting_initial_bars {
+                                Paragraph::new(Text::from(vec![
+                                    Line::from(Span::styled(
+                                        "正在拉取本标的行情…",
+                                        Style::default().fg(Color::Cyan),
+                                    )),
+                                    Line::from(Span::styled(
+                                        "请稍候，返回后将自动显示",
+                                        Style::default().fg(Color::DarkGray),
+                                    )),
+                                ]))
+                            } else {
+                                Paragraph::new(Text::from(vec![
+                                    Line::from(Span::styled(
+                                        "本周期未取到可画线的价位点",
+                                        Style::default().fg(Color::DarkGray),
+                                    )),
+                                    Line::from(Span::styled(
+                                        "按 1–5 换周期，或按 R 向服务端重新拉取",
+                                        Style::default().fg(Color::DarkGray),
+                                    )),
+                                ]))
+                            }
+                            .alignment(Alignment::Center);
                             frame.render_widget(empty, inner);
                         } else {
                             let show_name = bar_rows.first().is_some_and(|r| r.len() >= 5);
@@ -559,7 +753,7 @@ fn run_tui_loop(
                         }
                         let shown_end = (state.table_scroll + page).min(bar_rows.len());
                         let hint = Paragraph::new(format!(
-                            "Tab/t 走势图  PgUp/PgDn [ ] Home/End 翻页  |  行 {}-{} / {}{}",
+                            "Tab/t 走势图  PgUp/PgDn [ ] Home/End 翻页  R 刷新  |  行 {}-{} / {}{}",
                             if bar_rows.is_empty() {
                                 0
                             } else {
@@ -572,13 +766,33 @@ fn run_tui_loop(
                         .style(Style::default().fg(Color::DarkGray));
                         frame.render_widget(hint, hint_row);
                     } else if total == 0 {
-                        let msg = Paragraph::new(
-                            "该标的暂无 K 线点（检查 data sync、timeframe 与日期窗）。",
-                        )
-                        .style(Style::default().fg(Color::Yellow));
-                        frame.render_widget(msg, cols[1]);
+                        let msg = if awaiting_initial_bars {
+                            Paragraph::new(Text::from(vec![
+                                Line::from(Span::styled(
+                                    "正在拉取本标的行情…",
+                                    Style::default().fg(Color::Cyan),
+                                )),
+                                Line::from(Span::styled(
+                                    "请稍候，返回后将自动显示走势图",
+                                    Style::default().fg(Color::DarkGray),
+                                )),
+                            ]))
+                        } else {
+                            Paragraph::new(Text::from(vec![
+                                Line::from(Span::styled(
+                                    "本周期未取到可画线的价位点",
+                                    Style::default().fg(Color::DarkGray),
+                                )),
+                                Line::from(Span::styled(
+                                    "按 1–5 换周期，或按 R 向服务端重新拉取",
+                                    Style::default().fg(Color::DarkGray),
+                                )),
+                            ]))
+                        }
+                        .alignment(Alignment::Center);
+                        frame.render_widget(msg, right_col);
                         let nav_hint = Paragraph::new(format!(
-                            "标的: ↑/↓  Tab/t 表格  /:筛选  退出: q/Esc{}",
+                            "标的: ↑/↓  Tab/t 表格  /:筛选  R 刷新  退出: q/Esc{}",
                             tf_bar_hint
                         ))
                         .style(Style::default().fg(Color::DarkGray));
@@ -586,103 +800,164 @@ fn run_tui_loop(
                     } else {
                     let window_end = (state.chart_view.window_start + state.chart_view.window_len).min(total);
                     let visible = &points[state.chart_view.window_start..window_end];
-                    let samples: Vec<(f64, f64)> = visible
-                        .iter()
-                        .enumerate()
-                        .map(|(idx, (_, price))| (idx as f64, *price))
-                        .collect();
-                    let mut comparison_title: Option<String> = None;
-                    let benchmark_samples = if state.show_benchmark {
-                        benchmark_symbol
-                        .and_then(|bm| {
-                            if bm == series.symbol {
-                                None
-                            } else {
-                                symbols.iter().find(|s| s.symbol == bm)
-                            }
-                        })
-                        .and_then(|bm_series| {
-                            build_aligned_indexed_samples(
-                                visible,
-                                &bm_series.points,
-                                bm_series.symbol.as_str(),
-                            )
-                        })
+                    let cur_tf = timeframe_cycle.map(|(_, c)| c).unwrap_or("1d");
+
+                    // Helper to check if visible range is within a single day
+                    let visible_is_single_day = if visible.len() >= 2 {
+                        let d1 = &visible[0].0[0..10];
+                        let d2 = &visible[visible.len() - 1].0[0..10];
+                        d1 == d2
                     } else {
-                        None
+                        true
                     };
 
-                    let (plot_samples, plot_benchmark_samples) = if let Some((stock_idx, bench_idx, bm)) =
-                        benchmark_samples
-                    {
-                        comparison_title =
-                            Some(format!("Trend - {} vs {}{}", series.symbol, bm, tf_suffix));
-                        (stock_idx, Some(bench_idx))
-                    } else {
-                        (samples.clone(), None)
-                    };
-                    let cursor_visible = state
-                        .chart_view
-                        .cursor
-                        .saturating_sub(state.chart_view.window_start)
-                        .min(plot_samples.len().saturating_sub(1));
-                    let cursor_x = cursor_visible as f64;
-                    let cursor_y = plot_samples.get(cursor_visible).map(|(_, p)| *p).unwrap_or(0.0);
-                    let cursor_points = vec![(cursor_x, cursor_y)];
-                    let (y_min, y_max) = compute_y_range_from_samples(
-                        &plot_samples,
-                        plot_benchmark_samples.as_deref(),
-                    );
-                    let x_end = if plot_samples.len() >= 2 {
-                        (plot_samples.len() - 1) as f64
-                    } else {
-                        1.0
-                    };
-                    let x_end_idx = if plot_samples.len() >= 2 {
-                        plot_samples.len() - 1
-                    } else {
-                        1
-                    };
-                    let cur_tf = timeframe_cycle.map(|(_, c)| c).unwrap_or("1d");
+                    let use_fixed_intraday = cur_tf == "1m" && visible_is_single_day;
+
                     let format_ts = |ts: &str| -> String {
                         if cur_tf == "1m" {
-                            // 2026-04-01T09:30:00+08:00 -> 09:30
                             if ts.len() >= 16 {
-                                &ts[11..16]
+                                format!("{} {}", &ts[5..10], &ts[11..16])
                             } else {
-                                ts
+                                ts.to_string()
                             }
                         } else {
-                            // 2026-04-01T15:00:00+08:00 -> 2026-04-01
                             if ts.len() >= 10 {
                                 &ts[0..10]
                             } else {
                                 ts
-                            }
-                        }.to_string()
+                            }.to_string()
+                        }
                     };
+
+                    // Helper to map timestamp to X coordinate
+                    let map_to_x = |ts: &str, idx: usize| -> f64 {
+                        if !use_fixed_intraday {
+                            return idx as f64;
+                        }
+                        // A-share 1m mapping: 09:30-11:30 (120m), 13:00-15:00 (120m) -> 0..240
+                        if ts.len() < 16 { return idx as f64; }
+                        let h: i32 = ts[11..13].parse().unwrap_or(0);
+                        let m: i32 = ts[14..16].parse().unwrap_or(0);
+                        let total_m = h * 60 + m;
+                        let start_m = 9 * 60 + 30;
+                        let noon_m = 11 * 60 + 30;
+                        let afternoon_start_m = 13 * 60 + 0;
+
+                        if total_m <= noon_m {
+                            (total_m - start_m).max(0) as f64
+                        } else {
+                            (total_m - afternoon_start_m + 120).max(120).min(240) as f64
+                        }
+                    };
+
+                    let samples: Vec<(f64, f64)> = visible
+                        .iter()
+                        .enumerate()
+                        .map(|(idx, (ts, price))| (map_to_x(ts, idx), *price))
+                        .collect();
+
+                    let mut comparison_title: Option<String> = None;
+                    let benchmark_samples = if state.show_benchmark {
+                        benchmark_symbol
+                            .and_then(|bm| {
+                                if bm == series.symbol {
+                                    None
+                                } else {
+                                    benchmark_chart.as_ref().filter(|bs| bs.symbol == bm)
+                                }
+                            })
+                            .and_then(|bm_series| {
+                                build_aligned_indexed_samples(
+                                    visible,
+                                    &bm_series.points,
+                                    bm_series.symbol.as_str(),
+                                )
+                            })
+                    } else {
+                        None
+                    };
+
+                    let (plot_samples, plot_benchmark_samples) = if let Some((mut stock_idx, mut bench_idx, bm)) =
+                        benchmark_samples
+                    {
+                        comparison_title =
+                            Some(format!("Trend - {} vs {}{}", series.symbol, bm, tf_suffix));
+                        // If using fixed intraday, we must re-map the X coordinates from indices to minute-indices
+                        if use_fixed_intraday {
+                            // build_aligned_indexed_samples uses indices relative to visible window
+                            for (i, p) in stock_idx.iter_mut().enumerate() {
+                                if let Some((ts, _)) = visible.get(i) {
+                                    p.0 = map_to_x(ts, i);
+                                }
+                            }
+                            for (i, p) in bench_idx.iter_mut().enumerate() {
+                                if let Some((ts, _)) = visible.get(i) {
+                                    p.0 = map_to_x(ts, i);
+                                }
+                            }
+                        }
+                        (stock_idx, Some(bench_idx))
+                    } else {
+                        (samples.clone(), None)
+                    };
+
+                    let cursor_visible = state
+                        .chart_view
+                        .cursor
+                        .saturating_sub(state.chart_view.window_start)
+                        .min(visible.len().saturating_sub(1));
 
                     let (cursor_ts, cursor_price) = points
                         .get(state.chart_view.cursor)
                         .map(|(t, p)| (t.as_str(), *p))
                         .unwrap_or(("-", 0.0));
 
-                    let start_ts = format_ts(points.get(state.chart_view.window_start).map(|(t, _)| t.as_str()).unwrap_or(""));
-                    let end_ts = format_ts(points.get(window_end.saturating_sub(1)).map(|(t, _)| t.as_str()).unwrap_or(""));
-                    let cursor_ts_fmt = format_ts(cursor_ts);
+                    let cursor_x = if use_fixed_intraday {
+                        match visible.get(cursor_visible) {
+                            Some((ts, _)) => map_to_x(ts, cursor_visible),
+                            None => 0.0,
+                        }
+                    } else {
+                        cursor_visible as f64
+                    };
 
-                    let x_labels: Vec<Span<'static>> = if cursor_visible == 0 || cursor_visible == x_end_idx {
+                    let cursor_y = plot_samples.get(cursor_visible).map(|(_, p)| *p).unwrap_or(0.0);
+                    let cursor_points = vec![(cursor_x, cursor_y)];
+                    let x_bounds = if use_fixed_intraday {
+                        [0.0, 240.0]
+                    } else {
+                        let x_end = if samples.len() >= 2 {
+                            (samples.len() - 1) as f64
+                        } else {
+                            1.0
+                        };
+                        [0.0, x_end]
+                    };
+
+                    let x_labels: Vec<Span<'static>> = if use_fixed_intraday {
                         vec![
-                            Span::raw(start_ts),
-                            Span::raw(end_ts),
+                            Span::raw("09:30"),
+                            Span::raw("11:30/13:00"),
+                            Span::raw("15:00"),
                         ]
                     } else {
-                        vec![
-                            Span::raw(start_ts),
-                            Span::raw(cursor_ts_fmt),
-                            Span::raw(end_ts),
-                        ]
+                        // Use consistent timestamp references
+                        let start_ts = format_ts(visible.first().map(|(t, _)| t.as_str()).unwrap_or(""));
+                        let end_ts = format_ts(visible.last().map(|(t, _)| t.as_str()).unwrap_or(""));
+                        let cursor_ts_fmt = format_ts(cursor_ts);
+
+                        if cursor_visible == 0 || cursor_visible == samples.len().saturating_sub(1) {
+                            vec![Span::raw(start_ts), Span::raw(end_ts)]
+                        } else {
+                            vec![Span::raw(start_ts), Span::raw(cursor_ts_fmt), Span::raw(end_ts)]
+                        }
                     };
+
+                    let (y_min, y_max) = compute_y_range_from_samples(
+                        &plot_samples,
+                        plot_benchmark_samples.as_deref(),
+                    );
+
                     let y_labels: Vec<Span<'static>> = if (cursor_y - y_min).abs() < f64::EPSILON
                         || (cursor_y - y_max).abs() < f64::EPSILON
                     {
@@ -741,7 +1016,7 @@ fn run_tui_loop(
                             Axis::default()
                                 .title("")
                                 .style(Style::default().fg(Color::DarkGray))
-                                .bounds([0.0, x_end])
+                                .bounds(x_bounds)
                                 .labels(x_labels),
                         )
                         .y_axis(
@@ -751,12 +1026,13 @@ fn run_tui_loop(
                                 .bounds([y_min, y_max])
                                 .labels(y_labels),
                         );
-                    frame.render_widget(chart, cols[1]);
+                    frame.render_widget(chart, right_col);
+                    let cursor_ts_full = format_ts(cursor_ts);
                     let nav_hint = if state.filter_editing {
                         format!(
                             "筛选: \"{}\" | Enter 结束编辑  Esc 清空并退出筛选  |  {} {:.2}  [{}..{}]{}{}",
                             state.filter_query,
-                            cursor_ts,
+                            cursor_ts_full,
                             cursor_price,
                             state.chart_view.window_start,
                             window_end.saturating_sub(1),
@@ -769,8 +1045,8 @@ fn run_tui_loop(
                         )
                     } else {
                         format!(
-                            "标的: ↑/↓  Tab/t 表格  /:筛选  图: ←/→  平移: a/d  缩放: +/-  基准: b  复位: 0  退出: q/Esc  |  {} {:.2}  [{}..{}]{}{}",
-                            cursor_ts,
+                            "标的: ↑/↓  Tab/t 表格  /:筛选  R 刷新  图: ←/→  平移: a/d  缩放: +/-  基准: b  复位: 0  退出: q/Esc  |  {} {:.2}  [{}..{}]{}{}",
+                            cursor_ts_full,
                             cursor_price,
                             state.chart_view.window_start,
                             window_end.saturating_sub(1),
@@ -785,12 +1061,12 @@ fn run_tui_loop(
                     let hint = Paragraph::new(nav_hint).style(Style::default().fg(Color::DarkGray));
                     frame.render_widget(hint, hint_row);
                     }
-                } else if !symbols.is_empty() && state.filtered_indices.is_empty() {
+                } else if !list_series.is_empty() && state.filtered_indices.is_empty() {
                     let msg = Paragraph::new(
                         "当前筛选无匹配标的。按 / 编辑关键词，或 Esc 清空筛选并退出编辑。",
                     )
                     .style(Style::default().fg(Color::Yellow));
-                    frame.render_widget(msg, cols[1]);
+                    frame.render_widget(msg, right_col);
                     let hint = if state.filter_editing {
                         Paragraph::new(format!(
                             "筛选: \"{}\" | Enter 结束  Esc 清空筛选",
@@ -813,17 +1089,17 @@ fn run_tui_loop(
                     match key.code {
                         KeyCode::Esc => {
                             state.filter_query.clear();
-                            state.apply_filter_update(symbols);
+                            state.apply_filter_update(list_series.as_slice());
                             state.filter_editing = false;
                         }
                         KeyCode::Enter => state.filter_editing = false,
                         KeyCode::Backspace => {
                             state.filter_query.pop();
-                            state.apply_filter_update(symbols);
+                            state.apply_filter_update(list_series.as_slice());
                         }
                         KeyCode::Char(c) => {
                             state.filter_query.push(c);
-                            state.apply_filter_update(symbols);
+                            state.apply_filter_update(list_series.as_slice());
                         }
                         _ => {}
                     }
@@ -837,6 +1113,8 @@ fn run_tui_loop(
                 } else if key.code == KeyCode::Tab || key.code == KeyCode::Char('t') {
                     state.main_view = state.main_view.toggle();
                     state.table_scroll = 0;
+                } else if matches!(key.code, KeyCode::Char('R') | KeyCode::Char('r')) {
+                    return Ok(SyncRunsTuiClose::RefreshRequested);
                 } else {
                     if let Some((choices, cur)) = timeframe_cycle {
                         if let KeyCode::Char(c) = key.code {
@@ -847,7 +1125,7 @@ fn run_tui_loop(
                                     if next != cur {
                                         let selected_symbol = selected_symbol_for_close(
                                             &state,
-                                            symbols,
+                                            list_series.as_slice(),
                                             preferred_symbol,
                                         );
                                         return Ok(SyncRunsTuiClose::TimeframeChanged {
@@ -865,9 +1143,10 @@ fn run_tui_loop(
                         .map_err(|e| format!("terminal size: {e}"))?;
                     let page = (size.height.saturating_sub(5) as usize).max(3);
                     let rows_len = state
-                        .selected_series(symbols)
+                        .selected_series(list_series.as_slice())
                         .map(|s| {
-                            let sub = filtered_items_payload(bars_payload, s.symbol.as_str());
+                            let sub =
+                                filtered_items_payload(&*bars_payload, s.symbol.as_str());
                             collect_bars_table_rows(&sub, false).len()
                         })
                         .unwrap_or(0);
@@ -881,18 +1160,69 @@ fn run_tui_loop(
                         }
                         KeyCode::Home => state.table_scroll = 0,
                         KeyCode::End => state.table_scroll = max_scroll,
-                        KeyCode::Up | KeyCode::Char('k') => state.move_symbol_up(symbols),
-                        KeyCode::Down | KeyCode::Char('j') => state.move_symbol_down(symbols),
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            state.move_symbol_up(list_series.as_slice(), timeframe_cycle.map(|(_, c)| c));
+                            if let Some(a) = data_anchor_symbol {
+                                let sel = selected_symbol_for_close(
+                                    &state,
+                                    list_series.as_slice(),
+                                    preferred_symbol,
+                                );
+                                if sel != a {
+                                    debounce_until =
+                                        Some(Instant::now() + Duration::from_millis(380));
+                                }
+                            }
+                        }
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            state.move_symbol_down(list_series.as_slice(), timeframe_cycle.map(|(_, c)| c));
+                            if let Some(a) = data_anchor_symbol {
+                                let sel = selected_symbol_for_close(
+                                    &state,
+                                    list_series.as_slice(),
+                                    preferred_symbol,
+                                );
+                                if sel != a {
+                                    debounce_until =
+                                        Some(Instant::now() + Duration::from_millis(380));
+                                }
+                            }
+                        }
                         _ => {}
                     }
                     } else {
-                    let selected_points_len = state
-                        .selected_series(symbols)
-                        .map(|s| s.points.len())
-                        .unwrap_or(0);
+                    let selected_series = state.selected_series(list_series.as_slice());
+                    let selected_points = selected_series.map(|s| s.points.as_slice()).unwrap_or(&[]);
+                    let selected_points_len = selected_points.len();
                     match key.code {
-                        KeyCode::Up | KeyCode::Char('k') => state.move_symbol_up(symbols),
-                        KeyCode::Down | KeyCode::Char('j') => state.move_symbol_down(symbols),
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            state.move_symbol_up(list_series.as_slice(), timeframe_cycle.map(|(_, c)| c));
+                            if let Some(a) = data_anchor_symbol {
+                                let sel = selected_symbol_for_close(
+                                    &state,
+                                    list_series.as_slice(),
+                                    preferred_symbol,
+                                );
+                                if sel != a {
+                                    debounce_until =
+                                        Some(Instant::now() + Duration::from_millis(380));
+                                }
+                            }
+                        }
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            state.move_symbol_down(list_series.as_slice(), timeframe_cycle.map(|(_, c)| c));
+                            if let Some(a) = data_anchor_symbol {
+                                let sel = selected_symbol_for_close(
+                                    &state,
+                                    list_series.as_slice(),
+                                    preferred_symbol,
+                                );
+                                if sel != a {
+                                    debounce_until =
+                                        Some(Instant::now() + Duration::from_millis(380));
+                                }
+                            }
+                        }
                         KeyCode::Left | KeyCode::Char('h') => {
                             state.chart_view.cursor_left(selected_points_len)
                         }
@@ -913,7 +1243,7 @@ fn run_tui_loop(
                             }
                         }
                         KeyCode::Char('0') => {
-                            state.chart_view = ChartViewState::new(selected_points_len)
+                            state.chart_view = ChartViewState::new(selected_points, timeframe_cycle.map(|(_, c)| c))
                         }
                         _ => {}
                     }
@@ -922,6 +1252,8 @@ fn run_tui_loop(
                 }
             }
         }
+
+        is_first_event_loop_pass = false;
     }
 }
 
@@ -1141,9 +1473,13 @@ pub fn render_sync_runs_tui_with_timeframes(
     let run_res = run_sync_runs_tui_iteration(
         &mut terminal,
         payload,
+        None,
         preferred_symbol,
         benchmark_symbol,
         timeframe_cycle,
+        None,
+        false,
+        || Option::<Value>::None,
     );
     sync_runs_tui_leave(&mut terminal);
     run_res
@@ -1192,6 +1528,58 @@ fn build_symbol_series(payload: &Value) -> Vec<SymbolSeries> {
             }
         })
         .collect()
+}
+
+fn clone_series_for_instrument_code(
+    by_sym: &BTreeMap<String, SymbolSeries>,
+    code: &str,
+) -> Option<SymbolSeries> {
+    if let Some(s) = by_sym.get(code) {
+        return Some(s.clone());
+    }
+    by_sym
+        .iter()
+        .find(|(k, _)| k.as_str() == code || k.eq_ignore_ascii_case(code))
+        .map(|(_, s)| s.clone())
+}
+
+fn build_universe_list_series(
+    instruments: &[(String, String)],
+    payload: &Value,
+) -> Vec<SymbolSeries> {
+    let by_sym: BTreeMap<String, SymbolSeries> = build_symbol_series(payload)
+        .into_iter()
+        .map(|s| (s.symbol.clone(), s))
+        .collect();
+    instruments
+        .iter()
+        .map(|(code, zh)| {
+            if let Some(mut s) = clone_series_for_instrument_code(&by_sym, code.as_str()) {
+                if s.name_zh.is_empty() {
+                    s.name_zh = zh.clone();
+                }
+                // 与 universe 代码对齐，避免 API 行内 symbol 大小写与列表不一致导致选中标的后 total==0
+                s.symbol = code.clone();
+                s
+            } else {
+                SymbolSeries {
+                    symbol: code.clone(),
+                    name_zh: zh.clone(),
+                    points: vec![],
+                }
+            }
+        })
+        .collect()
+}
+
+fn extract_benchmark_series_for_chart(
+    payload: &Value,
+    benchmark_symbol: Option<&str>,
+) -> Option<SymbolSeries> {
+    let bm = benchmark_symbol?;
+    build_symbol_series(payload)
+        .into_iter()
+        .find(|s| s.symbol == bm)
 }
 
 fn compute_y_range_from_samples(
@@ -1258,6 +1646,20 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn build_universe_list_series_merges_case_mismatched_api_symbol() {
+        let inv = vec![("600519.SH".to_string(), "茅台".to_string())];
+        let payload = json!({
+            "items": [
+                {"symbol":"600519.sh","bar_time":"2026-04-02T09:31:00+08:00","close":1.0},
+            ]
+        });
+        let list = super::build_universe_list_series(&inv, &payload);
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].symbol, "600519.SH");
+        assert_eq!(list[0].points.len(), 1);
+    }
+
+    #[test]
     fn build_symbol_series_groups_and_sorts() {
         let payload = json!({
             "items": [
@@ -1281,7 +1683,7 @@ mod tests {
             ]
         });
         let series = build_symbol_series(&payload);
-        let state = TuiState::new(&series, Some("600519.SH"), true);
+        let state = TuiState::new(&series, Some("600519.SH"), true, None);
         let idx = state.filtered_indices[state.selected_list_idx];
         assert_eq!(series[idx].symbol, "600519.SH");
     }
@@ -1322,7 +1724,7 @@ mod tests {
                 points: vec![("t".to_string(), 2.0)],
             },
         ];
-        let mut state = TuiState::new(&series, Some("600519.SH"), false);
+        let mut state = TuiState::new(&series, Some("600519.SH"), false, None);
         state.filter_query = "600519".to_string();
         state.apply_filter_update(&series);
         assert_eq!(state.filtered_indices.len(), 1);

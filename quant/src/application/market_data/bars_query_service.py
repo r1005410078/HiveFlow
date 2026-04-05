@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 
 from domain.market_data.bars_aggregate import aggregate_storage_rows
 from domain.market_data.sse_calendar import is_sse_trading_day
@@ -118,4 +118,75 @@ class BarsQueryService:
             "items": page,
             "next_cursor_bar_time": next_bt,
             "next_cursor_symbol": next_sym,
+        }
+
+    def query_bundle(
+        self,
+        symbols: list[str],
+        timeframes: list[str],
+        start_date: str | None = None,
+        end_date: str | None = None,
+        limit_per_timeframe: int | None = None,
+    ) -> dict:
+        """一次读存储 1m 行，再对每个 timeframe 分别聚合（无 session_date / 游标）。"""
+        if not symbols:
+            raise ValueError("BARS_BUNDLE_SYMBOLS_REQUIRED")
+        if not timeframes:
+            raise ValueError("BARS_BUNDLE_TIMEFRAMES_REQUIRED")
+
+        raw = self.bar_store.list_storage_bars(
+            symbols=symbols,
+            storage_timeframe="1m",
+            start_date=start_date,
+            end_date=end_date,
+            limit=_DEFAULT_STORAGE_FETCH_LIMIT,
+            order="asc",
+        )
+
+        by_sym: dict[str, list[dict]] = defaultdict(list)
+        for row in raw:
+            sym = row.get("symbol") or ""
+            by_sym[sym].append(row)
+
+        lim = limit_per_timeframe if limit_per_timeframe is not None else 5000
+        by_tf: dict[str, dict] = {}
+
+        for tf_raw in timeframes:
+            output_tf = (tf_raw or "").strip()
+            if output_tf == "1s":
+                raise ValueError("TIMEFRAME_FINER_THAN_STORAGE")
+
+            items: list[dict] = []
+            for sym in sorted(by_sym.keys()):
+                sym_rows = sorted(
+                    by_sym[sym],
+                    key=lambda r: _parse_bar_time_key(str(r["bar_time"])),
+                )
+                try:
+                    part = aggregate_storage_rows(
+                        output_tf,
+                        sym_rows,
+                        session_date=None,
+                    )
+                except NotImplementedError as exc:
+                    raise ValueError("TIMEFRAME_NOT_IMPLEMENTED") from exc
+                for it in part:
+                    it["timeframe"] = output_tf
+                items.extend(part)
+
+            items.sort(
+                key=lambda x: _parse_bar_time_key(str(x["bar_time"])),
+                reverse=True,
+            )
+            has_more = len(items) > lim
+            by_tf[output_tf] = {
+                "items": items[:lim],
+                "has_more": has_more,
+            }
+
+        return {
+            "schema_version": "1.0.0",
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "producer_version": "hiveflow-quant-bars-bundle-1.0.0",
+            "by_timeframe": by_tf,
         }

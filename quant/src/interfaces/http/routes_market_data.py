@@ -4,12 +4,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
 from interfaces.http.dependencies import (
+    MarketDataBarsBundleQueryService,
     MarketDataBarsQueryService,
     MarketDataInstrumentsListService,
     MarketDataQueryService,
     MarketDataSyncService,
     MarketDataSymbolNamesSyncService,
     MarketDataUniverseSyncService,
+    get_market_data_bars_bundle_query_service,
     get_market_data_bars_query_service,
     get_market_data_instruments_list_service,
     get_market_data_query_service,
@@ -19,6 +21,7 @@ from interfaces.http.dependencies import (
     get_sync_worker,
 )
 from interfaces.http.schemas_market_data import (
+    MarketDataBarsBundleRequest,
     MarketDataSyncRequest,
     MarketDataSymbolNamesSyncRequest,
     MarketDataUniverseSyncRequest,
@@ -433,6 +436,15 @@ _BAR_QUERY_VALUE_ERROR_CODES = frozenset(
     }
 )
 
+_BAR_BUNDLE_VALUE_ERROR_CODES = frozenset(
+    {
+        "BARS_BUNDLE_SYMBOLS_REQUIRED",
+        "BARS_BUNDLE_TIMEFRAMES_REQUIRED",
+        "TIMEFRAME_FINER_THAN_STORAGE",
+        "TIMEFRAME_NOT_IMPLEMENTED",
+    }
+)
+
 
 @router.get(
     "/bars",
@@ -477,4 +489,37 @@ def get_bars(
         raise HTTPException(
             status_code=422,
             detail={"code": "BARS_INVALID_ARGUMENT", "message": code},
+        ) from exc
+
+
+@router.post(
+    "/bars-bundle",
+    summary="多周期 K 线一次读库聚合",
+    description=(
+        "对同一批 symbols、同一日期窗单次读取存储 1m 行，再按多个 timeframes 分别聚合；"
+        "不含 session_date 与游标分页。响应含 schema_version / by_timeframe。"
+    ),
+)
+def post_bars_bundle(
+    body: MarketDataBarsBundleRequest,
+    service: MarketDataBarsBundleQueryService = Depends(get_market_data_bars_bundle_query_service),
+) -> dict:
+    try:
+        return service(
+            symbols=body.symbols,
+            timeframes=body.timeframes,
+            start_date=body.start_date,
+            end_date=body.end_date,
+            limit_per_timeframe=body.limit_per_timeframe,
+        )
+    except ValueError as exc:
+        code = str(exc)
+        if code in _BAR_BUNDLE_VALUE_ERROR_CODES:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": code, "message": code},
+            ) from exc
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "BARS_BUNDLE_INVALID_ARGUMENT", "message": code},
         ) from exc

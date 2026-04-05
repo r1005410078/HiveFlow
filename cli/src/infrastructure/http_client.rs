@@ -310,6 +310,43 @@ pub fn get_market_data_bars(
     parse_json(&body_text)
 }
 
+/// `POST /v1/market-data/bars-bundle` — 多周期一次读库聚合（见 quant 路由文档）。
+pub fn post_market_data_bars_bundle(
+    server_url: &str,
+    symbols: &[String],
+    timeframes: &[&str],
+    start_date: Option<&str>,
+    end_date: Option<&str>,
+    limit_per_timeframe: i32,
+    timeout_ms: u64,
+) -> Result<Value, AppError> {
+    let url = format!(
+        "{}/v1/market-data/bars-bundle",
+        server_url.trim_end_matches('/')
+    );
+    let client = build_client(server_url, timeout_ms)?;
+    let body = json!({
+        "symbols": symbols,
+        "timeframes": timeframes,
+        "start_date": start_date,
+        "end_date": end_date,
+        "limit_per_timeframe": limit_per_timeframe,
+    });
+    let response = client
+        .post(url)
+        .json(&body)
+        .send()
+        .map_err(AppError::HttpClient)?;
+    let status_code = response.status();
+    let body_text = response.text().map_err(AppError::HttpClient)?;
+    if !status_code.is_success() {
+        let body =
+            serde_json::from_str(&body_text).unwrap_or_else(|_| json!({ "raw_body": body_text }));
+        return Err(AppError::Upstream(status_code.as_u16(), body));
+    }
+    parse_json(&body_text)
+}
+
 /// `GET /v1/market-data/instruments` — universe file listing or DB symbol discovery.
 pub fn get_market_data_instruments(
     server_url: &str,
