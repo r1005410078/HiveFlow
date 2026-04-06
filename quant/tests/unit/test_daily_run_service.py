@@ -50,3 +50,17 @@ def test_daily_run_includes_risk_gate():
         assert "risk_gate" in data["risk_gate"]  # "pass" or "block"
         assert "regime" in data["risk_gate"]
         assert "checks" in data["risk_gate"]
+
+
+def test_daily_run_includes_pretrade_when_portfolio_ok():
+    """When portfolio is present, L5.5 pretrade payload must be attached."""
+    from application.daily_run_service import run_daily
+
+    result = run_daily(as_of="2026-04-01", root=None, bar_store=None)
+    data = result["data"]
+    if data.get("portfolio") is not None:
+        pt = data.get("pretrade")
+        assert pt is not None
+        assert "overall_tradable" in pt
+        assert "orders" in pt
+        assert "total_impact_bp" in pt

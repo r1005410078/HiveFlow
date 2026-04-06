@@ -6,6 +6,7 @@ from interfaces.http.routes_daily_run import router as daily_router
 from interfaces.http.routes_factor_optimization import router as factor_optimization_router
 from interfaces.http.routes_market_data import router as market_data_router
 from interfaces.http.routes_portfolio import router as portfolio_router
+from interfaces.http.routes_pretrade import router as pretrade_router
 from interfaces.http.routes_risk import router as risk_router
 from interfaces.http.routes_signal import router as signal_router
 from interfaces.http.routes_monitor import router as monitor_router
@@ -34,6 +35,7 @@ def create_app() -> FastAPI:
     app.include_router(market_data_router)
     app.include_router(portfolio_router)
     app.include_router(risk_router)
+    app.include_router(pretrade_router)
     app.include_router(signal_router)
     app.include_router(walk_forward_router)
     app.include_router(monitor_router)

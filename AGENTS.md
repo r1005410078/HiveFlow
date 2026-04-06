@@ -170,6 +170,7 @@ cd cli && cargo run -- monitor health-report --as-of YYYY-MM-DD --output table
 - `POST /api/v1/signal/evaluate`：L3 信号质量评估（IC + 漂移检测，需 DB）
 - `POST /api/v1/portfolio/optimize`：L4 组合优化（均值-方差 QP，含换手成本惩罚）
 - `POST /api/v1/risk/check`：L5 风险门控（CLI：`hf risk check`）
+- `POST /api/v1/pretrade/check`：L5.5 预交易冲击与可成交性估算（CLI：`hf pretrade check`，两跳经 L4 取权重）
 - `POST /v1/walk-forward/run`：L7 walk-forward 回测（CLI：`hf walk-forward run`）
 - `GET /v1/monitor/health-report`：L8 因子/信号/风控健康报告（CLI：`hf monitor health-report`）
 
@@ -190,7 +191,7 @@ cd cli && cargo run -- monitor health-report --as-of YYYY-MM-DD --output table
 | L3 | 信号工程 | ✅ Phase 2b 完成 | Phase 1: winsorize+zscore+等权 composite、signal_matrix、snapshot CLI；Phase 2a: Rank IC（per-factor+composite）、信号分布漂移检测、`POST /api/v1/signal/evaluate` + `hf signal evaluate`；Phase 2b: 横截面中位数缺失值填补 + 行业哑变量 OLS 中性化框架（守卫：单行业单标的时透传） |
 | L4 | 组合优化 | ✅ Phase 1 完成 | 均值-方差 QP（cvxpy CLARABEL）+ 换手成本惩罚 + 单标的/行业约束；`POST /api/v1/portfolio/optimize` + `hf portfolio optimize`；daily pipeline 接入（data.portfolio 字段） |
 | L5 | 风险门控 | ✅ Phase 1 完成 | 三态市场状态机（normal/warning/crisis，基于 000300.SH 年化波动率，降级等权组合，兜底 normal）+ 四项硬约束检查（portfolio_vol/single_asset_max/industry_max/turnover，全态执行）；`POST /api/v1/risk/check` + `hf risk check`（两跳：先调 L4 取权重，再调 L5）；daily pipeline 接入（data.risk_gate 字段，L5 block 不阻断 pipeline） |
-| L5.5 | 预交易模拟 | 🔲 未开始 | — |
+| L5.5 | 预交易模拟 | ✅ Phase 1 完成 | 平方根冲击模型（η=0.1）+ 参与度≤10% ADV 可成交性；`POST /api/v1/pretrade/check` + `hf pretrade check`（两跳 L4→L5.5，名义 1e6 CNY）；`run_daily` 写入 `data.pretrade`；bar 不可用降级 ADV/σ + `PRETRADE_USING_FALLBACK_ADV` |
 | L6 | 执行 | 🔲 未开始 | Phase 1 orders 固定为空数组 |
 | L7 | 回测/验证 | 🚧 部分完成 | compare 回放、factor replay 已完成；`POST /v1/walk-forward/run` + `hf walk-forward run` 已接入 |
 | L8 | 监控复盘 | 🚧 Phase 1 | `GET /v1/monitor/health-report` + `hf monitor health-report`：基于 `run_daily` 聚合 green/yellow/red；`trend` 预留 Phase 2 |
@@ -198,7 +199,7 @@ cd cli && cargo run -- monitor health-report --as-of YYYY-MM-DD --output table
 | G2 | 实验治理 | 🔲 未开始 | — |
 | G3 | 执行安全 | 🚧 部分完成 | advice_only/decision_weight 框架已建，审批流未实现 |
 
-**当前工作位置**：L8 Phase 1（健康报告 HTTP + CLI）已合入 master → 下一步候选：L8 Phase 2（`trend` 滚动窗口）；或 L5.5 预交易模拟 Phase 1；或 L7 walk-forward 深化。
+**当前工作位置**：L5.5 Phase 1（预交易 HTTP + CLI + daily `data.pretrade`）已合入 master → 下一步候选：L8 Phase 2（`trend` 滚动窗口）；或 L5.5 Phase 2（η 动态化、`--notional`）；或 L7 walk-forward 深化。
 
 ### 7.9 已交付能力摘要
 
@@ -210,6 +211,7 @@ cd cli && cargo run -- monitor health-report --as-of YYYY-MM-DD --output table
 - **CLI 可读性**：`--output table` 中文标题，top 候选最多 5 条
 - **L3 信号**：`signal_matrix`（coverage_rate、transform_stats）；`hf signal snapshot --as-of ... [--output json|table]`；信号评估 `hf signal evaluate --start-date ... --end-date ... [--forward-days N] [--output json|table]`（Rank IC + drift diagnostics）；详见 `--help` 与 `docs/CLI_OUTPUT_EXAMPLES.md`
 - **L4 组合优化**：`POST /api/v1/portfolio/optimize` + `hf portfolio optimize --as-of DATE [--output json|table]`；均值-方差 QP（cvxpy CLARABEL）；目标函数含 alpha、风险惩罚（协方差矩阵）、换手成本惩罚；单标的上限 30%、行业上限 40%；首次运行等权 fallback；daily pipeline 自动调用（data.portfolio 字段）
+- **L5.5 预交易**：`POST /api/v1/pretrade/check` + `hf pretrade check --as-of DATE [--output json|table]`（默认 table）；`run_daily` 的 `data.pretrade`；详见 `docs/CLI_OUTPUT_EXAMPLES.md` 与 `docs/superpowers/specs/2026-04-06-l5.5-pretrade-simulation-design.md`
 - **L8 健康报告**：`GET /v1/monitor/health-report?as_of=DATE` + `hf monitor health-report --as-of DATE [--output json|table]`；消费 `run_daily` 的 L2~L5 输出聚合 factor/signal/risk 健康度与总评；详见 `docs/CLI_OUTPUT_EXAMPLES.md` 与 `docs/superpowers/specs/2026-04-06-l8-monitor-health-report-design.md`
 - **L1 异步同步**：`hf data sync` 提交→202→**默认** stderr 提示 + stdout JSON（含 run_id）；**`hf task progress`**（别名 `hf task status`）查看运行中进度，**`--watch`** 轮询至终态（与 **`--wait`** 同类）；任务列表 **`hf task list`**（别名 `hf task sync-runs`）；取消/重试 **`hf task cancel` / `hf task retry-failed`**（与 `hf data sync-cancel`、`hf data sync-retry-failed` 等价）；近窗 K 线 **`hf data query`** → `GET /v1/market-data/bars`（默认 TUI 分页）；失败队列自动重试（MAX_SYMBOL_ATTEMPTS=3）+ 审计表 `sync_run_symbol_failures`；startup 孤儿 run 收口为 `interrupted`；Provider 无行返回且无异常时 run 可为 **`success` + `error_code: NO_DATA_RETURNED`**；`sync_runs.effective_symbols_count` finalize 写库 + 读取 **enrich** 与 `progress` 一致；本地仅清 L1 表 **`make db-clear-l1`**（破坏性）
 

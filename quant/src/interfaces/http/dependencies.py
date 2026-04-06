@@ -9,6 +9,7 @@ from application.factor_optimization import run_factor_optimization
 from application.market_data.sync_worker import SyncWorker
 from application.pipeline_compare_service import run_pipeline_compare
 from application.portfolio.portfolio_optimize_service import run_portfolio_optimize
+from application.pretrade.pretrade_service import run_pretrade_check
 from application.risk.risk_gate_service import run_risk_check
 from application.signal.signal_evaluate_service import run_signal_evaluation
 from application.signal.signal_engineering_service import run_signal_snapshot
@@ -40,6 +41,7 @@ SignalSnapshotService = Callable[[str], dict]
 SignalEvaluateService = Callable[[str, str, int], dict]
 PortfolioOptimizeService = Callable[..., dict]
 RiskCheckService = Callable[..., dict]
+PretradeService = Callable[..., dict]
 WalkForwardService = Callable[..., dict]
 HealthReportService = Callable[[str], dict]
 
@@ -155,6 +157,21 @@ def get_risk_check_service() -> RiskCheckService:
         target_weights=target_weights,
         prev_weights=prev_weights,
         bar_store=bar_store,
+    )
+
+
+def get_pretrade_service() -> PretradeService:
+    bar_store = None
+    if has_db_config():
+        try:
+            bar_store = TimescaleBarStore(open_db_connection_from_env())
+        except Exception:
+            bar_store = None
+    return lambda as_of, target_weights, notional: run_pretrade_check(
+        as_of=as_of,
+        target_weights=target_weights,
+        bar_store=bar_store,
+        notional=notional,
     )
 
 

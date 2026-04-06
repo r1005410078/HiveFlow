@@ -10,6 +10,7 @@ from application.factor.basic_factor_service import (
     compute_basic_factor_snapshot_from_bars,
 )
 from application.portfolio.portfolio_optimize_service import run_portfolio_optimize
+from application.pretrade.pretrade_service import run_pretrade_check
 from application.risk.risk_gate_service import run_risk_check
 from application.signal.signal_engineering_service import compute_signal_matrix
 from application.technical.ma_cross_service import build_ma_cross_technical
@@ -169,6 +170,21 @@ def run_daily(
                 "code": "RISK_GATE_FAILED",
                 "message": "L5 risk gate computation failed; risk_gate set to null",
             })
+    pretrade_result = None
+    if portfolio is not None:
+        try:
+            pretrade_result = run_pretrade_check(
+                as_of=as_of,
+                target_weights={r["symbol"]: r["weight"] for r in portfolio["target_weights"]},
+                bar_store=bar_store,
+                notional=1_000_000.0,
+            )
+        except Exception:
+            _logger.warning("daily run: pretrade check failed", exc_info=True)
+            warnings.append({
+                "code": "PRETRADE_FAILED",
+                "message": "L5.5 pretrade computation failed; pretrade set to null",
+            })
     return ok_output(
         command="hf pipeline daily",
         run_id=run_id,
@@ -181,6 +197,7 @@ def run_daily(
             "signal_matrix": signal_matrix,
             "portfolio": portfolio,
             "risk_gate": risk_gate_result.get("data") if risk_gate_result else None,
+            "pretrade": pretrade_result.get("data") if pretrade_result else None,
             "technical": technical,
         },
         warnings=warnings,

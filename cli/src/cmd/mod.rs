@@ -3,6 +3,7 @@ pub mod factor;
 pub mod monitor;
 pub mod pipeline;
 pub mod portfolio;
+pub mod pretrade;
 pub mod risk;
 pub mod signal;
 pub mod task;
@@ -35,6 +36,8 @@ pub enum Commands {
     Portfolio(portfolio::PortfolioArgs),
     /// L5 风险门控：目标权重硬约束检查（需 quant 服务与 ~/.hiveflow/config.toml）
     Risk(risk::RiskArgs),
+    /// L5.5 预交易模拟：冲击与可成交性（需 quant 服务与 ~/.hiveflow/config.toml）
+    Pretrade(pretrade::PretradeArgs),
     /// L7 walk-forward 回测：滚动窗口验证（需 quant 服务与 ~/.hiveflow/config.toml）
     WalkForward(walk_forward::WalkForwardArgs),
     /// L8 监控：健康报告（需 quant 服务与 ~/.hiveflow/config.toml）
@@ -96,6 +99,11 @@ impl From<Cli> for AppCommand {
             },
             Commands::Risk(args) => match args.command {
                 risk::RiskSubcommand::Check(check) => AppCommand::RiskCheck(check.into()),
+            },
+            Commands::Pretrade(args) => match args.command {
+                pretrade::PretradeSubcommand::Check(check) => {
+                    AppCommand::PretradeCheck(check.into())
+                }
             },
             Commands::WalkForward(args) => AppCommand::WalkForward(args.into()),
             Commands::Monitor(args) => match args.command {

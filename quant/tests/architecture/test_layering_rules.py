@@ -129,6 +129,19 @@ def test_application_portfolio_does_not_import_interfaces():
     assert not violations, f"application.portfolio must not import interfaces: {violations}"
 
 
+def test_application_pretrade_does_not_import_interfaces():
+    """application.pretrade 禁止依赖 interfaces 层"""
+    pretrade_dir = APP_DIR / "pretrade"
+    if not pretrade_dir.exists():
+        return
+    violations: list[str] = []
+    for py in pretrade_dir.rglob("*.py"):
+        imports = _imports(py)
+        if any(name == "interfaces" or name.startswith("interfaces.") for name in imports):
+            violations.append(str(py.relative_to(ROOT)))
+    assert not violations, f"application.pretrade must not import interfaces: {violations}"
+
+
 def test_application_technical_does_not_import_interfaces():
     """application.technical 禁止依赖 interfaces 层"""
     technical_dir = APP_DIR / "technical"

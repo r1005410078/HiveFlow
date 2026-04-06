@@ -14,6 +14,7 @@ pub mod monitor;
 pub mod pipeline_compare;
 pub mod pipeline_daily;
 pub mod portfolio_optimize;
+pub mod pretrade_check;
 pub mod risk_check;
 pub mod signal_evaluate;
 pub mod signal_snapshot;

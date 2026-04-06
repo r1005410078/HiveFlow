@@ -521,3 +521,45 @@ class RiskCheckResponse(BaseModel):
     data: RiskCheckData
     warnings: list[dict]
     errors: list[dict]
+
+
+class PretradeCheckRequest(BaseModel):
+    as_of: str = Field(description="计算基准日期 YYYY-MM-DD（PIT）")
+    target_weights: dict[str, float] = Field(description="目标权重 {symbol: weight}")
+    notional: float | None = Field(
+        default=None,
+        description="组合名义资金（CNY）；缺省 1_000_000",
+    )
+
+
+class PretradeOrderRow(BaseModel):
+    symbol: str
+    target_weight: float
+    target_notional: float
+    adv: float
+    participation_rate: float
+    sigma: float
+    impact_bp: float
+    tradable: bool
+
+
+class PretradeCheckData(BaseModel):
+    as_of: str
+    notional: float
+    overall_tradable: bool
+    total_impact_bp: float
+    orders: list[PretradeOrderRow]
+
+
+class PretradeCheckResponse(BaseModel):
+    schema_version: str
+    command: str
+    run_id: str
+    status: str
+    generated_at: str
+    source: str
+    advice_only: bool
+    decision_weight: int
+    data: PretradeCheckData
+    warnings: list[dict]
+    errors: list[dict]

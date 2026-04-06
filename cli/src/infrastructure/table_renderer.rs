@@ -1331,6 +1331,79 @@ pub fn render_risk_check_table(payload: &Value) -> String {
     )
 }
 
+fn fmt_dollar_compact(v: f64) -> String {
+    if v >= 1_000_000.0 {
+        format!("{:.0}M", v / 1_000_000.0)
+    } else if v >= 10_000.0 {
+        format!("{:.0}K", v / 1_000.0)
+    } else {
+        format!("{:.0}", v)
+    }
+}
+
+pub fn render_pretrade_check_table(payload: &Value) -> String {
+    let data = payload.get("data");
+    let as_of = as_str(data.and_then(|d| d.get("as_of")));
+    let ot = data
+        .and_then(|d| d.get("overall_tradable"))
+        .and_then(Value::as_bool)
+        .map(|b| if b { "YES" } else { "NO" })
+        .unwrap_or("n/a");
+    let tip = data
+        .and_then(|d| d.get("total_impact_bp"))
+        .and_then(Value::as_f64)
+        .map(|x| format!("{:.1}bp", x))
+        .unwrap_or_else(|| "n/a".to_string());
+
+    let mut out = format!("as_of: {as_of}   overall_tradable: {ot}   total_impact: {tip}\n\nOrders\n");
+
+    if let Some(orders) = data.and_then(|d| d.get("orders")).and_then(Value::as_array) {
+        for row in orders {
+            let sym = as_str(row.get("symbol"));
+            let w = row
+                .get("target_weight")
+                .and_then(Value::as_f64)
+                .map(|x| format!("{:.0}%", x * 100.0))
+                .unwrap_or_else(|| "n/a".to_string());
+            let tn = row
+                .get("target_notional")
+                .and_then(Value::as_f64)
+                .map(|x| format!("{:.0}", x))
+                .unwrap_or_else(|| "n/a".to_string());
+            let adv = row
+                .get("adv")
+                .and_then(Value::as_f64)
+                .map(fmt_dollar_compact)
+                .unwrap_or_else(|| "n/a".to_string());
+            let part = row
+                .get("participation_rate")
+                .and_then(Value::as_f64)
+                .map(|x| format!("{:.2}%", x * 100.0))
+                .unwrap_or_else(|| "n/a".to_string());
+            let sig = row
+                .get("sigma")
+                .and_then(Value::as_f64)
+                .map(|x| format!("{:.0}%", x * 100.0))
+                .unwrap_or_else(|| "n/a".to_string());
+            let imp = row
+                .get("impact_bp")
+                .and_then(Value::as_f64)
+                .map(|x| format!("{:.1}bp", x))
+                .unwrap_or_else(|| "n/a".to_string());
+            let ok = row
+                .get("tradable")
+                .and_then(Value::as_bool)
+                .map(|b| if b { "✓" } else { "✗" })
+                .unwrap_or("?");
+            out.push_str(&format!(
+                "  {sym}   w={w}   notional={tn}   ADV={adv}   part={part}   σ={sig}   impact={imp}   {ok}\n"
+            ));
+        }
+    }
+
+    out
+}
+
 pub fn render_monitor_health_report_table(payload: &Value) -> String {
     let data = payload.get("data");
     let as_of = as_str(data.and_then(|d| d.get("as_of")));

@@ -839,6 +839,50 @@ Pass 示例（`status=ok`，`risk_gate=pass`）：
 }
 ```
 
+## hf pretrade check（L5.5 预交易模拟）
+
+```bash
+hf pretrade check --as-of 2026-04-01
+hf pretrade check --as-of 2026-04-01 --output json
+```
+
+默认 `table`；两跳：先 `POST /api/v1/portfolio/optimize` 取权重，再 `POST /api/v1/pretrade/check`（名义资金 Phase 1 固定 1_000_000 CNY）。
+
+`status=ok` 示例：
+
+```json
+{
+  "schema_version": "1.0.0",
+  "command": "hf pretrade check",
+  "run_id": "run_20260406_pretrade01",
+  "status": "ok",
+  "generated_at": "2026-04-06T10:00:00+00:00",
+  "source": "system",
+  "advice_only": false,
+  "decision_weight": 1,
+  "data": {
+    "as_of": "2026-04-01",
+    "notional": 1000000.0,
+    "overall_tradable": true,
+    "total_impact_bp": 8.3,
+    "orders": [
+      {
+        "symbol": "600519.SH",
+        "target_weight": 0.12,
+        "target_notional": 120000.0,
+        "adv": 850000000.0,
+        "participation_rate": 0.000141,
+        "sigma": 0.18,
+        "impact_bp": 2.1,
+        "tradable": true
+      }
+    ]
+  },
+  "warnings": [],
+  "errors": []
+}
+```
+
 ## hf monitor health-report（L8 健康报告）
 
 ```bash
