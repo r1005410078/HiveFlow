@@ -16,8 +16,15 @@ def test_collect_param_rows_count_and_l2_keys() -> None:
     rows = collect_param_rows()
     assert len(rows) == 33
     l2_keys = {r["param_key"] for r in rows if r["layer"] == "l2"}
-    assert "factor_weight_momentum_20" in l2_keys
-    assert all(k.startswith("factor_weight_") for k in l2_keys)
+    expected_l2_keys = {
+        "factor_weight_momentum_20",
+        "factor_weight_inv_volatility_20",
+        "factor_weight_turnover_rate",
+        "factor_weight_max_drawdown_60",
+        "factor_weight_trend_stability_20",
+        "factor_weight_relative_strength_vs_index",
+    }
+    assert l2_keys == expected_l2_keys
 
 
 def test_snapshot_persists_via_store() -> None:

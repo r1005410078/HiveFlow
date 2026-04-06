@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
-from application.contracts.cli_output import ok_output
+from application.contracts.cli_output import error_output, ok_output
 from application.decision.l2_decision_service import SCORE_PROFILES, SCORE_VERSION
 from application.execution import execution_service
 from application.portfolio.portfolio_optimize_service import run_portfolio_optimize
@@ -116,6 +116,7 @@ def collect_param_rows() -> list[dict[str, Any]]:
         }
     )
 
+    # Deferred to avoid circular import: walk_forward_service -> daily_run_service -> here
     from application.walk_forward_service import _DEFAULT_THRESHOLDS, run_walk_forward
 
     wf_sig = inspect.signature(run_walk_forward)
@@ -207,42 +208,16 @@ def get_experiment_config(
 ) -> dict[str, Any]:
     run_id = f"cfg_get_{datetime.now(timezone.utc).strftime('%Y%m%d')}_{str(uuid4())[:8]}"
     if store is None:
-        return {
-            "schema_version": "1.0.0",
-            "command": "hf config get",
-            "run_id": run_id,
-            "status": "error",
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "source": "system",
-            "advice_only": False,
-            "decision_weight": 1,
-            "data": {},
-            "warnings": [],
-            "errors": [
-                {
-                    "code": "EXPERIMENT_CONFIG_NO_DB",
-                    "message": "database store unavailable",
-                }
-            ],
-        }
+        return error_output(
+            command="hf config get",
+            run_id=run_id,
+            errors=[{"code": "EXPERIMENT_CONFIG_NO_DB", "message": "database store unavailable"}],
+        )
     detail = store.fetch_experiment_config_detail(config_id)
     if detail is None:
-        return {
-            "schema_version": "1.0.0",
-            "command": "hf config get",
-            "run_id": run_id,
-            "status": "error",
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "source": "system",
-            "advice_only": False,
-            "decision_weight": 1,
-            "data": {},
-            "warnings": [],
-            "errors": [
-                {
-                    "code": "CONFIG_NOT_FOUND",
-                    "message": "config_id not found",
-                }
-            ],
-        }
+        return error_output(
+            command="hf config get",
+            run_id=run_id,
+            errors=[{"code": "CONFIG_NOT_FOUND", "message": "config_id not found"}],
+        )
     return ok_output(command="hf config get", run_id=run_id, data=detail)

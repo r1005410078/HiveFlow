@@ -56,12 +56,12 @@ CREATE INDEX IF NOT EXISTS idx_experiment_configs_layer_created
 
 | layer | param_key | 当前默认值 | 来源文件 |
 |-------|-----------|-----------|---------|
-| l2 | `factor_weight_momentum_20` | 0.1667 | `basic_factor_service.py`（等权 1/6） |
-| l2 | `factor_weight_inv_volatility_20` | 0.1667 | 同上 |
-| l2 | `factor_weight_rsi_divergence_20` | 0.1667 | 同上 |
-| l2 | `factor_weight_volume_price_trend` | 0.1667 | 同上 |
-| l2 | `factor_weight_price_reversal_5` | 0.1667 | 同上 |
-| l2 | `factor_weight_ma_cross_5_20` | 0.1667 | 同上 |
+| l2 | `factor_weight_momentum_20` | 0.25 | `l2_decision_service.py` SCORE_PROFILES["l2-score-v1.1"] |
+| l2 | `factor_weight_inv_volatility_20` | 0.15 | 同上 |
+| l2 | `factor_weight_turnover_rate` | 0.10 | 同上 |
+| l2 | `factor_weight_max_drawdown_60` | 0.20 | 同上 |
+| l2 | `factor_weight_trend_stability_20` | 0.15 | 同上 |
+| l2 | `factor_weight_relative_strength_vs_index` | 0.15 | 同上 |
 | l4 | `w_max` | 0.30 | `portfolio_optimize_service.py` |
 | l4 | `ind_max` | 0.40 | `portfolio_optimize_service.py` |
 | l4 | `lambda_risk` | 1.0 | `portfolio_optimize_service.py` |

@@ -620,8 +620,7 @@ class TimescaleBarStore:
         """
         cur = self._conn.cursor()
         try:
-            for row in rows:
-                cur.execute(sql, row)
+            cur.executemany(sql, rows)
             self._conn.commit()
         finally:
             cur.close()
@@ -644,7 +643,7 @@ class TimescaleBarStore:
                         select distinct config_id from experiment_configs where layer = %s
                     )
                     group by c.config_id
-                    order by min(c.created_at) desc
+                    order by max(c.created_at) desc
                     limit %s
                     """,
                     [layer, limit],
@@ -659,7 +658,7 @@ class TimescaleBarStore:
                            array_agg(distinct layer order by layer)
                     from experiment_configs
                     group by config_id
-                    order by min(created_at) desc
+                    order by max(created_at) desc
                     limit %s
                     """,
                     [limit],

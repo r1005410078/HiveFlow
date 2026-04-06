@@ -1,3 +1,4 @@
+use hf_cli::error::AppError;
 use hf_cli::infrastructure::http_client::{
     get_experiment_config_detail, get_experiment_config_list, post_experiment_config_snapshot,
 };
@@ -74,4 +75,26 @@ fn experiment_config_get_table_has_layer_column() {
     let table = render_experiment_config_get_table(&out);
     assert!(table.contains("LAYER"));
     assert!(table.contains("eta"));
+}
+
+#[test]
+fn post_experiment_config_snapshot_returns_upstream_error_on_server_failure() {
+    let mut server = Server::new();
+    let _m = server
+        .mock("POST", "/api/v1/experiment/config/snapshot")
+        .with_status(502)
+        .with_header("content-type", "text/plain")
+        .with_body("bad gateway")
+        .create();
+
+    let err = post_experiment_config_snapshot(&server.url(), "t", 3000)
+        .expect_err("should fail on 502");
+
+    match err {
+        AppError::Upstream(status, body) => {
+            assert_eq!(status, 502);
+            assert_eq!(body["raw_body"], "bad gateway");
+        }
+        other => panic!("expected AppError::Upstream, got {other}"),
+    }
 }
