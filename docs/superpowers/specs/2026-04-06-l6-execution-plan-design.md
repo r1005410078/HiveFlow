@@ -188,8 +188,19 @@ mock HTTP server 返回标准信封，验证：
 
 ## Future Work (Phase 2)
 
-- 接入券商 API：order 生成后通过经纪商 SDK 实际发单
+**目标交易所：OKX（加密货币）**
+
+A 股券商 API 监管严格、接入门槛高（需机构资质），Phase 2 优先对接 OKX REST/WebSocket API，原因：
+- OKX API 开放、文档完整，个人账户即可接入
+- 支持现货 + 合约，流动性充足
+- 与当前 L6 订单结构（symbol/direction/quantity/limit_price/order_type）天然对齐
+
+**Phase 2 主要工作：**
+- OKX REST API 下单接口封装（`POST /api/v5/trade/order`）
+- 执行回报 WebSocket 订阅（成交价 vs limit_price 滑点统计）
 - order_type 按 L5.5 tradable 动态选择（tradable=false → market order）
 - GTC（Good Till Cancelled）支持：大单分批执行
-- 执行回报接入：成交价 vs limit_price 的滑点统计
 - slippage_bp 参数化：CLI 支持 `--slippage-bp` 参数
+- G3 审批流接入：下单前人工确认环节
+
+**A 股接入（暂缓）**：券商 API 需机构资质与合规审批，待条件成熟后单独立项。

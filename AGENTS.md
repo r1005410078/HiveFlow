@@ -196,7 +196,7 @@ cd cli && cargo run -- monitor health-report --as-of YYYY-MM-DD --output table
 | L4 | 组合优化 | ✅ Phase 1 完成 | 均值-方差 QP（cvxpy CLARABEL）+ 换手成本惩罚 + 单标的/行业约束；`POST /api/v1/portfolio/optimize` + `hf portfolio optimize`；daily pipeline 接入（data.portfolio 字段） |
 | L5 | 风险门控 | ✅ Phase 1 完成 | 三态市场状态机（normal/warning/crisis，基于 000300.SH 年化波动率，降级等权组合，兜底 normal）+ 四项硬约束检查（portfolio_vol/single_asset_max/industry_max/turnover，全态执行）；`POST /api/v1/risk/check` + `hf risk check`（两跳：先调 L4 取权重，再调 L5）；daily pipeline 接入（data.risk_gate 字段，L5 block 不阻断 pipeline） |
 | L5.5 | 预交易模拟 | ✅ Phase 1 完成 | 平方根冲击模型（η=0.1）+ 参与度≤10% ADV 可成交性；`POST /api/v1/pretrade/check` + `hf pretrade check`（两跳 L4→L5.5，名义 1e6 CNY）；`run_daily` 写入 `data.pretrade`；bar 不可用降级 ADV/σ + `PRETRADE_USING_FALLBACK_ADV` |
-| L6 | 执行 | ✅ Phase 1 完成 | 平方根冲击 + 持仓表（positions）+ limit 日单生成（quantity/limit_price/action/open_close）；`POST /api/v1/execution/plan` + `hf execution plan`（三跳 L4→L5.5→L6，名义 1e6 CNY）；`run_daily` 替换 `execution_plan.orders=[]`；bar 不可用降级 null 价格 + `EXECUTION_USING_NO_PRICE`；DB migration `0005_positions.sql` |
+| L6 | 执行 | ✅ Phase 1 完成 | 平方根冲击 + 持仓表（positions）+ limit 日单生成（quantity/limit_price/action/open_close）；`POST /api/v1/execution/plan` + `hf execution plan`（三跳 L4→L5.5→L6，名义 1e6 CNY）；`run_daily` 替换 `execution_plan.orders=[]`；bar 不可用降级 null 价格 + `EXECUTION_USING_NO_PRICE`；DB migration `0005_positions.sql`。Phase 2 目标：OKX API 真实下单（A 股券商 API 监管严格暂缓，OKX 个人账户可接入） |
 | L7 | 回测/验证 | 🚧 部分完成 | compare 回放、factor replay 已完成；`POST /v1/walk-forward/run` + `hf walk-forward run` 已接入 |
 | L8 | 监控复盘 | 🚧 Phase 1 | `GET /v1/monitor/health-report` + `hf monitor health-report`：基于 `run_daily` 聚合 green/yellow/red；`trend` 预留 Phase 2 |
 | G1 | 数据治理 | 🚧 部分完成 | PIT 约束已实现，版本血缘未完整 |
