@@ -1,5 +1,6 @@
 pub mod data;
 pub mod factor;
+pub mod monitor;
 pub mod pipeline;
 pub mod portfolio;
 pub mod risk;
@@ -36,6 +37,8 @@ pub enum Commands {
     Risk(risk::RiskArgs),
     /// L7 walk-forward 回测：滚动窗口验证（需 quant 服务与 ~/.hiveflow/config.toml）
     WalkForward(walk_forward::WalkForwardArgs),
+    /// L8 监控：健康报告（需 quant 服务与 ~/.hiveflow/config.toml）
+    Monitor(monitor::MonitorArgs),
 }
 
 impl From<Cli> for AppCommand {
@@ -95,6 +98,11 @@ impl From<Cli> for AppCommand {
                 risk::RiskSubcommand::Check(check) => AppCommand::RiskCheck(check.into()),
             },
             Commands::WalkForward(args) => AppCommand::WalkForward(args.into()),
+            Commands::Monitor(args) => match args.command {
+                monitor::MonitorSubcommand::HealthReport(hr) => {
+                    AppCommand::MonitorHealthReport(hr.into())
+                }
+            },
         }
     }
 }

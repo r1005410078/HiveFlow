@@ -41,6 +41,7 @@ SignalEvaluateService = Callable[[str, str, int], dict]
 PortfolioOptimizeService = Callable[..., dict]
 RiskCheckService = Callable[..., dict]
 WalkForwardService = Callable[..., dict]
+HealthReportService = Callable[[str], dict]
 
 
 def get_daily_run_service() -> DailyRunService:
@@ -174,6 +175,18 @@ def get_walk_forward_service() -> WalkForwardService:
         cost_bp=cost_bp,
         bar_store=bar_store,
     )
+
+
+def get_health_report_service() -> HealthReportService:
+    from application.monitor.health_report_service import run_health_report
+
+    bar_store = None
+    if has_db_config():
+        try:
+            bar_store = TimescaleBarStore(open_db_connection_from_env())
+        except Exception:
+            bar_store = None
+    return lambda as_of: run_health_report(as_of, bar_store=bar_store)
 
 
 def get_market_data_coverage_query() -> MarketDataCoverageQuery:

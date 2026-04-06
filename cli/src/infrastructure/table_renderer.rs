@@ -1330,3 +1330,87 @@ pub fn render_risk_check_table(payload: &Value) -> String {
         checks_table, gate_line
     )
 }
+
+pub fn render_monitor_health_report_table(payload: &Value) -> String {
+    let data = payload.get("data");
+    let as_of = as_str(data.and_then(|d| d.get("as_of")));
+    if data.and_then(|d| d.get("skipped")).and_then(Value::as_bool) == Some(true) {
+        let reason = as_str(data.and_then(|d| d.get("skip_reason")));
+        return format!("as_of: {as_of}   skipped (非交易日)\n  reason: {reason}\n");
+    }
+
+    let overall = data
+        .and_then(|d| d.get("overall_rating"))
+        .and_then(Value::as_str)
+        .unwrap_or("n/a")
+        .to_uppercase();
+
+    let mut out = format!("as_of: {as_of}   overall: {overall}\n\nFactor Health\n");
+
+    if let Some(fh) = data.and_then(|d| d.get("factor_health")).and_then(Value::as_object) {
+        let total = fh.get("total").and_then(Value::as_u64).unwrap_or(0);
+        let ok_c = fh.get("ok_count").and_then(Value::as_u64).unwrap_or(0);
+        let warn_c = fh.get("warn_count").and_then(Value::as_u64).unwrap_or(0);
+        let miss_c = fh.get("miss_count").and_then(Value::as_u64).unwrap_or(0);
+        out.push_str(&format!(
+            "  total={total}  ok={ok_c}  warn={warn_c}  miss={miss_c}\n"
+        ));
+        if let Some(details) = fh.get("details").and_then(Value::as_array) {
+            for row in details {
+                let st = as_str(row.get("status"));
+                if st != "warn" && st != "miss" {
+                    continue;
+                }
+                let name = as_str(row.get("factor_name"));
+                let pct = row
+                    .get("availability_rate")
+                    .and_then(Value::as_f64)
+                    .map(|r| format!("{:.0}%", r * 100.0))
+                    .unwrap_or_else(|| "n/a".to_string());
+                out.push_str(&format!("  {}  {}  {}\n", st.to_uppercase(), name, pct));
+            }
+        }
+    } else {
+        out.push_str("  (n/a)\n");
+    }
+
+    out.push_str("\nSignal Health\n");
+    if let Some(sh) = data.and_then(|d| d.get("signal_health")).and_then(Value::as_object) {
+        let cov = sh
+            .get("coverage_rate")
+            .and_then(Value::as_f64)
+            .map(|r| format!("{:.0}%", r * 100.0))
+            .unwrap_or_else(|| "n/a".to_string());
+        let mean = sh
+            .get("composite_score_mean")
+            .and_then(Value::as_f64)
+            .map(|v| format!("{:.2}", v))
+            .unwrap_or_else(|| "n/a".to_string());
+        let std = sh
+            .get("composite_score_std")
+            .and_then(Value::as_f64)
+            .map(|v| format!("{:.2}", v))
+            .unwrap_or_else(|| "n/a".to_string());
+        out.push_str(&format!(
+            "  coverage={cov}  mean={mean}  std={std}\n"
+        ));
+    } else {
+        out.push_str("  (n/a)\n");
+    }
+
+    out.push_str("\nRisk\n");
+    if let Some(rh) = data.and_then(|d| d.get("risk_health")).and_then(Value::as_object) {
+        let regime = as_str(rh.get("regime"));
+        let n_trig = rh
+            .get("triggered_rules")
+            .and_then(Value::as_array)
+            .map(|a| a.len())
+            .unwrap_or(0);
+        out.push_str(&format!("  regime={regime}  triggered={n_trig}\n"));
+    } else {
+        out.push_str("  (n/a)\n");
+    }
+
+    out.push('\n');
+    out
+}

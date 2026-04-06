@@ -10,6 +10,7 @@ pub mod task_list;
 pub mod task_progress;
 pub mod factor_optimize;
 pub mod factor_replay;
+pub mod monitor;
 pub mod pipeline_compare;
 pub mod pipeline_daily;
 pub mod portfolio_optimize;

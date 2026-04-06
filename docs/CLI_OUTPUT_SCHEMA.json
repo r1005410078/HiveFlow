@@ -297,6 +297,44 @@
     {
       "if": {
         "properties": {
+          "command": { "const": "hf monitor health-report" }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": ["as_of"],
+            "properties": {
+              "as_of": { "type": "string" },
+              "skipped": { "type": "boolean" },
+              "skip_reason": { "type": ["string", "null"] },
+              "overall_rating": {
+                "oneOf": [
+                  { "type": "null" },
+                  { "type": "string", "enum": ["green", "yellow", "red"] }
+                ]
+              },
+              "factor_health": {
+                "oneOf": [{ "type": "null" }, { "type": "object" }]
+              },
+              "signal_health": {
+                "oneOf": [{ "type": "null" }, { "type": "object" }]
+              },
+              "risk_health": {
+                "oneOf": [{ "type": "null" }, { "type": "object" }]
+              },
+              "trend": { "type": "null" },
+              "run_daily_warnings": { "type": "array" }
+            },
+            "additionalProperties": true
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
           "source": { "enum": ["system", "news_system"] }
         }
       },

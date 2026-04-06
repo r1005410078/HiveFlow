@@ -172,6 +172,13 @@ pub struct RiskCheckRequest {
 }
 
 #[derive(Debug, Clone)]
+pub struct MonitorHealthReportRequest {
+    pub as_of: String,
+    pub output: String,
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone)]
 pub struct WalkForwardRequest {
     pub start_date: String,
     pub end_date: String,
@@ -207,4 +214,5 @@ pub enum AppCommand {
     PortfolioOptimize(PortfolioOptimizeRequest),
     RiskCheck(RiskCheckRequest),
     WalkForward(WalkForwardRequest),
+    MonitorHealthReport(MonitorHealthReportRequest),
 }

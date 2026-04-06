@@ -838,3 +838,53 @@ Pass 示例（`status=ok`，`risk_gate=pass`）：
   "errors": []
 }
 ```
+
+## hf monitor health-report（L8 健康报告）
+
+```bash
+hf monitor health-report --as-of 2026-04-01
+hf monitor health-report --as-of 2026-04-01 --output json
+```
+
+`status=ok`、交易日聚合示例：
+
+```json
+{
+  "schema_version": "1.0.0",
+  "command": "hf monitor health-report",
+  "run_id": "hr_20260401_a1b2c3d4",
+  "status": "ok",
+  "generated_at": "2026-04-01T10:00:00+00:00",
+  "source": "system",
+  "advice_only": false,
+  "decision_weight": 1,
+  "data": {
+    "as_of": "2026-04-01",
+    "overall_rating": "green",
+    "factor_health": {
+      "total": 2,
+      "ok_count": 2,
+      "warn_count": 0,
+      "miss_count": 0,
+      "details": [
+        {"factor_name": "momentum_20", "availability_rate": 0.93, "status": "ok"}
+      ]
+    },
+    "signal_health": {
+      "coverage_rate": 0.89,
+      "composite_score_mean": 0.12,
+      "composite_score_std": 0.45,
+      "status": "ok"
+    },
+    "risk_health": {
+      "regime": "normal",
+      "triggered_rules": [],
+      "status": "ok"
+    },
+    "trend": null,
+    "run_daily_warnings": []
+  },
+  "warnings": [],
+  "errors": []
+}
+```

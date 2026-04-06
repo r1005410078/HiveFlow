@@ -74,6 +74,29 @@ jq -e '
     (.data.release_gate.blocking_reasons | type == "array" and all(.[]; type == "string")) and
     (.data.release_gate.watch_items | type == "array" and all(.[]; type == "string")) and
     (.data.report | type == "object")
+  elif .command == "hf monitor health-report" then
+    (.data | type == "object") and
+    (.data | has("as_of")) and
+    (
+      if .data.skipped == true then
+        (.data | has("skipped")) and
+        (.data | has("overall_rating")) and
+        (.data.overall_rating == null) and
+        (.data | has("factor_health")) and
+        (.data.factor_health == null)
+      else
+        (.data | has("overall_rating")) and
+        (.data | has("factor_health")) and
+        (.data | has("signal_health")) and
+        (.data | has("risk_health")) and
+        (.data | has("trend")) and
+        (.data | has("run_daily_warnings")) and
+        (.data.factor_health | type == "object") and
+        (.data.signal_health | type == "object") and
+        (.data.risk_health | type == "object") and
+        (.data.run_daily_warnings | type == "array")
+      end
+    )
   else
     true
   end

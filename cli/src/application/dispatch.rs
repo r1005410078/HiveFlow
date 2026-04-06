@@ -1,6 +1,6 @@
 use crate::application::handlers::{
     data_bars, data_coverage, data_market_query, data_sync, data_sync_cancel, data_sync_retry_failed,
-    data_symbol_names_sync, data_universe_sync, factor_optimize, factor_replay, pipeline_compare,
+    data_symbol_names_sync, data_universe_sync,     factor_optimize, factor_replay, monitor, pipeline_compare,
     pipeline_daily,
     portfolio_optimize, risk_check, signal_evaluate, signal_snapshot, task_list, task_progress,
     walk_forward,
@@ -33,5 +33,6 @@ pub fn run(command: AppCommand) -> Result<(), AppError> {
         AppCommand::PortfolioOptimize(args) => portfolio_optimize::handle(args),
         AppCommand::RiskCheck(args) => risk_check::handle(args),
         AppCommand::WalkForward(args) => walk_forward::handle(args),
+        AppCommand::MonitorHealthReport(args) => monitor::handle(args),
     }
 }
