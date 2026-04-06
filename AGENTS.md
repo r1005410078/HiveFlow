@@ -140,6 +140,7 @@ make db-clear-l1                               # 清空 L1 行情相关表（破
 # CLI 命令示例
 cd cli && cargo run -- pipeline compare --start-date YYYY-MM-DD --end-date YYYY-MM-DD --top-n 5 --output table
 cd cli && cargo run -- factor replay --start-date YYYY-MM-DD --end-date YYYY-MM-DD --factors momentum_20,inv_volatility_20 --output json
+cd cli && cargo run -- monitor health-report --as-of YYYY-MM-DD --output table
 ```
 
 ### 7.5 本地联调最小路径
@@ -168,6 +169,9 @@ cd cli && cargo run -- factor replay --start-date YYYY-MM-DD --end-date YYYY-MM-
 - `POST /api/v1/signal/snapshot`：L3 信号快照
 - `POST /api/v1/signal/evaluate`：L3 信号质量评估（IC + 漂移检测，需 DB）
 - `POST /api/v1/portfolio/optimize`：L4 组合优化（均值-方差 QP，含换手成本惩罚）
+- `POST /api/v1/risk/check`：L5 风险门控（CLI：`hf risk check`）
+- `POST /v1/walk-forward/run`：L7 walk-forward 回测（CLI：`hf walk-forward run`）
+- `GET /v1/monitor/health-report`：L8 因子/信号/风控健康报告（CLI：`hf monitor health-report`）
 
 ### 7.7 当前健康状态
 
@@ -188,13 +192,13 @@ cd cli && cargo run -- factor replay --start-date YYYY-MM-DD --end-date YYYY-MM-
 | L5 | 风险门控 | ✅ Phase 1 完成 | 三态市场状态机（normal/warning/crisis，基于 000300.SH 年化波动率，降级等权组合，兜底 normal）+ 四项硬约束检查（portfolio_vol/single_asset_max/industry_max/turnover，全态执行）；`POST /api/v1/risk/check` + `hf risk check`（两跳：先调 L4 取权重，再调 L5）；daily pipeline 接入（data.risk_gate 字段，L5 block 不阻断 pipeline） |
 | L5.5 | 预交易模拟 | 🔲 未开始 | — |
 | L6 | 执行 | 🔲 未开始 | Phase 1 orders 固定为空数组 |
-| L7 | 回测/验证 | 🚧 部分完成 | compare 回放、factor replay 已完成；walk-forward 未开始 |
-| L8 | 监控复盘 | 🔲 未开始 | — |
+| L7 | 回测/验证 | 🚧 部分完成 | compare 回放、factor replay 已完成；`POST /v1/walk-forward/run` + `hf walk-forward run` 已接入 |
+| L8 | 监控复盘 | 🚧 Phase 1 | `GET /v1/monitor/health-report` + `hf monitor health-report`：基于 `run_daily` 聚合 green/yellow/red；`trend` 预留 Phase 2 |
 | G1 | 数据治理 | 🚧 部分完成 | PIT 约束已实现，版本血缘未完整 |
 | G2 | 实验治理 | 🔲 未开始 | — |
 | G3 | 执行安全 | 🚧 部分完成 | advice_only/decision_weight 框架已建，审批流未实现 |
 
-**当前工作位置**：L0 Phase 2（标的池扩展至 28 只 + 非交易日守卫）已合入 master → 下一步候选：L7 Walk-forward 回测；或 L5.5 预交易模拟 Phase 1。
+**当前工作位置**：L8 Phase 1（健康报告 HTTP + CLI）已合入 master → 下一步候选：L8 Phase 2（`trend` 滚动窗口）；或 L5.5 预交易模拟 Phase 1；或 L7 walk-forward 深化。
 
 ### 7.9 已交付能力摘要
 
@@ -206,6 +210,7 @@ cd cli && cargo run -- factor replay --start-date YYYY-MM-DD --end-date YYYY-MM-
 - **CLI 可读性**：`--output table` 中文标题，top 候选最多 5 条
 - **L3 信号**：`signal_matrix`（coverage_rate、transform_stats）；`hf signal snapshot --as-of ... [--output json|table]`；信号评估 `hf signal evaluate --start-date ... --end-date ... [--forward-days N] [--output json|table]`（Rank IC + drift diagnostics）；详见 `--help` 与 `docs/CLI_OUTPUT_EXAMPLES.md`
 - **L4 组合优化**：`POST /api/v1/portfolio/optimize` + `hf portfolio optimize --as-of DATE [--output json|table]`；均值-方差 QP（cvxpy CLARABEL）；目标函数含 alpha、风险惩罚（协方差矩阵）、换手成本惩罚；单标的上限 30%、行业上限 40%；首次运行等权 fallback；daily pipeline 自动调用（data.portfolio 字段）
+- **L8 健康报告**：`GET /v1/monitor/health-report?as_of=DATE` + `hf monitor health-report --as-of DATE [--output json|table]`；消费 `run_daily` 的 L2~L5 输出聚合 factor/signal/risk 健康度与总评；详见 `docs/CLI_OUTPUT_EXAMPLES.md` 与 `docs/superpowers/specs/2026-04-06-l8-monitor-health-report-design.md`
 - **L1 异步同步**：`hf data sync` 提交→202→**默认** stderr 提示 + stdout JSON（含 run_id）；**`hf task progress`**（别名 `hf task status`）查看运行中进度，**`--watch`** 轮询至终态（与 **`--wait`** 同类）；任务列表 **`hf task list`**（别名 `hf task sync-runs`）；取消/重试 **`hf task cancel` / `hf task retry-failed`**（与 `hf data sync-cancel`、`hf data sync-retry-failed` 等价）；近窗 K 线 **`hf data query`** → `GET /v1/market-data/bars`（默认 TUI 分页）；失败队列自动重试（MAX_SYMBOL_ATTEMPTS=3）+ 审计表 `sync_run_symbol_failures`；startup 孤儿 run 收口为 `interrupted`；Provider 无行返回且无异常时 run 可为 **`success` + `error_code: NO_DATA_RETURNED`**；`sync_runs.effective_symbols_count` finalize 写库 + 读取 **enrich** 与 `progress` 一致；本地仅清 L1 表 **`make db-clear-l1`**（破坏性）
 
 ## 8. Superpowers 工作流（强约束）
