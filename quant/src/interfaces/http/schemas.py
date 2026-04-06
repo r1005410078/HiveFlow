@@ -62,7 +62,12 @@ class FactorSnapshot(BaseModel):
 
 
 class ExecutionPlan(BaseModel):
+    """L6 execution plan payload embedded in daily run ``data.execution_plan``."""
+
     orders: list[dict]
+    as_of: str | None = None
+    slippage_bp: float | None = None
+    estimated_total_cost_bp: float | None = None
 
 
 class FactorBreakdown(BaseModel):
@@ -383,6 +388,7 @@ class DailyRunData(BaseModel):
     signal_matrix: SignalMatrix | None = None
     portfolio: dict | None = None
     risk_gate: dict | None = None
+    pretrade: dict | None = None
     technical: TechnicalIndicators | None = None
 
 
@@ -521,6 +527,19 @@ class RiskCheckResponse(BaseModel):
     data: RiskCheckData
     warnings: list[dict]
     errors: list[dict]
+
+
+class ExecutionPlanRequest(BaseModel):
+    as_of: str = Field(description="截面日期 YYYY-MM-DD（PIT）")
+    target_weights: dict[str, float] = Field(description="L4 目标权重 {symbol: weight}")
+    pretrade: dict | None = Field(
+        default=None,
+        description="L5.5 pretrade 响应中的 data（用于按 symbol 透传 impact_bp）；可空",
+    )
+    notional: float | None = Field(
+        default=None,
+        description="组合名义资金（CNY）；缺省 1_000_000，须与 pretrade 一致",
+    )
 
 
 class PretradeCheckRequest(BaseModel):

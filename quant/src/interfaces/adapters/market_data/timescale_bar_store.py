@@ -572,3 +572,41 @@ class TimescaleBarStore:
             cur.close()
         has_more = len(sym_rows) > limit
         return sym_rows[:limit], has_more
+
+    def get_positions_snapshot(self, as_of: str) -> dict[str, float]:
+        """Latest snapshot date ``<= as_of`` (table-wide max), then all rows on that date."""
+        cur = self._conn.cursor()
+        try:
+            cur.execute(
+                "select max(as_of) from positions where as_of <= %s::date",
+                [as_of],
+            )
+            row = cur.fetchone()
+            snap = row[0] if row else None
+            if snap is None:
+                return {}
+            cur.execute(
+                "select symbol, notional from positions where as_of = %s::date",
+                [snap],
+            )
+            return {r[0]: float(r[1]) for r in cur.fetchall()}
+        finally:
+            cur.close()
+
+    def upsert_positions_for_as_of(self, as_of: str, notionals: dict[str, float]) -> None:
+        if not notionals:
+            return
+        sql = """
+        insert into positions (symbol, as_of, notional)
+        values (%s, %s::date, %s)
+        on conflict (symbol, as_of) do update set
+          notional = excluded.notional,
+          updated_at = now()
+        """
+        cur = self._conn.cursor()
+        try:
+            for sym, n in notionals.items():
+                cur.execute(sql, [sym, as_of, float(n)])
+            self._conn.commit()
+        finally:
+            cur.close()

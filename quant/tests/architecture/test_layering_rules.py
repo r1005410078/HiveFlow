@@ -142,6 +142,19 @@ def test_application_pretrade_does_not_import_interfaces():
     assert not violations, f"application.pretrade must not import interfaces: {violations}"
 
 
+def test_application_execution_does_not_import_interfaces():
+    """application.execution 禁止依赖 interfaces 层"""
+    execution_dir = APP_DIR / "execution"
+    if not execution_dir.exists():
+        return
+    violations: list[str] = []
+    for py in execution_dir.rglob("*.py"):
+        imports = _imports(py)
+        if any(name == "interfaces" or name.startswith("interfaces.") for name in imports):
+            violations.append(str(py.relative_to(ROOT)))
+    assert not violations, f"application.execution must not import interfaces: {violations}"
+
+
 def test_application_technical_does_not_import_interfaces():
     """application.technical 禁止依赖 interfaces 层"""
     technical_dir = APP_DIR / "technical"

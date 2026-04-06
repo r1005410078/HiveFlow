@@ -883,6 +883,52 @@ hf pretrade check --as-of 2026-04-01 --output json
 }
 ```
 
+## hf execution plan（L6 执行计划）
+
+```bash
+hf execution plan --as-of 2026-04-01
+hf execution plan --as-of 2026-04-01 --output json
+```
+
+默认 `table`；三跳：先 `POST /api/v1/portfolio/optimize`，再 `POST /api/v1/pretrade/check`，最后 `POST /v1/execution/plan`（名义资金 Phase 1 固定 1_000_000 CNY）。
+
+`status=ok` 示例：
+
+```json
+{
+  "schema_version": "1.0.0",
+  "command": "hf execution plan",
+  "run_id": "exec_20260406_01",
+  "status": "ok",
+  "generated_at": "2026-04-06T10:00:00+00:00",
+  "source": "system",
+  "advice_only": false,
+  "decision_weight": 1,
+  "data": {
+    "as_of": "2026-04-01",
+    "slippage_bp": 5,
+    "estimated_total_cost_bp": 6.4,
+    "orders": [
+      {
+        "symbol": "600519.SH",
+        "direction": "buy",
+        "action": "open_long",
+        "quantity": 100,
+        "target_notional": 120000.0,
+        "current_notional": 0.0,
+        "close_price": 1180.0,
+        "limit_price": 1180.59,
+        "order_type": "limit",
+        "validity": "day",
+        "impact_bp": 2.1
+      }
+    ]
+  },
+  "warnings": [],
+  "errors": []
+}
+```
+
 ## hf monitor health-report（L8 健康报告）
 
 ```bash

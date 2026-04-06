@@ -1404,6 +1404,66 @@ pub fn render_pretrade_check_table(payload: &Value) -> String {
     out
 }
 
+pub fn render_execution_plan_table(payload: &Value) -> String {
+    let data = payload.get("data");
+    let as_of = as_str(data.and_then(|d| d.get("as_of")));
+    let n_orders = data
+        .and_then(|d| d.get("orders"))
+        .and_then(Value::as_array)
+        .map(|a| a.len())
+        .unwrap_or(0);
+    let cost = data
+        .and_then(|d| d.get("estimated_total_cost_bp"))
+        .and_then(Value::as_f64)
+        .map(|x| format!("{:.1}bp", x))
+        .unwrap_or_else(|| "n/a".to_string());
+
+    let mut out = format!("as_of: {as_of}   orders: {n_orders}   total_cost: {cost}\n\nOrders\n");
+
+    if let Some(orders) = data.and_then(|d| d.get("orders")).and_then(Value::as_array) {
+        for row in orders {
+            let dir = as_str(row.get("direction")).to_uppercase();
+            let sym = as_str(row.get("symbol"));
+            let act = as_str(row.get("action"));
+            let qty = match row.get("quantity") {
+                None => "n/a".to_string(),
+                Some(v) if v.is_null() => "n/a".to_string(),
+                Some(v) => v
+                    .as_u64()
+                    .map(|n| n.to_string())
+                    .or_else(|| v.as_i64().map(|n| n.to_string()))
+                    .unwrap_or_else(|| "n/a".to_string()),
+            };
+            let tn = row
+                .get("target_notional")
+                .and_then(Value::as_f64)
+                .map(|x| format!("{:.0}", x))
+                .unwrap_or_else(|| "n/a".to_string());
+            let lim = match row.get("limit_price") {
+                None => "n/a".to_string(),
+                Some(v) if v.is_null() => "n/a".to_string(),
+                Some(v) => v
+                    .as_f64()
+                    .map(|x| format!("{:.2}", x))
+                    .unwrap_or_else(|| "n/a".to_string()),
+            };
+            let imp = match row.get("impact_bp") {
+                None => "n/a".to_string(),
+                Some(v) if v.is_null() => "n/a".to_string(),
+                Some(v) => v
+                    .as_f64()
+                    .map(|x| format!("{:.1}bp", x))
+                    .unwrap_or_else(|| "n/a".to_string()),
+            };
+            out.push_str(&format!(
+                "  {dir}  {sym}  {act}  qty={qty}  notional={tn}  limit={lim}  impact={imp}\n"
+            ));
+        }
+    }
+
+    out
+}
+
 pub fn render_monitor_health_report_table(payload: &Value) -> String {
     let data = payload.get("data");
     let as_of = as_str(data.and_then(|d| d.get("as_of")));

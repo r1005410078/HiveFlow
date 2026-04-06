@@ -178,6 +178,12 @@ pub struct PretradeCheckRequest {
 }
 
 #[derive(Debug, Clone)]
+pub struct ExecutionPlanRequest {
+    pub as_of: String,
+    pub output: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct MonitorHealthReportRequest {
     pub as_of: String,
     pub output: String,
@@ -220,6 +226,7 @@ pub enum AppCommand {
     PortfolioOptimize(PortfolioOptimizeRequest),
     RiskCheck(RiskCheckRequest),
     PretradeCheck(PretradeCheckRequest),
+    ExecutionPlan(ExecutionPlanRequest),
     WalkForward(WalkForwardRequest),
     MonitorHealthReport(MonitorHealthReportRequest),
 }

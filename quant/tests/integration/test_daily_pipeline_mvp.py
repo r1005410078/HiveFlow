@@ -42,7 +42,9 @@ def test_daily_pipeline_end_to_end(tmp_path):
     assert out["data"]["as_of"] == "2026-04-01"
     assert "technical" in out["data"]
     assert out["data"]["technical"] is None
-    assert out["data"]["execution_plan"]["orders"] == []
+    ep = out["data"]["execution_plan"]
+    assert ep is not None
+    assert isinstance(ep.get("orders"), list)
 
 
 def _bars_for_symbol(symbol: str, days: int = 90) -> list[dict]:

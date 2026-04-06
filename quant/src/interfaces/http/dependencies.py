@@ -5,6 +5,7 @@ from collections.abc import Callable
 from fastapi import HTTPException, Request
 
 from application.daily_run_service import run_daily
+from application.execution.execution_service import run_execution_plan
 from application.factor_optimization import run_factor_optimization
 from application.market_data.sync_worker import SyncWorker
 from application.pipeline_compare_service import run_pipeline_compare
@@ -44,6 +45,7 @@ RiskCheckService = Callable[..., dict]
 PretradeService = Callable[..., dict]
 WalkForwardService = Callable[..., dict]
 HealthReportService = Callable[[str], dict]
+ExecutionPlanService = Callable[..., dict]
 
 
 def get_daily_run_service() -> DailyRunService:
@@ -170,6 +172,22 @@ def get_pretrade_service() -> PretradeService:
     return lambda as_of, target_weights, notional: run_pretrade_check(
         as_of=as_of,
         target_weights=target_weights,
+        bar_store=bar_store,
+        notional=notional,
+    )
+
+
+def get_execution_service() -> ExecutionPlanService:
+    bar_store = None
+    if has_db_config():
+        try:
+            bar_store = TimescaleBarStore(open_db_connection_from_env())
+        except Exception:
+            bar_store = None
+    return lambda as_of, target_weights, pretrade, notional: run_execution_plan(
+        as_of=as_of,
+        target_weights=target_weights,
+        pretrade=pretrade,
         bar_store=bar_store,
         notional=notional,
     )

@@ -1,0 +1,45 @@
+{
+  "schema_version": "1.0.0",
+  "command": "hf execution plan",
+  "run_id": "exec_20260406_01",
+  "status": "ok",
+  "generated_at": "2026-04-06T10:00:00+00:00",
+  "source": "system",
+  "advice_only": false,
+  "decision_weight": 1,
+  "data": {
+    "as_of": "2026-04-01",
+    "slippage_bp": 5,
+    "estimated_total_cost_bp": 6.4,
+    "orders": [
+      {
+        "symbol": "600519.SH",
+        "direction": "buy",
+        "action": "open_long",
+        "quantity": 100,
+        "target_notional": 120000.0,
+        "current_notional": 0.0,
+        "close_price": 1180.0,
+        "limit_price": 1180.59,
+        "order_type": "limit",
+        "validity": "day",
+        "impact_bp": 2.1
+      },
+      {
+        "symbol": "000858.SZ",
+        "direction": "sell",
+        "action": "close_long",
+        "quantity": 300,
+        "target_notional": 0.0,
+        "current_notional": 60000.0,
+        "close_price": 198.5,
+        "limit_price": 198.4,
+        "order_type": "limit",
+        "validity": "day",
+        "impact_bp": null
+      }
+    ]
+  },
+  "warnings": [],
+  "errors": []
+}

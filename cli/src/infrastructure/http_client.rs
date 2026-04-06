@@ -659,6 +659,48 @@ pub fn post_pretrade_check(
     parse_json(&body_text)
 }
 
+pub fn post_execution_plan(
+    server_url: &str,
+    as_of: &str,
+    target_weights: serde_json::Value,
+    pretrade_data: Option<serde_json::Value>,
+    notional: f64,
+    timeout_ms: u64,
+) -> Result<Value, AppError> {
+    let url = format!(
+        "{}/v1/execution/plan",
+        server_url.trim_end_matches('/')
+    );
+    let client = build_client(server_url, timeout_ms)?;
+
+    let mut body = json!({
+        "as_of": as_of,
+        "target_weights": target_weights,
+        "notional": notional,
+    });
+    if let Some(pt) = pretrade_data {
+        if let Some(obj) = body.as_object_mut() {
+            obj.insert("pretrade".to_string(), pt);
+        }
+    }
+
+    let response = client
+        .post(url)
+        .json(&body)
+        .send()
+        .map_err(AppError::HttpClient)?;
+
+    let status = response.status();
+    let body_text = response.text().map_err(AppError::HttpClient)?;
+    if !status.is_success() {
+        let body =
+            serde_json::from_str(&body_text).unwrap_or_else(|_| json!({ "raw_body": body_text }));
+        return Err(AppError::Upstream(status.as_u16(), body));
+    }
+
+    parse_json(&body_text)
+}
+
 pub fn post_walk_forward_run(
     server_url: &str,
     start_date: &str,

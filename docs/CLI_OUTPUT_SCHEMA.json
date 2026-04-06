@@ -393,6 +393,81 @@
     {
       "if": {
         "properties": {
+          "command": { "const": "hf execution plan" }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": [
+              "as_of",
+              "slippage_bp",
+              "estimated_total_cost_bp",
+              "orders"
+            ],
+            "properties": {
+              "as_of": {
+                "type": "string",
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+              },
+              "slippage_bp": { "type": "number" },
+              "estimated_total_cost_bp": { "type": "number" },
+              "orders": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "symbol",
+                    "direction",
+                    "action",
+                    "quantity",
+                    "target_notional",
+                    "current_notional",
+                    "close_price",
+                    "limit_price",
+                    "order_type",
+                    "validity",
+                    "impact_bp"
+                  ],
+                  "properties": {
+                    "symbol": { "type": "string", "minLength": 1 },
+                    "direction": {
+                      "type": "string",
+                      "enum": ["buy", "sell"]
+                    },
+                    "action": {
+                      "type": "string",
+                      "enum": [
+                        "open_long",
+                        "add_long",
+                        "reduce_long",
+                        "close_long"
+                      ]
+                    },
+                    "quantity": {
+                      "type": ["integer", "null"]
+                    },
+                    "target_notional": { "type": "number" },
+                    "current_notional": { "type": "number" },
+                    "close_price": { "type": ["number", "null"] },
+                    "limit_price": { "type": ["number", "null"] },
+                    "order_type": { "const": "limit" },
+                    "validity": { "const": "day" },
+                    "impact_bp": { "type": ["number", "null"] }
+                  }
+                }
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
           "source": { "enum": ["system", "news_system"] }
         }
       },

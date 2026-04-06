@@ -1,4 +1,5 @@
 pub mod data;
+pub mod execution;
 pub mod factor;
 pub mod monitor;
 pub mod pipeline;
@@ -38,6 +39,8 @@ pub enum Commands {
     Risk(risk::RiskArgs),
     /// L5.5 预交易模拟：冲击与可成交性（需 quant 服务与 ~/.hiveflow/config.toml）
     Pretrade(pretrade::PretradeArgs),
+    /// L6 执行计划：订单列表（需 quant 服务与 ~/.hiveflow/config.toml）
+    Execution(execution::ExecutionArgs),
     /// L7 walk-forward 回测：滚动窗口验证（需 quant 服务与 ~/.hiveflow/config.toml）
     WalkForward(walk_forward::WalkForwardArgs),
     /// L8 监控：健康报告（需 quant 服务与 ~/.hiveflow/config.toml）
@@ -103,6 +106,11 @@ impl From<Cli> for AppCommand {
             Commands::Pretrade(args) => match args.command {
                 pretrade::PretradeSubcommand::Check(check) => {
                     AppCommand::PretradeCheck(check.into())
+                }
+            },
+            Commands::Execution(args) => match args.command {
+                execution::ExecutionSubcommand::Plan(plan) => {
+                    AppCommand::ExecutionPlan(plan.into())
                 }
             },
             Commands::WalkForward(args) => AppCommand::WalkForward(args.into()),

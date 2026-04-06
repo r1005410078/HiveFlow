@@ -10,6 +10,7 @@ from application.factor.basic_factor_service import (
     compute_basic_factor_snapshot_from_bars,
 )
 from application.portfolio.portfolio_optimize_service import run_portfolio_optimize
+from application.execution.execution_service import run_execution_plan
 from application.pretrade.pretrade_service import run_pretrade_check
 from application.risk.risk_gate_service import run_risk_check
 from application.signal.signal_engineering_service import compute_signal_matrix
@@ -185,6 +186,32 @@ def run_daily(
                 "code": "PRETRADE_FAILED",
                 "message": "L5.5 pretrade computation failed; pretrade set to null",
             })
+    execution_plan = None
+    if portfolio is not None:
+        try:
+            ex = run_execution_plan(
+                as_of=as_of,
+                target_weights={r["symbol"]: r["weight"] for r in portfolio["target_weights"]},
+                pretrade=pretrade_result.get("data") if pretrade_result else None,
+                bar_store=bar_store,
+                notional=1_000_000.0,
+            )
+            if ex.get("status") == "ok":
+                execution_plan = ex.get("data")
+            else:
+                err = (ex.get("errors") or [{}])[0]
+                warnings.append({
+                    "code": err.get("code", "EXECUTION_PLAN_FAILED"),
+                    "message": err.get("message", "L6 execution plan failed"),
+                })
+            for w in ex.get("warnings") or []:
+                warnings.append(w)
+        except Exception:
+            _logger.warning("daily run: execution plan failed", exc_info=True)
+            warnings.append({
+                "code": "EXECUTION_PLAN_FAILED",
+                "message": "L6 execution plan computation failed; execution_plan set to null",
+            })
     return ok_output(
         command="hf pipeline daily",
         run_id=run_id,
@@ -192,7 +219,7 @@ def run_daily(
             "as_of": as_of,
             "data_manifest_id": f"dm_{as_of.replace('-', '')}_{str(uuid4())[:6]}",
             "factor_snapshot": factor_snapshot,
-            "execution_plan": {"orders": []},
+            "execution_plan": execution_plan,
             "l2_decision": l2_decision,
             "signal_matrix": signal_matrix,
             "portfolio": portfolio,
