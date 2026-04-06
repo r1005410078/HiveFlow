@@ -143,10 +143,13 @@ def _compute_daily_return(
         _logger.warning(f"Failed to fetch bars for {as_of} and next day", exc_info=True)
         return None
 
-    # Build dict: (symbol, date) → close
+    # Build dict: (symbol, date_str) → close
+    # bar_time is "YYYY-MM-DDTHH:MM:SS+08:00", extract the date prefix
     bar_dict = {}
     for bar in bars:
-        key = (bar.get("symbol"), bar.get("date"))
+        raw_time = bar.get("bar_time", "") or ""
+        date_str = raw_time[:10]  # "YYYY-MM-DD"
+        key = (bar.get("symbol"), date_str)
         bar_dict[key] = bar.get("close")
 
     # Compute weighted return

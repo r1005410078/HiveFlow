@@ -131,8 +131,8 @@ class TestComputeDailyReturn:
         # Mock bar_store
         bar_store = MagicMock()
         bar_store.list_bars.return_value = [
-            {"symbol": "600519.SH", "date": "2026-04-01", "close": 100.0},
-            {"symbol": "600519.SH", "date": "2026-04-02", "close": 101.0},
+            {"symbol": "600519.SH", "bar_time": "2026-04-01T15:00:00+08:00", "close": 100.0},
+            {"symbol": "600519.SH", "bar_time": "2026-04-02T15:00:00+08:00", "close": 101.0},
         ]
 
         result = _compute_daily_return(
@@ -153,8 +153,8 @@ class TestComputeDailyReturn:
 
         bar_store = MagicMock()
         bar_store.list_bars.return_value = [
-            {"symbol": "600519.SH", "date": "2026-04-01", "close": 100.0},
-            {"symbol": "600519.SH", "date": "2026-04-02", "close": 101.0},
+            {"symbol": "600519.SH", "bar_time": "2026-04-01T15:00:00+08:00", "close": 100.0},
+            {"symbol": "600519.SH", "bar_time": "2026-04-02T15:00:00+08:00", "close": 101.0},
         ]
 
         # Gross return is 1%, cost is 10 bp = 0.001 = 0.1%
@@ -177,7 +177,7 @@ class TestComputeDailyReturn:
         bar_store = MagicMock()
         # Only today's bar, no tomorrow
         bar_store.list_bars.return_value = [
-            {"symbol": "600519.SH", "date": "2026-04-01", "close": 100.0},
+            {"symbol": "600519.SH", "bar_time": "2026-04-01T15:00:00+08:00", "close": 100.0},
         ]
 
         result = _compute_daily_return(
@@ -216,11 +216,11 @@ class TestComputeDailyReturn:
         bar_store = MagicMock()
         bar_store.list_bars.return_value = [
             # Today
-            {"symbol": "600519.SH", "date": "2026-04-01", "close": 100.0},
-            {"symbol": "000333.SZ", "date": "2026-04-01", "close": 50.0},
+            {"symbol": "600519.SH", "bar_time": "2026-04-01T15:00:00+08:00", "close": 100.0},
+            {"symbol": "000333.SZ", "bar_time": "2026-04-01T15:00:00+08:00", "close": 50.0},
             # Tomorrow
-            {"symbol": "600519.SH", "date": "2026-04-02", "close": 101.0},
-            {"symbol": "000333.SZ", "date": "2026-04-02", "close": 51.0},
+            {"symbol": "600519.SH", "bar_time": "2026-04-02T15:00:00+08:00", "close": 101.0},
+            {"symbol": "000333.SZ", "bar_time": "2026-04-02T15:00:00+08:00", "close": 51.0},
         ]
 
         result = _compute_daily_return(
@@ -463,8 +463,8 @@ class TestRunWalkForward:
         # Mock bar_store
         bar_store = MagicMock()
         bar_store.list_bars.return_value = [
-            {"symbol": "600519.SH", "date": "2025-07-30", "close": 100.0},
-            {"symbol": "600519.SH", "date": "2025-07-31", "close": 101.0},
+            {"symbol": "600519.SH", "bar_time": "2025-07-30T15:00:00+08:00", "close": 100.0},
+            {"symbol": "600519.SH", "bar_time": "2025-07-31T15:00:00+08:00", "close": 101.0},
         ]
 
         result = run_walk_forward(
