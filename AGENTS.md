@@ -2,7 +2,7 @@
 
 本文件是 HiveFlow 所有 agent 的权威规范与上下文。修改代码前必须先阅读并遵守。
 
-**Superpowers**：本仓库 **必须严格遵守** §8 所载 Superpowers 工作流（含 spec/plan 落库、worktree、技能判定与验证）。不得以「任务简单」「对话里已聊过」为由默认豁免；**仅当用户在同一次对话中书面写明豁免范围** 时，方可偏离对应条款。
+**Superpowers**：本仓库使用 Superpowers 技能辅助开发，详见 §8。
 
 Claude Code 用户另见 [CLAUDE.md](./CLAUDE.md)（仅含 Claude Code CLI 专属命令）。
 
@@ -67,10 +67,9 @@ Claude Code 用户另见 [CLAUDE.md](./CLAUDE.md)（仅含 Claude Code CLI 专�
 - **TDD**：先补测试，再实现。
 - **层间契约优先**：新增层之前先定义 `schema_version`、`generated_at`、`producer_version` 字段。破坏性变更必须升主版本号，并保留至少一个兼容窗口。
 - **禁止前视数据**：任何训练/回测样本只能使用 `effective_timestamp <= as_of` 的特征。
-- **G3 闸门**：参数变更、阈值变更、实盘发布必须走审批流——AI 提出的变更不得自动生效。
-- **审计可追溯**：每次 Skill 运行、每个 proposal、每个实盘操作，必须能追溯到数据版本 + 代码版本 + 操作人身份。
+- **人工确认**：AI 提出的参数/阈值变更不得自动生效，须人工确认。
+- **审计可追溯**：操作须能追溯到数据版本 + 代码版本。
 - **不提交**：本地数据文件（`data/`）、本地 CSV 样例、API Key。
-- **Superpowers 严格遵守**：任何改动须符合 §8；流程技能（如 `brainstorming`、`systematic-debugging`）与实现前 **spec / plan / worktree** 要求 **不得擅自跳过**（豁免规则见 §8 文首与 §8.3）。
 
 ## 5. 代码评审检查项（强约束）
 
@@ -80,8 +79,7 @@ Claude Code 用户另见 [CLAUDE.md](./CLAUDE.md)（仅含 Claude Code CLI 专�
 - 是否在 `cli/src/cmd` 直接调用 `infrastructure`
 - 是否在 `cli/src/domain` 引入外部 IO/网络依赖
 - 是否补充了对应契约或架构测试
-- **Superpowers 文档**：非琐碎的多步骤/新能力是否已先有 `docs/superpowers/specs/` 设计经确认，并有 `docs/superpowers/plans/` 实现计划再改代码（见 §8.4）
-- **Git worktree**：§8.4 同类范围的多步骤实现是否已在**独立 worktree** 中进行（见 §8.5），或 PR 说明中已记载豁免理由
+- 影响契约/API 的新功能是否有设计 spec（见 §8.2）
 
 ## 6. 约定式提交规范（强约束）
 
@@ -185,7 +183,18 @@ cd cli && cargo run -- monitor health-report --as-of YYYY-MM-DD --output table
 
 ### 7.8 各层完成度（2026-04-06）
 
-> **维护说明**：每次完成一个层/阶段，更新此表的状态与说明，并更新"当前工作位置"。
+> **维护说明**：每次完成一个层/阶段，更新此表的状态与说明。个人/单机自用场景下，**不设**下文「非目标」清单中的默认路线图；主干以缺陷修复与契约/小改进为主。
+
+#### 个人/单机自用：已从路线图移除的事项（非目标，不限期）
+
+以下能力**不作为**本仓库默认可交付待办；历史 spec/plan 中若曾出现 Phase 2/审批/血缘等表述，以本节为准**冻结**范围。若将来改为主干或机构向目标，须**另开** spec/plan 再纳入。
+
+- **L6**：OKX/券商 **API 自动下单**（系统内真实执行通道）。
+- **L8**：健康报告之外的 **增强监控**（如响应里预留的 `trend` 等字段的填充与产品化）。
+- **G1**：**版本血缘**等产品级数据治理补全（现有 PIT 与 `run_id`/快照可复跑即够用）。
+- **G2**：**配置驱动**（从 DB 读 active 配置替代硬编码常量）；Phase 1 快照审计保留。
+- **G3**：**审批流**等产品化执行安全（`advice_only`/`decision_weight` 框架保留；个人依赖人工确认与自行风控）。
+- **L7**：在已有 compare / factor replay / walk-forward **接入**之上，继续 **平台化加深**（不作为默认里程碑）。
 
 | 层 | 名称 | 状态 | 说明 |
 |---|---|---|---|
@@ -196,14 +205,14 @@ cd cli && cargo run -- monitor health-report --as-of YYYY-MM-DD --output table
 | L4 | 组合优化 | ✅ Phase 1 完成 | 均值-方差 QP（cvxpy CLARABEL）+ 换手成本惩罚 + 单标的/行业约束；`POST /api/v1/portfolio/optimize` + `hf portfolio optimize`；daily pipeline 接入（data.portfolio 字段） |
 | L5 | 风险门控 | ✅ Phase 1 完成 | 三态市场状态机（normal/warning/crisis，基于 000300.SH 年化波动率，降级等权组合，兜底 normal）+ 四项硬约束检查（portfolio_vol/single_asset_max/industry_max/turnover，全态执行）；`POST /api/v1/risk/check` + `hf risk check`（两跳：先调 L4 取权重，再调 L5）；daily pipeline 接入（data.risk_gate 字段，L5 block 不阻断 pipeline） |
 | L5.5 | 预交易模拟 | ✅ Phase 1 完成 | 平方根冲击模型（η=0.1）+ 参与度≤10% ADV 可成交性；`POST /api/v1/pretrade/check` + `hf pretrade check`（两跳 L4→L5.5，名义 1e6 CNY）；`run_daily` 写入 `data.pretrade`；bar 不可用降级 ADV/σ + `PRETRADE_USING_FALLBACK_ADV` |
-| L6 | 执行 | ✅ Phase 1 完成 | 平方根冲击 + 持仓表（positions）+ limit 日单生成（quantity/limit_price/action/open_close）；`POST /api/v1/execution/plan` + `hf execution plan`（三跳 L4→L5.5→L6，名义 1e6 CNY）；`run_daily` 替换 `execution_plan.orders=[]`；bar 不可用降级 null 价格 + `EXECUTION_USING_NO_PRICE`；DB migration `0005_positions.sql`。Phase 2 目标：OKX API 真实下单（A 股券商 API 监管严格暂缓，OKX 个人账户可接入） |
-| L7 | 回测/验证 | 🚧 部分完成 | compare 回放、factor replay 已完成；`POST /v1/walk-forward/run` + `hf walk-forward run` 已接入 |
-| L8 | 监控复盘 | 🚧 Phase 1 | `GET /v1/monitor/health-report` + `hf monitor health-report`：基于 `run_daily` 聚合 green/yellow/red；`trend` 预留 Phase 2 |
-| G1 | 数据治理 | 🚧 部分完成 | PIT 约束已实现，版本血缘未完整 |
-| G2 | 实验治理 | 🚧 Phase 1 | `experiment_configs` 表 + `run_daily` 开头快照 + `POST/GET /api/v1/experiment/config*` + `hf config snapshot|list|get`（纯审计；Phase 2 配置驱动未做） |
-| G3 | 执行安全 | 🚧 部分完成 | advice_only/decision_weight 框架已建，审批流未实现 |
+| L6 | 执行 | ✅ Phase 1 完成 | 平方根冲击 + 持仓表（positions）+ limit 日单生成（quantity/limit_price/action/open_close）；`POST /api/v1/execution/plan` + `hf execution plan`（三跳 L4→L5.5→L6，名义 1e6 CNY）；`run_daily` 替换 `execution_plan.orders=[]`；bar 不可用降级 null 价格 + `EXECUTION_USING_NO_PRICE`；DB migration `0005_positions.sql` |
+| L7 | 回测/验证 | ✅ 已接入 | `pipeline compare`、`factor replay`；`POST /v1/walk-forward/run` + `hf walk-forward run`。不设「验证平台化」默认待办（见上非目标） |
+| L8 | 监控复盘 | ✅ Phase 1 完成 | `GET /v1/monitor/health-report` + `hf monitor health-report`：基于 `run_daily` 聚合 green/yellow/red（个人场景范围至此） |
+| G1 | 数据治理 | ✅ 个人范围够用 | PIT 约束已实现；`run_id` 与快照支持复现审计。不设「版本血缘产品线」默认待办（见上非目标） |
+| G2 | 实验治理 | ✅ Phase 1 完成 | `experiment_configs` 表 + `run_daily` 开头快照 + `POST/GET /api/v1/experiment/config*` + `hf config snapshot|list|get`（纯审计） |
+| G3 | 执行安全 | ✅ 框架完成 | `advice_only`/`decision_weight` 契约字段已建；个人场景以人工确认为准，不设审批流实现任务（见上非目标） |
 
-**当前工作位置**：G2 Phase 1（参数快照 DB + HTTP + CLI + daily 自动快照）已合入 master → 下一步候选：G2 Phase 2（配置驱动）；或 L8 Phase 2（`trend`）；或 L6 Phase 2（券商 API）。
+**当前工作位置**：主干维护（缺陷修复、契约一致、小改进）；**无**默认「下一阶段」路线图。机构/自动化执行等需求须单独立项与 spec。
 
 ### 7.9 已交付能力摘要
 
@@ -221,72 +230,23 @@ cd cli && cargo run -- monitor health-report --as-of YYYY-MM-DD --output table
 - **L8 健康报告**：`GET /v1/monitor/health-report?as_of=DATE` + `hf monitor health-report --as-of DATE [--output json|table]`；消费 `run_daily` 的 L2~L5 输出聚合 factor/signal/risk 健康度与总评；详见 `docs/CLI_OUTPUT_EXAMPLES.md` 与 `docs/superpowers/specs/2026-04-06-l8-monitor-health-report-design.md`
 - **L1 异步同步**：`hf data sync` 提交→202→**默认** stderr 提示 + stdout JSON（含 run_id）；**`hf task progress`**（别名 `hf task status`）查看运行中进度，**`--watch`** 轮询至终态（与 **`--wait`** 同类）；任务列表 **`hf task list`**（别名 `hf task sync-runs`）；取消/重试 **`hf task cancel` / `hf task retry-failed`**（与 `hf data sync-cancel`、`hf data sync-retry-failed` 等价）；近窗 K 线 **`hf data query`** → `GET /v1/market-data/bars`（默认 TUI 分页）；失败队列自动重试（MAX_SYMBOL_ATTEMPTS=3）+ 审计表 `sync_run_symbol_failures`；startup 孤儿 run 收口为 `interrupted`；Provider 无行返回且无异常时 run 可为 **`success` + `error_code: NO_DATA_RETURNED`**；`sync_runs.effective_symbols_count` finalize 写库 + 读取 **enrich** 与 `progress` 一致；本地仅清 L1 表 **`make db-clear-l1`**（破坏性）
 
-## 8. Superpowers 工作流（强约束）
+## 8. Superpowers 工作流（指引）
 
-本仓库 **默认且强制** 启用 `using-superpowers`：agent **必须**按技能定义执行，与上文导言「严格遵守」一致。收到任何需求后，**先** 完成技能加载与判定，**再** 允许编辑代码或运行破坏性命令。
+本仓库使用 Superpowers 技能辅助开发。以下为建议流程，非琐碎修改（typo、单行修复）时参考执行。
 
-**技能来源**：以当前环境已配置的 Superpowers / Cursor skills 为准；相关 **skill 文件须在动作前读取并遵循**（禁止凭记忆省略 checklist）。
+### 8.1 建议流程
 
-### 8.1 执行顺序
+| 场景 | 建议技能 |
+|---|---|
+| 新功能 / 方案未定 | `brainstorming` → 确认后实现 |
+| 缺陷 / 测试失败 | `systematic-debugging` → 定位根因再改 |
+| 多步骤实现 | 考虑用 `writing-plans` 拆解 |
+| 宣称完成前 | `make check` 门禁必须通过 |
 
-1. 判定任务类型（功能 / 缺陷 / 仅执行已有计划）
-2. 先调用**流程技能**（如 `brainstorming`、`systematic-debugging`），再调用**实现技能**（如 `executing-plans`、`test-driven-development`）
-3. 在回复中**显式说明**当前使用的 skill 名称与目的（一句即可）
-4. 按该 skill 的 checklist **逐项执行**，禁止跳步或用「快速实现」替代
-5. 宣称完成前执行 `verification-before-completion`（或同等核验），见 §3 `make check` 门禁
+### 8.2 设计文档
 
-### 8.2 任务到技能映射
+影响契约/存储/对外 API 的**新功能**，建议先写设计 spec 到 `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`，经确认后再编码。
 
-- 新功能、需求不完整、方案未定：先 `brainstorming` → **spec 落库** `docs/superpowers/specs/` 并经确认 → `writing-plans` → **plan 落库** `docs/superpowers/plans/` → **`using-git-worktrees` 建隔离目录**（§8.5）→ 再实现（细则 §8.4）
-- 缺陷、性能异常、测试失败：先 `systematic-debugging` → 找到根因再改代码
-- 已有明确实现计划，直接落地：`executing-plans`（**优先在 §8.5 所述独立 worktree 中**执行计划内改动）
-- 准备提交前：`verification-before-completion` 核验，需要时 `requesting-code-review` 收口
+### 8.3 Git worktree
 
-### 8.3 禁止事项
-
-- 未完成技能判定就直接改代码
-- 在 `systematic-debugging` 前先尝试"拍脑袋修复"
-- 跳过验证就声称"已完成/已修复"
-- **跳过 §8.4** 的设计与计划落库就交付多步骤新功能（除非用户**在同一段对话中书面写明**：「豁免 spec/plan，范围：…」，且 agent 仅在所写范围内偏离）
-- **跳过 §8.5** 的 worktree 隔离，在主工作区直接堆积多步骤新功能改动（除非用户**书面写明**：「豁免 worktree，范围：…」）
-- **agent 自行认定**「无需 brainstorming / 无需 spec / 无需 worktree」——即使任务看似简单，亦属违规；须 User 明示豁免或任务属于 §8.4/§8.5 已列明的**不适用**情形
-
-### 8.4 设计与实现计划落库（强约束）
-
-适用：**新功能、跨多文件/多层的实现、或方案未定即可能影响契约/存储/对外 API 的改动**。不适用：单测点 typo、纯文档笔误等**显而易见的微型修改**；若范围是否「微型」存疑，**按适用处理**（先 spec/plan），不得由 agent 单方归类为微型以绕过本条。
-
-用户 **书面豁免** 须明确写出豁免的是 spec、plan 还是两者，以及**本次对话内**有效的范围边界。
-
-1. **设计（spec）**  
-   - 使用 Superpowers `brainstorming` 收口需求与 trade-off，形成设计说明。  
-   - **写入** `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`（命名与仓库内既有 specs 一致）。  
-   - **用户或维护者确认**设计后再进入计划与编码；不得仅口头对齐就默认「已批准」。
-
-2. **实现计划（plan）**  
-   - 使用 Superpowers `writing-plans` 产出可执行任务拆解。  
-   - **写入** `docs/superpowers/plans/YYYY-MM-DD-<topic>-implementation-plan.md`（或与该任务域一致的命名）。  
-   - 计划中须含：目标、架构一句概述、须改文件路径、测试与验证命令（如 `make check` 或子集）。
-
-3. **追溯补写**  
-   - 仅在**事先未能执行**本条且已实现代码时，允许补写 spec/plan，且必须在文档中**显式标注**为追溯文档、与实现对齐；不得替代常规「先设计后实现」流程作为默认做法。
-
-4. **意图优先**  
-   - 若用户说明 **「须严格按 Superpowers：先 spec/plan 再写代码」**，agent 必须遵守，不得以「赶进度」为由跳过 §8.4。
-   - 若用户说明 **「须用 worktree / 独立工作区」**，agent 必须遵守 §8.5。
-
-### 8.5 Git worktree（强约束）
-
-与 **§8.4 适用情形相同**：新功能、跨多文件/多层改动、或按 `docs/superpowers/plans/` 执行的实现任务。agent 应使用 Superpowers **`using-git-worktrees`** 建立隔离工作区后再改代码。
-
-1. **目录**  
-   - 本仓库已在根目录 `.gitignore` 中忽略 **`.worktrees/`**；优先在此目录下创建 worktree（具体命令与分支命名见技能说明）。  
-   - 若使用其他目录，须先 `git check-ignore` 确认已被忽略，避免把 worktree 内容误提交进主干。
-
-2. **时机**  
-   - 通常在 **spec/plan 已写入且将开始编码** 时创建；与「只在主目录打补丁」相比，便于并行分支、减少与本地未提交试验混杂。
-
-3. **不适用**  
-   - 单测点 typo、单文件明显一行修复、或用户在该次对话中**书面申明**「仅在当前 workspace 操作、不开 worktree」。
-
-4. **追溯**  
-   - 未开 worktree 已完成的多步骤合并，不追溯强制重拆；后续增量须按本条执行。
+跨多文件/多层的较大改动，建议在 `.worktrees/` 下建立隔离工作区。单文件修复或用户明确要求在当前 workspace 操作时不需要。
