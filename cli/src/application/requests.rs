@@ -118,6 +118,17 @@ pub struct DataMarketQueryRequest {
 #[derive(Debug, Clone, Default)]
 pub struct TuiShellRequest {}
 
+/// `hf data coverage`：universe 与库内 1d K 线覆盖对比
+#[derive(Debug, Clone)]
+pub struct DataCoverageRequest {
+    pub universe: String,
+    pub start_date: String,
+    pub end_date: String,
+    pub min_bars: Option<i32>,
+    pub output: String,
+    pub timeout_ms: Option<u64>,
+}
+
 #[derive(Debug, Clone)]
 pub struct DataBarsRequest {
     pub symbols: Option<String>,
@@ -178,6 +189,7 @@ pub enum AppCommand {
     TaskRetryFailed(DataSyncRetryFailedRequest),
     DataQuery(DataMarketQueryRequest),
     DataBars(DataBarsRequest),
+    DataCoverage(DataCoverageRequest),
     SignalSnapshot(SignalSnapshotRequest),
     SignalEvaluate(SignalEvaluateRequest),
     PortfolioOptimize(PortfolioOptimizeRequest),

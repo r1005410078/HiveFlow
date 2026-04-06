@@ -12,6 +12,7 @@ from application.market_data.symbol_names import resolve_quant_package_root
 from application.market_data.universe_symbols import UNIVERSE_KEYS as _UNIVERSE_KEYS
 from application.market_data.universe_symbols import norm_exchange_symbol
 from domain.market_data.value_objects import validate_timeframe
+from domain.universe.universe_loader import load_universe
 # Universes that akshare can fetch with optional Chinese names (symbol_names.json merge).
 _AKSHARE_SYMBOL_NAME_UNIVERSES = ("csi300", "zz500", "all_a")
 _UNIVERSE_FILE_EXT = ".txt"
@@ -77,9 +78,14 @@ class SyncService:
         return symbols
 
     def _parse_universe_file(self, universe: str) -> list[str]:
-        from application.market_data.universe_symbols import list_symbols_from_universe_file
-
-        return list_symbols_from_universe_file(universe)
+        try:
+            raw = load_universe(universe)
+        except FileNotFoundError as exc:
+            raise ValueError(f"unknown universe: {universe}") from exc
+        normalized = sorted({self._norm_symbol(s) for s in raw if s and str(s).strip()})
+        if not normalized:
+            raise ValueError(f"universe {universe} has no symbols")
+        return normalized
 
     def _write_universe_file(self, universe: str, symbols: list[str]) -> Path:
         if universe not in _UNIVERSE_KEYS:

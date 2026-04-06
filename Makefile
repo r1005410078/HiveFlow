@@ -1,7 +1,7 @@
 RUST_CLI_DIR := cli
 COMPOSE := docker compose
 
-.PHONY: help sync test lint architecture-check rust-test validate-cli-output validate-cli-output-one check run-pipeline run-server restart-run-server run-server-dev db-up db-down db-logs db-psql db-reset-db-volume db-init-env db-migrate db-clear-l1
+.PHONY: help sync test lint architecture-check rust-test validate-cli-output validate-cli-output-one check run-pipeline sync-default run-server restart-run-server run-server-dev db-up db-down db-logs db-psql db-reset-db-volume db-init-env db-migrate db-clear-l1
 
 help:
 	@echo "Available targets:"
@@ -17,6 +17,7 @@ help:
 	@echo "  make restart-run-server             # Kill listener on HF_PORT (default 8000), then run-server"
 	@echo "  make run-server-dev                 # Run quant HTTP server with auto-reload"
 	@echo "  make run-pipeline AS_OF=YYYY-MM-DD  # Run daily pipeline command"
+	@echo "  make sync-default [SYNC_DAYS=N]     # Sync default universe 1d bars (needs built hf + server)"
 	@echo "  make db-init-env                    # Create .env.db from template"
 	@echo "  make db-up                          # Start TimescaleDB with Docker"
 	@echo "  make db-down                        # Stop TimescaleDB"
@@ -156,3 +157,15 @@ run-pipeline:
 		exit 2; \
 	fi
 	cd cli && cargo run -- pipeline daily --as-of "$(AS_OF)"
+
+# 需已 `cd cli && cargo build`，且 quant 服务与 ~/.hiveflow/config.toml 可用（同 data sync）
+TODAY := $(shell date +%Y-%m-%d)
+SYNC_DAYS ?= 252
+
+sync-default:
+	./cli/target/debug/hf data sync \
+		--universe default \
+		--days $(SYNC_DAYS) \
+		--end-date $(TODAY) \
+		--timeframe 1d \
+		--wait

@@ -1,6 +1,6 @@
 use crate::application::requests::{
-    DataBarsRequest, DataMarketQueryRequest, DataSymbolNamesSyncRequest, DataSyncCancelRequest,
-    DataSyncRequest, DataSyncRetryFailedRequest, DataUniverseSyncRequest,
+    DataBarsRequest, DataCoverageRequest, DataMarketQueryRequest, DataSymbolNamesSyncRequest,
+    DataSyncCancelRequest, DataSyncRequest, DataSyncRetryFailedRequest, DataUniverseSyncRequest,
 };
 use clap::{Args, Subcommand};
 
@@ -23,6 +23,8 @@ pub enum DataSubcommand {
     /// 按时间窗查询 K 线（GET /v1/market-data/bars）；默认 TUI 分页表
     Query(DataMarketQueryArgs),
     Bars(DataBarsArgs),
+    /// universe 标的与库内 1d K 线覆盖对比（GET /v1/market-data/coverage）
+    Coverage(DataCoverageArgs),
 }
 
 const DATA_SYNC_LONG_ABOUT: &str = "L1 行情异步同步：服务端后台执行任务。\n\
@@ -212,6 +214,28 @@ pub struct DataMarketQueryArgs {
     pub timeout_ms: Option<u64>,
 }
 
+#[derive(Debug, Args)]
+#[command(
+    about = "查询 universe 与库内日线覆盖（GET /v1/market-data/coverage）",
+    after_long_help = "示例:\n  cargo run -- data coverage --universe default --start-date 2025-04-06 --end-date 2026-04-06\n  hf data coverage --universe default --start-date 2025-04-06 --end-date 2026-04-06 --output table\n"
+)]
+pub struct DataCoverageArgs {
+    /// 标的池名称（服务端读取 quant/config/universes/{name}.txt）
+    #[arg(long)]
+    pub universe: String,
+    #[arg(long)]
+    pub start_date: String,
+    #[arg(long)]
+    pub end_date: String,
+    /// 窗口内至少需要的 1d K 线条数（默认由服务端设为 1）
+    #[arg(long)]
+    pub min_bars: Option<i32>,
+    #[arg(long, default_value = "json")]
+    pub output: String,
+    #[arg(long)]
+    pub timeout_ms: Option<u64>,
+}
+
 const DATA_BARS_EXAMPLES: &str = "\
 示例:\n  \
   cargo run -- data bars --symbols 600519.SH --timeframe 1d --start-date 2026-03-01 --end-date 2026-04-01 --output json\n  \
@@ -354,6 +378,19 @@ impl From<DataBarsArgs> for DataBarsRequest {
             no_benchmark: args.no_benchmark,
             limit: args.limit,
             max_display_points: args.max_display_points,
+            timeout_ms: args.timeout_ms,
+        }
+    }
+}
+
+impl From<DataCoverageArgs> for DataCoverageRequest {
+    fn from(args: DataCoverageArgs) -> Self {
+        Self {
+            universe: args.universe,
+            start_date: args.start_date,
+            end_date: args.end_date,
+            min_bars: args.min_bars,
+            output: args.output,
             timeout_ms: args.timeout_ms,
         }
     }

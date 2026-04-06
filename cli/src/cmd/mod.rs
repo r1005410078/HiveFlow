@@ -67,6 +67,7 @@ impl From<Cli> for AppCommand {
                 }
                 data::DataSubcommand::Query(q) => AppCommand::DataQuery(q.into()),
                 data::DataSubcommand::Bars(bars_args) => AppCommand::DataBars(bars_args.into()),
+                data::DataSubcommand::Coverage(a) => AppCommand::DataCoverage(a.into()),
             },
             Commands::Task(args) => match args.command {
                 task::TaskSubcommand::List(a) => AppCommand::TaskList(a.into()),

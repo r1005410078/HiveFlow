@@ -1,4 +1,5 @@
 pub mod data_bars;
+pub mod data_coverage;
 pub mod data_market_query;
 pub mod data_sync;
 pub mod data_sync_cancel;

@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from interfaces.http.dependencies import (
     MarketDataBarsBundleQueryService,
     MarketDataBarsQueryService,
+    MarketDataCoverageQuery,
     MarketDataInstrumentsListService,
     MarketDataQueryService,
     MarketDataSyncService,
@@ -13,6 +14,7 @@ from interfaces.http.dependencies import (
     MarketDataUniverseSyncService,
     get_market_data_bars_bundle_query_service,
     get_market_data_bars_query_service,
+    get_market_data_coverage_query,
     get_market_data_instruments_list_service,
     get_market_data_query_service,
     get_market_data_sync_service,
@@ -167,6 +169,47 @@ def get_sync_run_detail(run_id: str) -> dict:
     if run is None:
         raise HTTPException(status_code=404, detail={"code": "SYNC_RUN_NOT_FOUND"})
     return run
+
+
+@router.get(
+    "/coverage",
+    summary="查询 universe 标的的数据覆盖率",
+    description="对比 universe .txt 中的标的与 DB 已有 1d K 线，返回 covered/missing 列表。",
+)
+def get_market_data_coverage(
+    universe: str = Query(..., description="universe 名称，如 default"),
+    start_date: str = Query(..., description="YYYY-MM-DD"),
+    end_date: str = Query(..., description="YYYY-MM-DD"),
+    min_bars: int = Query(default=1, ge=1),
+    coverage_query: MarketDataCoverageQuery = Depends(get_market_data_coverage_query),
+) -> dict:
+    from interfaces.adapters.market_data.db_connection import has_db_config, open_db_connection_from_env
+    from interfaces.adapters.market_data.timescale_bar_store import TimescaleBarStore
+
+    if not has_db_config():
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "COVERAGE_DB_UNAVAILABLE", "message": "no database configured"},
+        )
+    try:
+        bar_store = TimescaleBarStore(open_db_connection_from_env())
+        return coverage_query(
+            universe=universe,
+            bar_store=bar_store,
+            start_date=start_date,
+            end_date=end_date,
+            min_bars=min_bars,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "COVERAGE_UNIVERSE_NOT_FOUND", "message": str(exc)},
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "COVERAGE_UNIVERSE_INVALID", "message": str(exc)},
+        ) from exc
 
 
 @router.post(

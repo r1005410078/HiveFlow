@@ -13,6 +13,7 @@ from application.risk.risk_gate_service import run_risk_check
 from application.signal.signal_evaluate_service import run_signal_evaluation
 from application.signal.signal_engineering_service import run_signal_snapshot
 from application.market_data.bars_query_service import BarsQueryService
+from application.market_data.coverage_service import get_coverage
 from application.market_data.instruments_list_service import InstrumentsListService
 from application.market_data.query_service import QueryService
 from application.market_data.sync_service import SyncService
@@ -33,6 +34,7 @@ MarketDataQueryService = Callable[..., dict]
 MarketDataBarsQueryService = Callable[..., dict]
 MarketDataBarsBundleQueryService = Callable[..., dict]
 MarketDataInstrumentsListService = Callable[..., dict]
+MarketDataCoverageQuery = Callable[..., dict]
 SignalSnapshotService = Callable[[str], dict]
 SignalEvaluateService = Callable[[str, str, int], dict]
 PortfolioOptimizeService = Callable[..., dict]
@@ -151,6 +153,11 @@ def get_risk_check_service() -> RiskCheckService:
         prev_weights=prev_weights,
         bar_store=bar_store,
     )
+
+
+def get_market_data_coverage_query() -> MarketDataCoverageQuery:
+    """Provider only: wire `get_coverage` into the HTTP dependency graph."""
+    return get_coverage
 
 
 class _NoopQuoteRepo:

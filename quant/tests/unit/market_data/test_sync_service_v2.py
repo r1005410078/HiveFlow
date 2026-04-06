@@ -328,6 +328,22 @@ def test_sync_service_supports_self_select_universe_file() -> None:
     assert out["effective_symbols_count"] >= 1
 
 
+def test_sync_service_accepts_default_universe_via_loader(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _load(name: str) -> list[str]:
+        if name == "default":
+            return ["600519.SH"]
+        raise AssertionError(f"unexpected universe {name}")
+
+    monkeypatch.setattr(
+        "application.market_data.sync_service.load_universe",
+        _load,
+    )
+    svc = SyncService(quote_repo=_FakeQuoteRepo(), bar_store=_FakeBarStore())
+    out = svc.sync(days=1, end_date="2026-04-01", timeframe="1d", universe="default")
+    assert out["selection_mode"] == "universe"
+    assert out["effective_symbols_count"] == 1
+
+
 def test_sync_service_can_sync_universe_from_provider(tmp_path: Path) -> None:
     """验证可通过第三方 provider 同步 universe 文件并合并 symbol_names.json。"""
 

@@ -400,6 +400,43 @@ pub fn get_market_data_instruments(
     parse_json(&body_text)
 }
 
+/// `GET /v1/market-data/coverage` — universe symbols vs DB 1d bar coverage in a date window.
+pub fn get_market_data_coverage(
+    server_url: &str,
+    universe: &str,
+    start_date: &str,
+    end_date: &str,
+    min_bars: Option<i32>,
+    timeout_ms: u64,
+) -> Result<Value, AppError> {
+    let url = format!(
+        "{}/v1/market-data/coverage",
+        server_url.trim_end_matches('/')
+    );
+    let client = build_client(server_url, timeout_ms)?;
+
+    let mut request = client
+        .get(url)
+        .query(&[
+            ("universe", universe),
+            ("start_date", start_date),
+            ("end_date", end_date),
+        ]);
+    if let Some(m) = min_bars {
+        request = request.query(&[("min_bars", m.to_string())]);
+    }
+
+    let response = request.send().map_err(AppError::HttpClient)?;
+    let status_code = response.status();
+    let body_text = response.text().map_err(AppError::HttpClient)?;
+    if !status_code.is_success() {
+        let body =
+            serde_json::from_str(&body_text).unwrap_or_else(|_| json!({ "raw_body": body_text }));
+        return Err(AppError::Upstream(status_code.as_u16(), body));
+    }
+    parse_json(&body_text)
+}
+
 pub fn post_signal_snapshot(
     server_url: &str,
     as_of: &str,
