@@ -25,6 +25,9 @@ def test_run_daily_passes_benchmark_rows_to_factor_service(monkeypatch) -> None:
         def list_symbols_with_min_bars_in_window(self, **kwargs):
             return ([], False)
 
+        def insert_experiment_config_rows(self, rows):
+            del rows
+
     original = svc.compute_basic_factor_snapshot_from_bars
 
     def patched(as_of, symbols, bar_rows, benchmark_rows=None, historical_baselines=None):

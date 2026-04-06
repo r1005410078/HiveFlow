@@ -46,6 +46,9 @@ PretradeService = Callable[..., dict]
 WalkForwardService = Callable[..., dict]
 HealthReportService = Callable[[str], dict]
 ExecutionPlanService = Callable[..., dict]
+ExperimentConfigSnapshotFn = Callable[[str], dict]
+ExperimentConfigListFn = Callable[[str | None, int], dict]
+ExperimentConfigGetFn = Callable[[str], dict]
 
 
 def get_daily_run_service() -> DailyRunService:
@@ -222,6 +225,36 @@ def get_health_report_service() -> HealthReportService:
         except Exception:
             bar_store = None
     return lambda as_of: run_health_report(as_of, bar_store=bar_store)
+
+
+def _experiment_config_store_or_none() -> TimescaleBarStore | None:
+    if not has_db_config():
+        return None
+    try:
+        return TimescaleBarStore(open_db_connection_from_env())
+    except Exception:
+        return None
+
+
+def get_experiment_config_snapshot_fn() -> ExperimentConfigSnapshotFn:
+    from application.experiment.experiment_config_service import snapshot_current
+
+    store = _experiment_config_store_or_none()
+    return lambda note: snapshot_current(note, store=store)
+
+
+def get_experiment_config_list_fn() -> ExperimentConfigListFn:
+    from application.experiment.experiment_config_service import list_experiment_configs
+
+    store = _experiment_config_store_or_none()
+    return lambda layer, limit: list_experiment_configs(store=store, layer=layer, limit=limit)
+
+
+def get_experiment_config_get_fn() -> ExperimentConfigGetFn:
+    from application.experiment.experiment_config_service import get_experiment_config
+
+    store = _experiment_config_store_or_none()
+    return lambda config_id: get_experiment_config(config_id, store=store)
 
 
 def get_market_data_coverage_query() -> MarketDataCoverageQuery:

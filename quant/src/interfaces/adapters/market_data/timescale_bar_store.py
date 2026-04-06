@@ -610,3 +610,119 @@ class TimescaleBarStore:
             self._conn.commit()
         finally:
             cur.close()
+
+    def insert_experiment_config_rows(self, rows: list[dict]) -> None:
+        if not rows:
+            return
+        sql = """
+        insert into experiment_configs (config_id, layer, param_key, param_value, note, created_by)
+        values (%(config_id)s, %(layer)s, %(param_key)s, %(param_value)s, %(note)s, %(created_by)s)
+        """
+        cur = self._conn.cursor()
+        try:
+            for row in rows:
+                cur.execute(sql, row)
+            self._conn.commit()
+        finally:
+            cur.close()
+
+    def list_experiment_config_summaries(
+        self, *, layer: str | None, limit: int
+    ) -> list[dict]:
+        cur = self._conn.cursor()
+        try:
+            if layer:
+                cur.execute(
+                    """
+                    select c.config_id,
+                           count(*)::int,
+                           max(c.note),
+                           min(c.created_at),
+                           array_agg(distinct c.layer order by c.layer)
+                    from experiment_configs c
+                    where c.config_id in (
+                        select distinct config_id from experiment_configs where layer = %s
+                    )
+                    group by c.config_id
+                    order by min(c.created_at) desc
+                    limit %s
+                    """,
+                    [layer, limit],
+                )
+            else:
+                cur.execute(
+                    """
+                    select config_id,
+                           count(*)::int,
+                           max(note),
+                           min(created_at),
+                           array_agg(distinct layer order by layer)
+                    from experiment_configs
+                    group by config_id
+                    order by min(created_at) desc
+                    limit %s
+                    """,
+                    [limit],
+                )
+            out: list[dict] = []
+            for row in cur.fetchall():
+                layers = row[4]
+                if layers is None:
+                    layers_list: list[str] = []
+                elif isinstance(layers, list):
+                    layers_list = [str(x) for x in layers]
+                else:
+                    layers_list = [str(layers)]
+                created_at = row[3]
+                created_iso = (
+                    created_at.isoformat()
+                    if hasattr(created_at, "isoformat")
+                    else str(created_at)
+                )
+                out.append(
+                    {
+                        "config_id": row[0],
+                        "params_count": int(row[1]),
+                        "note": row[2],
+                        "created_at": created_iso,
+                        "layers": layers_list,
+                    }
+                )
+            return out
+        finally:
+            cur.close()
+
+    def fetch_experiment_config_detail(self, config_id: str) -> dict | None:
+        cur = self._conn.cursor()
+        try:
+            cur.execute(
+                """
+                select layer, param_key, param_value, note, created_at
+                from experiment_configs
+                where config_id = %s
+                order by layer, param_key
+                """,
+                [config_id],
+            )
+            rows = cur.fetchall()
+            if not rows:
+                return None
+            note = rows[0][3]
+            created_at = rows[0][4]
+            created_iso = (
+                created_at.isoformat()
+                if hasattr(created_at, "isoformat")
+                else str(created_at)
+            )
+            params = [
+                {"layer": r[0], "param_key": r[1], "param_value": float(r[2])}
+                for r in rows
+            ]
+            return {
+                "config_id": config_id,
+                "note": note,
+                "created_at": created_iso,
+                "params": params,
+            }
+        finally:
+            cur.close()

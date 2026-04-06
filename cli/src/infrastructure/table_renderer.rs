@@ -1547,3 +1547,86 @@ pub fn render_monitor_health_report_table(payload: &Value) -> String {
     out.push('\n');
     out
 }
+
+pub fn render_experiment_config_snapshot_table(payload: &Value) -> String {
+    let d = payload.get("data");
+    let cid = as_str(d.and_then(|x| x.get("config_id")));
+    let short = if cid.len() >= 8 {
+        cid[..8].to_string()
+    } else {
+        cid.clone()
+    };
+    let n = d
+        .and_then(|x| x.get("params_count"))
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let note = as_str(d.and_then(|x| x.get("note")));
+    let created = as_str(d.and_then(|x| x.get("created_at")));
+    format!("config_id: {short}   params: {n}   note: {note}\n  created_at: {created}\n")
+}
+
+pub fn render_experiment_config_list_table(payload: &Value) -> String {
+    let mut table = Table::new();
+    table
+        .load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec!["CONFIG ID", "PARAMS", "NOTE", "CREATED_AT"]);
+
+    let rows = payload
+        .get("data")
+        .and_then(|d| d.get("configs"))
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+
+    for row in rows {
+        let cid = as_str(row.get("config_id"));
+        let short = if cid.len() >= 8 {
+            cid[..8].to_string()
+        } else {
+            cid
+        };
+        let pc = row
+            .get("params_count")
+            .map(|v| v.to_string())
+            .unwrap_or_default();
+        let note = truncate_middle(&as_str(row.get("note")), 24, 8);
+        let created = as_str(row.get("created_at"));
+        table.add_row(vec![
+            Cell::new(short),
+            Cell::new(pc),
+            Cell::new(note),
+            Cell::new(created),
+        ]);
+    }
+
+    format!("{table}\n")
+}
+
+pub fn render_experiment_config_get_table(payload: &Value) -> String {
+    let mut table = Table::new();
+    table
+        .load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec!["LAYER", "PARAM_KEY", "PARAM_VALUE"]);
+
+    let params = payload
+        .get("data")
+        .and_then(|d| d.get("params"))
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+
+    for row in params {
+        let layer = as_str(row.get("layer"));
+        let key = as_str(row.get("param_key"));
+        let val = row
+            .get("param_value")
+            .and_then(Value::as_f64)
+            .map(|v| format!("{v}"))
+            .unwrap_or_default();
+        table.add_row(vec![Cell::new(layer), Cell::new(key), Cell::new(val)]);
+    }
+
+    format!("{table}\n")
+}

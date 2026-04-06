@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0.0",
+  "command": "hf config snapshot",
+  "run_id": "cfg_20260406_a1b2c3d4",
+  "status": "ok",
+  "generated_at": "2026-04-06T10:00:00+00:00",
+  "source": "system",
+  "advice_only": false,
+  "decision_weight": 1,
+  "data": {
+    "config_id": "a1b2c3d4-0000-0000-0000-000000000000",
+    "params_count": 33,
+    "note": "unit",
+    "created_at": "2026-04-06T10:00:00+00:00"
+  },
+  "warnings": [],
+  "errors": []
+}

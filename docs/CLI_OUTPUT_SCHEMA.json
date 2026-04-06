@@ -335,6 +335,84 @@
     {
       "if": {
         "properties": {
+          "command": { "const": "hf config snapshot" }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": ["config_id", "params_count", "note", "created_at"],
+            "properties": {
+              "config_id": { "type": "string" },
+              "params_count": { "type": "integer" },
+              "note": { "type": "string" },
+              "created_at": { "type": "string" }
+            },
+            "additionalProperties": true
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "command": { "const": "hf config list" }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": ["configs"],
+            "properties": {
+              "configs": {
+                "type": "array",
+                "items": { "type": "object" }
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "command": { "const": "hf config get" }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": ["config_id", "note", "created_at", "params"],
+            "properties": {
+              "config_id": { "type": "string" },
+              "note": { "type": ["string", "null"] },
+              "created_at": { "type": "string" },
+              "params": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["layer", "param_key", "param_value"],
+                  "properties": {
+                    "layer": { "type": "string" },
+                    "param_key": { "type": "string" },
+                    "param_value": { "type": "number" }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
           "command": { "const": "hf pretrade check" }
         }
       },

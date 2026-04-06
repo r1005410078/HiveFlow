@@ -780,3 +780,89 @@ pub fn get_health_report(
 
     parse_json(&body_text)
 }
+
+pub fn post_experiment_config_snapshot(
+    server_url: &str,
+    note: &str,
+    timeout_ms: u64,
+) -> Result<Value, AppError> {
+    let url = format!(
+        "{}/api/v1/experiment/config/snapshot",
+        server_url.trim_end_matches('/')
+    );
+    let client = build_client(server_url, timeout_ms)?;
+    let response = client
+        .post(url)
+        .json(&json!({ "note": note }))
+        .send()
+        .map_err(AppError::HttpClient)?;
+
+    let status = response.status();
+    let body_text = response.text().map_err(AppError::HttpClient)?;
+    if !status.is_success() {
+        let body =
+            serde_json::from_str(&body_text).unwrap_or_else(|_| json!({ "raw_body": body_text }));
+        return Err(AppError::Upstream(status.as_u16(), body));
+    }
+
+    parse_json(&body_text)
+}
+
+pub fn get_experiment_config_list(
+    server_url: &str,
+    layer: Option<&str>,
+    limit: u32,
+    timeout_ms: u64,
+) -> Result<Value, AppError> {
+    let url = format!(
+        "{}/api/v1/experiment/configs",
+        server_url.trim_end_matches('/')
+    );
+    let client = build_client(server_url, timeout_ms)?;
+    let limit_str = limit.to_string();
+    let layer_holder: Option<String> = layer.map(|s| s.to_string());
+    let mut qp: Vec<(&str, &str)> = vec![("limit", limit_str.as_str())];
+    if let Some(ref lh) = layer_holder {
+        if !lh.is_empty() {
+            qp.push(("layer", lh.as_str()));
+        }
+    }
+    let response = client
+        .get(url)
+        .query(&qp)
+        .send()
+        .map_err(AppError::HttpClient)?;
+
+    let status = response.status();
+    let body_text = response.text().map_err(AppError::HttpClient)?;
+    if !status.is_success() {
+        let body =
+            serde_json::from_str(&body_text).unwrap_or_else(|_| json!({ "raw_body": body_text }));
+        return Err(AppError::Upstream(status.as_u16(), body));
+    }
+
+    parse_json(&body_text)
+}
+
+pub fn get_experiment_config_detail(
+    server_url: &str,
+    config_id: &str,
+    timeout_ms: u64,
+) -> Result<Value, AppError> {
+    let url = format!(
+        "{}/api/v1/experiment/configs/{}",
+        server_url.trim_end_matches('/'),
+        config_id
+    );
+    let client = build_client(server_url, timeout_ms)?;
+
+    let response = client.get(url).send().map_err(AppError::HttpClient)?;
+
+    let status = response.status().as_u16();
+    let body_text = response.text().map_err(AppError::HttpClient)?;
+    let v = parse_json(&body_text)?;
+    if status == 200 || status == 404 || status == 503 {
+        return Ok(v);
+    }
+    Err(AppError::Upstream(status, v))
+}

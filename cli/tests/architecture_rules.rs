@@ -24,6 +24,7 @@ fn visit_rs_files(dir: &Path, files: &mut Vec<PathBuf>) {
 #[test]
 fn cmd_layer_must_not_import_infrastructure() {
     let cmd_files = [
+        "cmd/config.rs",
         "cmd/data.rs",
         "cmd/execution.rs",
         "cmd/pipeline.rs",

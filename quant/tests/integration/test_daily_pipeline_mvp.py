@@ -94,6 +94,9 @@ def test_daily_pipeline_prefers_real_bars_when_available() -> None:
         def list_symbols_with_min_bars_in_window(self, **kwargs):
             return ([], False)
 
+        def insert_experiment_config_rows(self, rows):
+            del rows
+
     out = run_daily(as_of="2026-04-01", root=None, bar_store=_BarStore())
     tech = out["data"]["technical"]
     assert tech is not None

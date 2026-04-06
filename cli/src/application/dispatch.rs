@@ -1,4 +1,5 @@
 use crate::application::handlers::{
+    config,
     data_bars, data_coverage, data_market_query, data_sync, data_sync_cancel, data_sync_retry_failed,
     data_symbol_names_sync, data_universe_sync,     factor_optimize, factor_replay, monitor, pipeline_compare,
     pipeline_daily,
@@ -38,5 +39,8 @@ pub fn run(command: AppCommand) -> Result<(), AppError> {
         AppCommand::ExecutionPlan(args) => execution_plan::handle(args),
         AppCommand::WalkForward(args) => walk_forward::handle(args),
         AppCommand::MonitorHealthReport(args) => monitor::handle(args),
+        AppCommand::ConfigSnapshot(args) => config::handle_snapshot(args),
+        AppCommand::ConfigList(args) => config::handle_list(args),
+        AppCommand::ConfigGet(args) => config::handle_get(args),
     }
 }

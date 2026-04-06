@@ -10,6 +10,7 @@ from interfaces.http.routes_pretrade import router as pretrade_router
 from interfaces.http.routes_risk import router as risk_router
 from interfaces.http.routes_signal import router as signal_router
 from interfaces.http.routes_execution import router as execution_router
+from interfaces.http.routes_experiment import router as experiment_router
 from interfaces.http.routes_monitor import router as monitor_router
 from interfaces.http.routes_walk_forward import router as walk_forward_router
 from interfaces.adapters.market_data.symbol_name_json_middleware import SymbolNameJsonMiddleware
@@ -41,6 +42,7 @@ def create_app() -> FastAPI:
     app.include_router(walk_forward_router)
     app.include_router(monitor_router)
     app.include_router(execution_router)
+    app.include_router(experiment_router)
 
     app.add_middleware(SymbolNameJsonMiddleware)
 

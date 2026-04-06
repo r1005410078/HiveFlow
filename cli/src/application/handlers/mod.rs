@@ -1,3 +1,4 @@
+pub mod config;
 pub mod execution_plan;
 pub mod data_bars;
 pub mod data_coverage;

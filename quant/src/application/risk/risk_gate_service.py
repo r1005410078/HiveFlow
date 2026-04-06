@@ -20,6 +20,9 @@ _REGIME_LOOKBACK_BARS = 31  # fetch 31 bars → 30 returns, take tail(20)
 
 _INDUSTRY_MAP: dict[str, str] = load_industry_map()
 
+REGIME_CRISIS_VOL_THRESHOLD = 0.40
+REGIME_WARNING_VOL_THRESHOLD = 0.25
+
 _THRESHOLDS: dict[str, dict[str, float]] = {
     "normal":  {"portfolio_vol": 0.30, "single_asset_max": 0.35, "industry_max": 0.45, "turnover": 0.80},
     "warning": {"portfolio_vol": 0.22, "single_asset_max": 0.28, "industry_max": 0.38, "turnover": 0.55},
@@ -103,9 +106,9 @@ def _detect_regime(bar_store, as_of: str) -> tuple[str, float | None, str]:
     if vol is None:
         return "normal", None, "none"
 
-    if vol >= 0.40:
+    if vol >= REGIME_CRISIS_VOL_THRESHOLD:
         regime = "crisis"
-    elif vol >= 0.25:
+    elif vol >= REGIME_WARNING_VOL_THRESHOLD:
         regime = "warning"
     else:
         regime = "normal"

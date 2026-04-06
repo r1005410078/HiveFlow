@@ -172,6 +172,9 @@ cd cli && cargo run -- monitor health-report --as-of YYYY-MM-DD --output table
 - `POST /api/v1/risk/check`：L5 风险门控（CLI：`hf risk check`）
 - `POST /api/v1/pretrade/check`：L5.5 预交易冲击与可成交性估算（CLI：`hf pretrade check`，两跳经 L4 取权重）
 - `POST /api/v1/execution/plan`：L6 执行计划（订单生成，CLI：`hf execution plan`，三跳经 L4→L5.5）
+- `POST /api/v1/experiment/config/snapshot`：G2 参数快照写入（CLI：`hf config snapshot`）
+- `GET /api/v1/experiment/configs`：G2 快照列表（CLI：`hf config list`）
+- `GET /api/v1/experiment/configs/{config_id}`：G2 快照明细（CLI：`hf config get`）
 - `POST /v1/walk-forward/run`：L7 walk-forward 回测（CLI：`hf walk-forward run`）
 - `GET /v1/monitor/health-report`：L8 因子/信号/风控健康报告（CLI：`hf monitor health-report`）
 
@@ -197,10 +200,10 @@ cd cli && cargo run -- monitor health-report --as-of YYYY-MM-DD --output table
 | L7 | 回测/验证 | 🚧 部分完成 | compare 回放、factor replay 已完成；`POST /v1/walk-forward/run` + `hf walk-forward run` 已接入 |
 | L8 | 监控复盘 | 🚧 Phase 1 | `GET /v1/monitor/health-report` + `hf monitor health-report`：基于 `run_daily` 聚合 green/yellow/red；`trend` 预留 Phase 2 |
 | G1 | 数据治理 | 🚧 部分完成 | PIT 约束已实现，版本血缘未完整 |
-| G2 | 实验治理 | 🔲 未开始 | — |
+| G2 | 实验治理 | 🚧 Phase 1 | `experiment_configs` 表 + `run_daily` 开头快照 + `POST/GET /api/v1/experiment/config*` + `hf config snapshot|list|get`（纯审计；Phase 2 配置驱动未做） |
 | G3 | 执行安全 | 🚧 部分完成 | advice_only/decision_weight 框架已建，审批流未实现 |
 
-**当前工作位置**：L6 Phase 1（执行计划 HTTP + CLI + daily `data.execution_plan` + positions 表）已合入 master → 下一步候选：G2 实验治理；或 L8 Phase 2（`trend` 滚动窗口，需积累快照）；或 L6 Phase 2（接入券商 API）。
+**当前工作位置**：G2 Phase 1（参数快照 DB + HTTP + CLI + daily 自动快照）已合入 master → 下一步候选：G2 Phase 2（配置驱动）；或 L8 Phase 2（`trend`）；或 L6 Phase 2（券商 API）。
 
 ### 7.9 已交付能力摘要
 
@@ -214,6 +217,7 @@ cd cli && cargo run -- monitor health-report --as-of YYYY-MM-DD --output table
 - **L4 组合优化**：`POST /api/v1/portfolio/optimize` + `hf portfolio optimize --as-of DATE [--output json|table]`；均值-方差 QP（cvxpy CLARABEL）；目标函数含 alpha、风险惩罚（协方差矩阵）、换手成本惩罚；单标的上限 30%、行业上限 40%；首次运行等权 fallback；daily pipeline 自动调用（data.portfolio 字段）
 - **L5.5 预交易**：`POST /api/v1/pretrade/check` + `hf pretrade check --as-of DATE [--output json|table]`（默认 table）；`run_daily` 的 `data.pretrade`；详见 `docs/CLI_OUTPUT_EXAMPLES.md` 与 `docs/superpowers/specs/2026-04-06-l5.5-pretrade-simulation-design.md`
 - **L6 执行计划**：`POST /api/v1/execution/plan` + `hf execution plan --as-of DATE [--output json|table]`（默认 table，三跳 L4→L5.5→L6）；`run_daily` 替换 `data.execution_plan`；positions 表持仓快照；action=open_long/add_long/reduce_long/close_long；limit 日单，slippage_bp=5，A 股 100 股/手取整；详见 `docs/superpowers/specs/2026-04-06-l6-execution-plan-design.md`
+- **G2 参数快照（Phase 1）**：`experiment_configs` 表（`make db-migrate`）；`run_daily` 开头 `snapshot_current(note="daily_run")`；`POST /api/v1/experiment/config/snapshot` + `GET /api/v1/experiment/configs` + `GET /api/v1/experiment/configs/{config_id}`；`hf config snapshot|list|get`；无 DB 时 `EXPERIMENT_CONFIG_NO_DB` warning；详见 `docs/superpowers/specs/2026-04-06-g2-experiment-governance-phase1-design.md`
 - **L8 健康报告**：`GET /v1/monitor/health-report?as_of=DATE` + `hf monitor health-report --as-of DATE [--output json|table]`；消费 `run_daily` 的 L2~L5 输出聚合 factor/signal/risk 健康度与总评；详见 `docs/CLI_OUTPUT_EXAMPLES.md` 与 `docs/superpowers/specs/2026-04-06-l8-monitor-health-report-design.md`
 - **L1 异步同步**：`hf data sync` 提交→202→**默认** stderr 提示 + stdout JSON（含 run_id）；**`hf task progress`**（别名 `hf task status`）查看运行中进度，**`--watch`** 轮询至终态（与 **`--wait`** 同类）；任务列表 **`hf task list`**（别名 `hf task sync-runs`）；取消/重试 **`hf task cancel` / `hf task retry-failed`**（与 `hf data sync-cancel`、`hf data sync-retry-failed` 等价）；近窗 K 线 **`hf data query`** → `GET /v1/market-data/bars`（默认 TUI 分页）；失败队列自动重试（MAX_SYMBOL_ATTEMPTS=3）+ 审计表 `sync_run_symbol_failures`；startup 孤儿 run 收口为 `interrupted`；Provider 无行返回且无异常时 run 可为 **`success` + `error_code: NO_DATA_RETURNED`**；`sync_runs.effective_symbols_count` finalize 写库 + 读取 **enrich** 与 `progress` 一致；本地仅清 L1 表 **`make db-clear-l1`**（破坏性）
 

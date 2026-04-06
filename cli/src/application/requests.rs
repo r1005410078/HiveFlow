@@ -190,6 +190,31 @@ pub struct MonitorHealthReportRequest {
     pub timeout_ms: Option<u64>,
 }
 
+/// `hf config snapshot`：写入当前参数快照
+#[derive(Debug, Clone)]
+pub struct ConfigSnapshotRequest {
+    pub note: String,
+    pub output: String,
+    pub timeout_ms: Option<u64>,
+}
+
+/// `hf config list`：列出历史快照
+#[derive(Debug, Clone)]
+pub struct ConfigListRequest {
+    pub layer: Option<String>,
+    pub limit: u32,
+    pub output: String,
+    pub timeout_ms: Option<u64>,
+}
+
+/// `hf config get`：按 config_id 查询
+#[derive(Debug, Clone)]
+pub struct ConfigGetRequest {
+    pub config_id: String,
+    pub output: String,
+    pub timeout_ms: Option<u64>,
+}
+
 #[derive(Debug, Clone)]
 pub struct WalkForwardRequest {
     pub start_date: String,
@@ -229,4 +254,7 @@ pub enum AppCommand {
     ExecutionPlan(ExecutionPlanRequest),
     WalkForward(WalkForwardRequest),
     MonitorHealthReport(MonitorHealthReportRequest),
+    ConfigSnapshot(ConfigSnapshotRequest),
+    ConfigList(ConfigListRequest),
+    ConfigGet(ConfigGetRequest),
 }

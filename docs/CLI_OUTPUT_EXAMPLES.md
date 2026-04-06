@@ -978,3 +978,40 @@ hf monitor health-report --as-of 2026-04-01 --output json
   "errors": []
 }
 ```
+
+## hf config（G2 参数快照）
+
+```bash
+hf config snapshot --note "调低 eta"
+hf config list --layer l5.5 --limit 10
+hf config get --config-id a1b2c3d4-e5f6-7890-abcd-ef1234567890
+```
+
+`hf config snapshot` — `status=ok`：
+
+```json
+{
+  "schema_version": "1.0.0",
+  "command": "hf config snapshot",
+  "run_id": "cfg_20260406_a1b2c3d4",
+  "status": "ok",
+  "generated_at": "2026-04-06T10:00:00+00:00",
+  "source": "system",
+  "advice_only": false,
+  "decision_weight": 1,
+  "data": {
+    "config_id": "a1b2c3d4-0000-0000-0000-000000000000",
+    "params_count": 33,
+    "note": "调低 eta",
+    "created_at": "2026-04-06T10:00:00+00:00"
+  },
+  "warnings": [],
+  "errors": []
+}
+```
+
+无 DB 时可能带 `EXPERIMENT_CONFIG_NO_DB` warning，仍返回 `config_id` 与 `params_count`。
+
+`hf config list` — `data.configs` 为快照摘要列表（`config_id`、`params_count`、`note`、`created_at`、`layers`）。
+
+`hf config get` — `data.params` 为 `{layer, param_key, param_value}` 数组；未知 `config_id` 时 `status=error`、`errors[].code=CONFIG_NOT_FOUND`。

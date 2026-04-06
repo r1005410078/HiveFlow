@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from application.contracts.cli_output import ok_output
 from application.decision.l2_decision_service import compute_l2_decision_from_snapshot
+from application.experiment.experiment_config_service import snapshot_current
 from application.factor.basic_factor_service import (
     compute_basic_factor_snapshot,
     compute_basic_factor_snapshot_from_bars,
@@ -51,6 +52,8 @@ def run_daily(
 ) -> dict:
     # root 预留给后续持久化与工作目录上下文使用。
     run_id = f"run_{as_of.replace('-', '')}_{str(uuid4())[:8]}"
+
+    snapshot_current("daily_run", store=bar_store)
 
     if not is_sse_trading_day(as_of):
         return ok_output(

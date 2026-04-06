@@ -1,3 +1,4 @@
+pub mod config;
 pub mod data;
 pub mod execution;
 pub mod factor;
@@ -45,6 +46,8 @@ pub enum Commands {
     WalkForward(walk_forward::WalkForwardArgs),
     /// L8 监控：健康报告（需 quant 服务与 ~/.hiveflow/config.toml）
     Monitor(monitor::MonitorArgs),
+    /// G2 实验治理：参数快照 list/get/snapshot（需 quant 服务与 DB）
+    Config(config::ConfigArgs),
 }
 
 impl From<Cli> for AppCommand {
@@ -118,6 +121,11 @@ impl From<Cli> for AppCommand {
                 monitor::MonitorSubcommand::HealthReport(hr) => {
                     AppCommand::MonitorHealthReport(hr.into())
                 }
+            },
+            Commands::Config(args) => match args.command {
+                config::ConfigSubcommand::Snapshot(s) => AppCommand::ConfigSnapshot(s.into()),
+                config::ConfigSubcommand::List(l) => AppCommand::ConfigList(l.into()),
+                config::ConfigSubcommand::Get(g) => AppCommand::ConfigGet(g.into()),
             },
         }
     }
