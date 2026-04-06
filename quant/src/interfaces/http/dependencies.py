@@ -12,6 +12,7 @@ from application.portfolio.portfolio_optimize_service import run_portfolio_optim
 from application.risk.risk_gate_service import run_risk_check
 from application.signal.signal_evaluate_service import run_signal_evaluation
 from application.signal.signal_engineering_service import run_signal_snapshot
+from application.walk_forward_service import run_walk_forward
 from application.market_data.bars_query_service import BarsQueryService
 from application.market_data.coverage_service import get_coverage
 from application.market_data.instruments_list_service import InstrumentsListService
@@ -39,6 +40,7 @@ SignalSnapshotService = Callable[[str], dict]
 SignalEvaluateService = Callable[[str, str, int], dict]
 PortfolioOptimizeService = Callable[..., dict]
 RiskCheckService = Callable[..., dict]
+WalkForwardService = Callable[..., dict]
 
 
 def get_daily_run_service() -> DailyRunService:
@@ -151,6 +153,25 @@ def get_risk_check_service() -> RiskCheckService:
         as_of=as_of,
         target_weights=target_weights,
         prev_weights=prev_weights,
+        bar_store=bar_store,
+    )
+
+
+def get_walk_forward_service() -> WalkForwardService:
+    # Provider only: wire application service into FastAPI dependency graph.
+    bar_store = None
+    if has_db_config():
+        try:
+            bar_store = TimescaleBarStore(open_db_connection_from_env())
+        except Exception:
+            bar_store = None
+    return lambda start_date, end_date, warm_up_days=180, test_window_days=63, step_days=21, cost_bp=0.0: run_walk_forward(
+        start_date=start_date,
+        end_date=end_date,
+        warm_up_days=warm_up_days,
+        test_window_days=test_window_days,
+        step_days=step_days,
+        cost_bp=cost_bp,
         bar_store=bar_store,
     )
 

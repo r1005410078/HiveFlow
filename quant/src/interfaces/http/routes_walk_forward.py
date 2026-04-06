@@ -5,10 +5,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 
-from application.walk_forward_service import run_walk_forward
+from interfaces.http.dependencies import (
+    WalkForwardService,
+    get_walk_forward_service,
+)
 
 router = APIRouter(prefix="/v1/walk-forward", tags=["walk-forward"])
 
@@ -36,6 +39,7 @@ def post_walk_forward_run(
     test_window_days: int = Query(default=63, ge=1, description="测试窗口日历天数"),
     step_days: int = Query(default=21, ge=1, description="窗口滑动步长（日历天数）"),
     cost_bp: float = Query(default=0.0, ge=0.0, description="交易成本（基点）"),
+    service: WalkForwardService = Depends(get_walk_forward_service),
 ) -> JSONResponse:
     """Run walk-forward backtest with specified parameters.
 
@@ -56,8 +60,7 @@ def post_walk_forward_run(
         HTTPException 500: For other errors
     """
     # Check if database is configured
-    from interfaces.adapters.market_data.db_connection import has_db_config, open_db_connection_from_env
-    from interfaces.adapters.market_data.timescale_bar_store import TimescaleBarStore
+    from interfaces.adapters.market_data.db_connection import has_db_config
 
     if not has_db_config():
         raise HTTPException(
@@ -65,25 +68,15 @@ def post_walk_forward_run(
             detail={"code": "WALK_FORWARD_DB_UNAVAILABLE", "message": "no database configured"},
         )
 
-    # Create bar store
+    # Run walk-forward backtest through service
     try:
-        bar_store = TimescaleBarStore(open_db_connection_from_env())
-    except Exception as exc:
-        raise HTTPException(
-            status_code=503,
-            detail={"code": "WALK_FORWARD_DB_UNAVAILABLE", "message": str(exc)},
-        ) from exc
-
-    # Run walk-forward backtest
-    try:
-        result = run_walk_forward(
+        result = service(
             start_date=start_date,
             end_date=end_date,
             warm_up_days=warm_up_days,
             test_window_days=test_window_days,
             step_days=step_days,
             cost_bp=cost_bp,
-            bar_store=bar_store,
         )
     except ValueError as exc:
         raise HTTPException(

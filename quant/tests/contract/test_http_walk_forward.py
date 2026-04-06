@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 
 from interfaces.http.app import create_app
+from interfaces.http.dependencies import get_walk_forward_service
 
 
 def test_run_ok() -> None:
@@ -46,23 +47,25 @@ def test_run_ok() -> None:
         },
     }
 
-    with (
-        patch("interfaces.adapters.market_data.db_connection.has_db_config", return_value=True),
-        patch("interfaces.adapters.market_data.db_connection.open_db_connection_from_env", return_value=MagicMock()),
-        patch("interfaces.adapters.market_data.timescale_bar_store.TimescaleBarStore"),
-        patch("interfaces.http.routes_walk_forward.run_walk_forward", return_value=mock_result),
-    ):
-        resp = client.post(
-            "/v1/walk-forward/run",
-            params={
-                "start_date": "2025-01-01",
-                "end_date": "2025-08-31",
-                "warm_up_days": 180,
-                "test_window_days": 63,
-                "step_days": 21,
-                "cost_bp": 0.0,
-            },
-        )
+    def _stub_service(**kwargs):
+        return mock_result
+
+    app.dependency_overrides[get_walk_forward_service] = lambda: _stub_service
+    try:
+        with patch("interfaces.adapters.market_data.db_connection.has_db_config", return_value=True):
+            resp = client.post(
+                "/v1/walk-forward/run",
+                params={
+                    "start_date": "2025-01-01",
+                    "end_date": "2025-08-31",
+                    "warm_up_days": 180,
+                    "test_window_days": 63,
+                    "step_days": 21,
+                    "cost_bp": 0.0,
+                },
+            )
+    finally:
+        app.dependency_overrides.clear()
 
     assert resp.status_code == 200
     payload = resp.json()
@@ -100,19 +103,21 @@ def test_run_invalid_dates() -> None:
     app = create_app()
     client = TestClient(app)
 
-    with (
-        patch("interfaces.adapters.market_data.db_connection.has_db_config", return_value=True),
-        patch("interfaces.adapters.market_data.db_connection.open_db_connection_from_env", return_value=MagicMock()),
-        patch("interfaces.adapters.market_data.timescale_bar_store.TimescaleBarStore"),
-        patch("interfaces.http.routes_walk_forward.run_walk_forward", side_effect=ValueError("start_date must be on or before end_date")),
-    ):
-        resp = client.post(
-            "/v1/walk-forward/run",
-            params={
-                "start_date": "2025-12-31",
-                "end_date": "2025-01-01",
-            },
-        )
+    def _stub_service(**kwargs):
+        raise ValueError("start_date must be on or before end_date")
+
+    app.dependency_overrides[get_walk_forward_service] = lambda: _stub_service
+    try:
+        with patch("interfaces.adapters.market_data.db_connection.has_db_config", return_value=True):
+            resp = client.post(
+                "/v1/walk-forward/run",
+                params={
+                    "start_date": "2025-12-31",
+                    "end_date": "2025-01-01",
+                },
+            )
+    finally:
+        app.dependency_overrides.clear()
 
     assert resp.status_code == 422
     payload = resp.json()
@@ -144,23 +149,25 @@ def test_run_with_custom_parameters() -> None:
         },
     }
 
-    with (
-        patch("interfaces.adapters.market_data.db_connection.has_db_config", return_value=True),
-        patch("interfaces.adapters.market_data.db_connection.open_db_connection_from_env", return_value=MagicMock()),
-        patch("interfaces.adapters.market_data.timescale_bar_store.TimescaleBarStore"),
-        patch("interfaces.http.routes_walk_forward.run_walk_forward", return_value=mock_result),
-    ):
-        resp = client.post(
-            "/v1/walk-forward/run",
-            params={
-                "start_date": "2025-01-01",
-                "end_date": "2025-03-31",
-                "warm_up_days": 90,
-                "test_window_days": 30,
-                "step_days": 10,
-                "cost_bp": 5.0,
-            },
-        )
+    def _stub_service(**kwargs):
+        return mock_result
+
+    app.dependency_overrides[get_walk_forward_service] = lambda: _stub_service
+    try:
+        with patch("interfaces.adapters.market_data.db_connection.has_db_config", return_value=True):
+            resp = client.post(
+                "/v1/walk-forward/run",
+                params={
+                    "start_date": "2025-01-01",
+                    "end_date": "2025-03-31",
+                    "warm_up_days": 90,
+                    "test_window_days": 30,
+                    "step_days": 10,
+                    "cost_bp": 5.0,
+                },
+            )
+    finally:
+        app.dependency_overrides.clear()
 
     assert resp.status_code == 200
     payload = resp.json()
