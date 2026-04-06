@@ -17,7 +17,7 @@ help:
 	@echo "  make restart-run-server             # Kill listener on HF_PORT (default 8000), then run-server"
 	@echo "  make run-server-dev                 # Run quant HTTP server with auto-reload"
 	@echo "  make run-pipeline AS_OF=YYYY-MM-DD  # Run daily pipeline command"
-	@echo "  make sync-default [SYNC_DAYS=N]     # Sync default universe 1d bars (needs built hf + server)"
+	@echo "  make sync-default [SYNC_DAYS=N]     # Sync default universe 1d bars (cargo run; needs server + config)"
 	@echo "  make db-init-env                    # Create .env.db from template"
 	@echo "  make db-up                          # Start TimescaleDB with Docker"
 	@echo "  make db-down                        # Stop TimescaleDB"
@@ -158,12 +158,20 @@ run-pipeline:
 	fi
 	cd cli && cargo run -- pipeline daily --as-of "$(AS_OF)"
 
-# 需已 `cd cli && cargo build`，且 quant 服务与 ~/.hiveflow/config.toml 可用（同 data sync）
+# 与 `make run-pipeline` 相同：通过 cargo run 调用 CLI，无需事先 cargo build 出固定路径二进制
 TODAY := $(shell date +%Y-%m-%d)
 SYNC_DAYS ?= 252
 
 sync-default:
-	./cli/target/debug/hf data sync \
+	@if [ ! -f "$$HOME/.hiveflow/config.toml" ]; then \
+		echo "Missing config: $$HOME/.hiveflow/config.toml"; \
+		echo "Create it with at least:"; \
+		echo "  server_url = \"http://127.0.0.1:8000\""; \
+		echo "  timeout_ms = 10000"; \
+		echo "  retry = 1"; \
+		exit 2; \
+	fi
+	cd $(RUST_CLI_DIR) && cargo run -- data sync \
 		--universe default \
 		--days $(SYNC_DAYS) \
 		--end-date $(TODAY) \
