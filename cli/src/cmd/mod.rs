@@ -6,6 +6,7 @@ pub mod risk;
 pub mod signal;
 pub mod task;
 pub mod tui;
+pub mod walk_forward;
 
 use crate::application::requests::AppCommand;
 use clap::{Parser, Subcommand};
@@ -33,6 +34,8 @@ pub enum Commands {
     Portfolio(portfolio::PortfolioArgs),
     /// L5 风险门控：目标权重硬约束检查（需 quant 服务与 ~/.hiveflow/config.toml）
     Risk(risk::RiskArgs),
+    /// L7 walk-forward 回测：滚动窗口验证（需 quant 服务与 ~/.hiveflow/config.toml）
+    WalkForward(walk_forward::WalkForwardArgs),
 }
 
 impl From<Cli> for AppCommand {
@@ -91,6 +94,7 @@ impl From<Cli> for AppCommand {
             Commands::Risk(args) => match args.command {
                 risk::RiskSubcommand::Check(check) => AppCommand::RiskCheck(check.into()),
             },
+            Commands::WalkForward(args) => AppCommand::WalkForward(args.into()),
         }
     }
 }

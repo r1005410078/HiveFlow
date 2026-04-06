@@ -16,3 +16,4 @@ pub mod portfolio_optimize;
 pub mod risk_check;
 pub mod signal_evaluate;
 pub mod signal_snapshot;
+pub mod walk_forward;

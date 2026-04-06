@@ -171,6 +171,18 @@ pub struct RiskCheckRequest {
     pub output: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct WalkForwardRequest {
+    pub start_date: String,
+    pub end_date: String,
+    pub warm_up_days: Option<u32>,
+    pub test_window_days: Option<u32>,
+    pub step_days: Option<u32>,
+    pub cost_bp: Option<f64>,
+    pub output: String,
+    pub timeout_ms: Option<u64>,
+}
+
 #[derive(Debug)]
 pub enum AppCommand {
     Tui(TuiShellRequest),
@@ -194,4 +206,5 @@ pub enum AppCommand {
     SignalEvaluate(SignalEvaluateRequest),
     PortfolioOptimize(PortfolioOptimizeRequest),
     RiskCheck(RiskCheckRequest),
+    WalkForward(WalkForwardRequest),
 }

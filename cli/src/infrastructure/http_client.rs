@@ -628,3 +628,55 @@ pub fn post_risk_check(
 
     parse_json(&body_text)
 }
+
+pub fn post_walk_forward_run(
+    server_url: &str,
+    start_date: &str,
+    end_date: &str,
+    warm_up_days: Option<u32>,
+    test_window_days: Option<u32>,
+    step_days: Option<u32>,
+    cost_bp: Option<f64>,
+    timeout_ms: u64,
+) -> Result<Value, AppError> {
+    let url = format!(
+        "{}/v1/walk-forward/run",
+        server_url.trim_end_matches('/')
+    );
+    let client = build_client(server_url, timeout_ms)?;
+
+    let warm_up_str = warm_up_days.map(|v| v.to_string());
+    let test_window_str = test_window_days.map(|v| v.to_string());
+    let step_str = step_days.map(|v| v.to_string());
+    let cost_str = cost_bp.map(|v| v.to_string());
+
+    let mut request = client.post(url).query(&[
+        ("start_date", start_date),
+        ("end_date", end_date),
+    ]);
+
+    if let Some(warm_up) = &warm_up_str {
+        request = request.query(&[("warm_up_days", warm_up.as_str())]);
+    }
+    if let Some(test_window) = &test_window_str {
+        request = request.query(&[("test_window_days", test_window.as_str())]);
+    }
+    if let Some(step) = &step_str {
+        request = request.query(&[("step_days", step.as_str())]);
+    }
+    if let Some(cost) = &cost_str {
+        request = request.query(&[("cost_bp", cost.as_str())]);
+    }
+
+    let response = request.send().map_err(AppError::HttpClient)?;
+
+    let status = response.status();
+    let body_text = response.text().map_err(AppError::HttpClient)?;
+    if !status.is_success() {
+        let body =
+            serde_json::from_str(&body_text).unwrap_or_else(|_| json!({ "raw_body": body_text }));
+        return Err(AppError::Upstream(status.as_u16(), body));
+    }
+
+    parse_json(&body_text)
+}

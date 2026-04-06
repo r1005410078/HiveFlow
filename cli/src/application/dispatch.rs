@@ -3,6 +3,7 @@ use crate::application::handlers::{
     data_symbol_names_sync, data_universe_sync, factor_optimize, factor_replay, pipeline_compare,
     pipeline_daily,
     portfolio_optimize, risk_check, signal_evaluate, signal_snapshot, task_list, task_progress,
+    walk_forward,
 };
 use crate::application::tui_app;
 use crate::application::requests::AppCommand;
@@ -31,5 +32,6 @@ pub fn run(command: AppCommand) -> Result<(), AppError> {
         AppCommand::SignalEvaluate(args) => signal_evaluate::handle(args),
         AppCommand::PortfolioOptimize(args) => portfolio_optimize::handle(args),
         AppCommand::RiskCheck(args) => risk_check::handle(args),
+        AppCommand::WalkForward(args) => walk_forward::handle(args),
     }
 }
