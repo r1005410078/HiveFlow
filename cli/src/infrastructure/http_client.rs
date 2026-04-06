@@ -668,7 +668,7 @@ pub fn post_execution_plan(
     timeout_ms: u64,
 ) -> Result<Value, AppError> {
     let url = format!(
-        "{}/v1/execution/plan",
+        "{}/api/v1/execution/plan",
         server_url.trim_end_matches('/')
     );
     let client = build_client(server_url, timeout_ms)?;

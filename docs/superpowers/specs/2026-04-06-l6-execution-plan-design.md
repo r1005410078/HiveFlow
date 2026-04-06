@@ -64,7 +64,7 @@ run_daily 在 L5.5 之后插入 L6：
 | `quant/src/application/execution/__init__.py` | package init |
 | `quant/src/application/execution/execution_service.py` | 核心服务：持仓读写 + 订单生成 |
 | `quant/src/interfaces/http/routes_execution.py` | HTTP 路由：POST /v1/execution/plan |
-| `quant/db/migrations/003_positions.sql` | positions 表 DDL |
+| `quant/db/migrations/0005_positions.sql` | positions 表 DDL |
 | `quant/tests/unit/test_execution_service.py` | 单元测试（mock bar_store + positions） |
 | `quant/tests/contract/test_http_execution.py` | 合约测试 |
 | `cli/src/cmd/execution.rs` | CLI 命令定义（clap Args） |
@@ -87,7 +87,7 @@ run_daily 在 L5.5 之后插入 L6：
 ## DB Schema
 
 ```sql
--- quant/db/migrations/003_positions.sql
+-- quant/db/migrations/0005_positions.sql
 CREATE TABLE IF NOT EXISTS positions (
     symbol        TEXT        NOT NULL,
     as_of         DATE        NOT NULL,

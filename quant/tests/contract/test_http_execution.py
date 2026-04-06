@@ -73,7 +73,7 @@ def test_post_execution_plan_ok() -> None:
     )
     try:
         resp = client.post(
-            "/v1/execution/plan",
+            "/api/v1/execution/plan",
             json={
                 "as_of": "2026-04-01",
                 "target_weights": {"600519.SH": 1.0},
@@ -98,7 +98,7 @@ def test_post_execution_plan_missing_weights_422() -> None:
     )
     try:
         resp = client.post(
-            "/v1/execution/plan",
+            "/api/v1/execution/plan",
             json={"as_of": "2026-04-01"},
         )
     finally:
@@ -115,7 +115,7 @@ def test_post_execution_plan_degraded_warning() -> None:
     )
     try:
         resp = client.post(
-            "/v1/execution/plan",
+            "/api/v1/execution/plan",
             json={"as_of": "2026-04-01", "target_weights": {"600519.SH": 1.0}},
         )
     finally:

@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from interfaces.http.dependencies import ExecutionPlanService, get_execution_service
 from interfaces.http.schemas import ExecutionPlanRequest
 
-router = APIRouter(prefix="/v1/execution", tags=["execution"])
+router = APIRouter(prefix="/api/v1/execution", tags=["execution"])
 
 
 @router.post(

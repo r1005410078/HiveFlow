@@ -22,7 +22,7 @@ def _now_iso() -> str:
 def _parse_bar_day(s: str) -> date:
     if "T" in s:
         return datetime.fromisoformat(s.replace("Z", "+00:00")).date()
-    return date.fromisoformat(s.split("T")[0])
+    return date.fromisoformat(s)
 
 
 def _weights_dict(target_weights: dict[str, float] | list[dict]) -> dict[str, float]:
@@ -223,7 +223,7 @@ def run_execution_plan(
             "message": "bar_store unavailable; close_price/quantity/limit_price set to null",
         })
 
-    notionals_to_save = {s: norm_w.get(s, 0.0) * notional for s in all_syms}
+    notionals_to_save = {s: n for s in all_syms if (n := norm_w.get(s, 0.0) * notional) > 0}
     if bar_store is not None and hasattr(bar_store, "upsert_positions_for_as_of"):
         try:
             bar_store.upsert_positions_for_as_of(as_of, notionals_to_save)
