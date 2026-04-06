@@ -114,6 +114,14 @@ pub struct DataMarketQueryRequest {
     pub timeout_ms: Option<u64>,
 }
 
+/// `hf doctor`：配置与 quant 可达性（不调用业务 API）。
+#[derive(Debug, Clone)]
+pub struct DoctorRequest {
+    pub output: String,
+    pub timeout_ms: Option<u64>,
+    pub sync_days: i32,
+}
+
 /// `hf tui`：全屏行情预览（无额外参数）
 #[derive(Debug, Clone, Default)]
 pub struct TuiShellRequest {}
@@ -229,6 +237,7 @@ pub struct WalkForwardRequest {
 
 #[derive(Debug)]
 pub enum AppCommand {
+    Doctor(DoctorRequest),
     Tui(TuiShellRequest),
     PipelineDaily(PipelineDailyRequest),
     PipelineCompare(PipelineCompareRequest),

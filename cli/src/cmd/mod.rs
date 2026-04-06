@@ -1,5 +1,6 @@
 pub mod config;
 pub mod data;
+pub mod doctor;
 pub mod execution;
 pub mod factor;
 pub mod monitor;
@@ -25,6 +26,8 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
+    /// 本机配置与 quant 服务连通性自检（GET /openapi.json）
+    Doctor(doctor::DoctorArgs),
     /// 全屏 TUI：instruments + bars（需 TTY）
     Tui(tui::TuiArgs),
     Pipeline(pipeline::PipelineArgs),
@@ -53,6 +56,7 @@ pub enum Commands {
 impl From<Cli> for AppCommand {
     fn from(cli: Cli) -> Self {
         match cli.command {
+            Commands::Doctor(args) => AppCommand::Doctor(args.into()),
             Commands::Tui(_) => AppCommand::Tui(Default::default()),
             Commands::Pipeline(args) => match args.command {
                 pipeline::PipelineSubcommand::Daily(daily) => {

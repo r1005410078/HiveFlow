@@ -1,8 +1,119 @@
+use std::io::{self, IsTerminal};
+
 use comfy_table::presets::UTF8_FULL;
-use comfy_table::{Cell, ContentArrangement, Table};
+use comfy_table::{Attribute, Cell, Color, ContentArrangement, Table};
 use serde_json::Value;
 
 use crate::error::AppError;
+
+fn doctor_use_color() -> bool {
+    std::env::var_os("NO_COLOR").is_none() && io::stdout().is_terminal()
+}
+
+#[derive(Clone, Copy)]
+enum DoctorValueTone {
+    Neutral,
+    Ok,
+    Warn,
+    Error,
+}
+
+impl DoctorValueTone {
+    fn as_fg(self) -> Option<Color> {
+        match self {
+            Self::Neutral => None,
+            Self::Ok => Some(Color::Green),
+            Self::Warn => Some(Color::Yellow),
+            Self::Error => Some(Color::Red),
+        }
+    }
+}
+
+fn doctor_hdr_cell(label: &str, color: bool) -> Cell {
+    let c = Cell::new(label);
+    if color {
+        c.fg(Color::Cyan).add_attribute(Attribute::Bold)
+    } else {
+        c
+    }
+}
+
+fn doctor_hdr_cell_error(label: &str, color: bool) -> Cell {
+    let c = Cell::new(label);
+    if color {
+        c.fg(Color::Red).add_attribute(Attribute::Bold)
+    } else {
+        c
+    }
+}
+
+fn doctor_key_cell(label: &str, color: bool) -> Cell {
+    let c = Cell::new(label);
+    if color {
+        c.fg(Color::DarkGrey)
+    } else {
+        c
+    }
+}
+
+fn doctor_val_cell(text: &str, tone: DoctorValueTone, color: bool) -> Cell {
+    let c = Cell::new(text);
+    if color {
+        if let Some(fg) = tone.as_fg() {
+            return c.fg(fg);
+        }
+    }
+    c
+}
+
+fn doctor_config_status_tone(raw: &str) -> DoctorValueTone {
+    match raw {
+        "ok" => DoctorValueTone::Ok,
+        "missing" | "read_error" | "parse_error" => DoctorValueTone::Error,
+        _ => DoctorValueTone::Warn,
+    }
+}
+
+fn doctor_banner(color: bool, status: &str, status_zh: &str) -> String {
+    const RESET: &str = "\x1b[0m";
+    const BOLD: &str = "\x1b[1m";
+    const CYAN: &str = "\x1b[36m";
+    const GREY: &str = "\x1b[90m";
+    const GREEN: &str = "\x1b[32m";
+    const YELLOW: &str = "\x1b[33m";
+    const RED: &str = "\x1b[31m";
+
+    let sep = "═".repeat(52);
+    if !color {
+        return format!(
+            "{sep}\n HiveFlow doctor      状态: {status_zh}  ({status})\n{sep}\n\n"
+        );
+    }
+    let line = format!("{GREY}{sep}{RESET}");
+    let status_paint = match status {
+        "ok" => GREEN,
+        "warning" => YELLOW,
+        "error" => RED,
+        _ => "",
+    };
+    let zh = if status_paint.is_empty() {
+        status_zh.to_string()
+    } else {
+        format!("{status_paint}{status_zh}{RESET}")
+    };
+    format!(
+        "{line}\n{BOLD}{CYAN} HiveFlow doctor{RESET}      状态: {zh}  ({GREY}{status}{RESET})\n{line}\n\n"
+    )
+}
+
+fn doctor_section_line(title: &str, color: bool) -> String {
+    if !color {
+        return format!("{title}\n");
+    }
+    const CYAN: &str = "\x1b[36m";
+    const RESET: &str = "\x1b[0m";
+    format!("{CYAN}{title}{RESET}\n")
+}
 
 fn truncate_middle(s: &str, head: usize, tail: usize) -> String {
     if s.len() <= head + tail + 1 {
@@ -1629,4 +1740,377 @@ pub fn render_experiment_config_get_table(payload: &Value) -> String {
     }
 
     format!("{table}\n")
+}
+
+fn doctor_message_line(v: &Value) -> String {
+    if let Some(s) = v.as_str() {
+        return s.to_string();
+    }
+    if let Some(o) = v.as_object() {
+        let code = as_str(o.get("code"));
+        let msg = as_str(o.get("message"));
+        if code.is_empty() {
+            return msg;
+        }
+        if msg.is_empty() {
+            return code;
+        }
+        return format!("{code} — {msg}");
+    }
+    v.to_string()
+}
+
+fn doctor_add_kv_table(
+    out: &mut String,
+    section: &str,
+    rows: Vec<(String, String, DoctorValueTone)>,
+    color: bool,
+) {
+    if rows.is_empty() {
+        return;
+    }
+    out.push_str(&doctor_section_line(section, color));
+    let mut table = Table::new();
+    table
+        .load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec![doctor_hdr_cell("项", color), doctor_hdr_cell("值", color)]);
+    for (k, v, tone) in rows {
+        table.add_row(vec![
+            doctor_key_cell(&k, color),
+            doctor_val_cell(&v, tone, color),
+        ]);
+    }
+    out.push_str(&table.to_string());
+    out.push('\n');
+}
+
+fn doctor_json_u64(v: Option<&Value>) -> u64 {
+    v.and_then(|x| {
+        x.as_u64()
+            .or_else(|| x.as_i64().map(|i| i.max(0) as u64))
+    })
+    .unwrap_or(0)
+}
+
+/// `hf doctor` 终端表格（`--output table`）。
+pub fn render_doctor_table(env: &Value) -> String {
+    let color = doctor_use_color();
+    let status = env.get("status").and_then(Value::as_str).unwrap_or("?");
+    let status_zh = match status {
+        "ok" => "正常",
+        "warning" => "需关注",
+        "error" => "失败",
+        _ => status,
+    };
+
+    let mut out = String::new();
+    out.push_str(&doctor_banner(color, status, status_zh));
+
+    let Some(d) = env.get("data").and_then(Value::as_object) else {
+        if color {
+            out.push_str("\x1b[90m(无 data)\x1b[0m\n");
+        } else {
+            out.push_str("(无 data)\n");
+        }
+        return out;
+    };
+
+    let path = as_str(d.get("config_path"));
+    let path_disp = truncate_middle(&path, 36, 12);
+    let cfg_status = as_str(d.get("config_status"));
+    let cfg_tone = doctor_config_status_tone(&cfg_status);
+    let mut cfg_rows: Vec<(String, String, DoctorValueTone)> = vec![
+        (
+            "配置文件".to_string(),
+            path_disp,
+            DoctorValueTone::Neutral,
+        ),
+        ("配置状态".to_string(), cfg_status, cfg_tone),
+    ];
+    if let Some(u) = d.get("server_url").and_then(Value::as_str) {
+        if !u.is_empty() {
+            cfg_rows.push((
+                "server_url".to_string(),
+                u.to_string(),
+                DoctorValueTone::Neutral,
+            ));
+        }
+    }
+    if let Some(tv) = d.get("timeout_ms") {
+        if !tv.is_null() {
+            cfg_rows.push((
+                "timeout_ms".to_string(),
+                format!("{}", doctor_json_u64(Some(tv))),
+                DoctorValueTone::Neutral,
+            ));
+        }
+    }
+    if let Some(rv) = d.get("retry") {
+        if !rv.is_null() {
+            cfg_rows.push((
+                "retry".to_string(),
+                format!("{}", doctor_json_u64(Some(rv))),
+                DoctorValueTone::Neutral,
+            ));
+        }
+    }
+    doctor_add_kv_table(&mut out, "── 本机配置 ──", cfg_rows, color);
+
+    let skipped = d.get("probe_skipped").and_then(Value::as_bool).unwrap_or(true);
+    let mut conn_rows: Vec<(String, String, DoctorValueTone)> = Vec::new();
+    if skipped {
+        conn_rows.push((
+            "OpenAPI 探测".to_string(),
+            "已跳过（请先修复配置文件）".to_string(),
+            DoctorValueTone::Warn,
+        ));
+    } else if let Some(url) = d.get("server_probe_url").and_then(Value::as_str) {
+        let ok = d
+            .get("server_reachable")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let st = d
+            .get("server_http_status")
+            .filter(|v| !v.is_null())
+            .map(|v| doctor_json_u64(Some(v)).to_string())
+            .unwrap_or_else(|| "—".to_string());
+        let detail = if ok {
+            format!("可达  HTTP {st}")
+        } else {
+            let err = d
+                .get("server_error")
+                .and_then(Value::as_str)
+                .unwrap_or("未知错误");
+            format!("不可达  HTTP {st}  ({err})")
+        };
+        conn_rows.push((
+            "探测 URL".to_string(),
+            url.to_string(),
+            DoctorValueTone::Neutral,
+        ));
+        conn_rows.push((
+            "quant 服务".to_string(),
+            detail,
+            if ok {
+                DoctorValueTone::Ok
+            } else {
+                DoctorValueTone::Error
+            },
+        ));
+    }
+    doctor_add_kv_table(&mut out, "── 服务连通 (OpenAPI) ──", conn_rows, color);
+
+    if let Some(q) = d.get("quant").and_then(Value::as_object) {
+        let mut agg: Vec<(String, String, DoctorValueTone)> = Vec::new();
+        agg.push((
+            "producer".to_string(),
+            as_str(q.get("producer_version")),
+            DoctorValueTone::Neutral,
+        ));
+
+        if let Some(db) = q.get("db").and_then(Value::as_object) {
+            let dr = db.get("reachable").and_then(Value::as_bool).unwrap_or(false);
+            let err = db.get("error").and_then(Value::as_str).unwrap_or("");
+            let db_line = if dr {
+                "可达".to_string()
+            } else if err.is_empty() {
+                "不可达".to_string()
+            } else {
+                format!("不可达  ({err})")
+            };
+            agg.push((
+                "数据库".to_string(),
+                db_line,
+                if dr {
+                    DoctorValueTone::Ok
+                } else {
+                    DoctorValueTone::Error
+                },
+            ));
+        }
+
+        if let Some(sy) = q.get("sync").and_then(Value::as_object) {
+            let wd = doctor_json_u64(sy.get("window_days"));
+            let nr = doctor_json_u64(sy.get("runs_returned"));
+            let wr = sy.get("has_running").and_then(Value::as_bool).unwrap_or(false);
+            agg.push((
+                "同步任务".to_string(),
+                format!(
+                    "近 {wd} 天共 {nr} 条记录  ·  有运行中: {}",
+                    if wr { "是" } else { "否" }
+                ),
+                if wr {
+                    DoctorValueTone::Warn
+                } else {
+                    DoctorValueTone::Neutral
+                },
+            ));
+            if let Some(bs) = sy.get("by_status").and_then(Value::as_object) {
+                let mut parts: Vec<String> = bs
+                    .iter()
+                    .filter_map(|(k, v)| {
+                        let n = doctor_json_u64(Some(v));
+                        Some(format!("{k}={n}"))
+                    })
+                    .collect();
+                parts.sort();
+                if !parts.is_empty() {
+                    agg.push((
+                        "按状态统计".to_string(),
+                        parts.join("  ·  "),
+                        DoctorValueTone::Neutral,
+                    ));
+                }
+            }
+            if let Some(latest) = sy.get("latest").and_then(Value::as_object) {
+                let st = as_str(latest.get("status"));
+                let ed = as_str(latest.get("end_date"));
+                let tf = as_str(latest.get("timeframe"));
+                let esc = if latest.get("effective_symbols_count").is_some() {
+                    doctor_json_u64(latest.get("effective_symbols_count")).to_string()
+                } else {
+                    "—".to_string()
+                };
+                let wr = if latest.get("written_rows").is_some() {
+                    doctor_json_u64(latest.get("written_rows")).to_string()
+                } else {
+                    "—".to_string()
+                };
+                let st_lower = st.to_ascii_lowercase();
+                let latest_tone = if st_lower == "success" || st_lower == "ok" {
+                    DoctorValueTone::Ok
+                } else if st_lower == "running" || st_lower == "pending" {
+                    DoctorValueTone::Warn
+                } else if st.is_empty() {
+                    DoctorValueTone::Neutral
+                } else {
+                    DoctorValueTone::Error
+                };
+                agg.push((
+                    "最近一条".to_string(),
+                    format!("{st}  ·  end_date={ed}  ·  {tf}  ·  标的≈{esc}  ·  rows={wr}"),
+                    latest_tone,
+                ));
+            }
+        }
+
+        if let Some(po) = q.get("positions").and_then(Value::as_object) {
+            let snap = as_str(po.get("snapshot_as_of"));
+            let snap_disp = if snap.is_empty() { "—".to_string() } else { snap };
+            let cnt = doctor_json_u64(po.get("symbol_count"));
+            let tn = po
+                .get("total_notional")
+                .and_then(Value::as_f64)
+                .map(|x| {
+                    if x >= 1_000_000.0 {
+                        format!("{:.2} M", x / 1_000_000.0)
+                    } else if x >= 1_000.0 {
+                        format!("{:.2} K", x / 1_000.0)
+                    } else {
+                        format!("{x:.2}")
+                    }
+                })
+                .unwrap_or_else(|| "0".to_string());
+            let hp = po.get("has_positions").and_then(Value::as_bool).unwrap_or(false);
+            let perr = po.get("error").and_then(Value::as_str).unwrap_or("");
+            let pos_line = if !perr.is_empty() {
+                format!("查询异常: {perr}")
+            } else {
+                format!(
+                    "截面 {snap_disp}  ·  {cnt} 只标的  ·  合计名义 {tn}  ·  有仓: {}",
+                    if hp { "是" } else { "否" }
+                )
+            };
+            agg.push((
+                "持仓快照".to_string(),
+                pos_line,
+                if !perr.is_empty() {
+                    DoctorValueTone::Error
+                } else {
+                    DoctorValueTone::Neutral
+                },
+            ));
+        }
+
+        doctor_add_kv_table(
+            &mut out,
+            "── 服务端聚合 (/v1/system/doctor) ──",
+            agg,
+            color,
+        );
+    } else {
+        out.push_str(&doctor_section_line(
+            "── 服务端聚合 (/v1/system/doctor) ──",
+            color,
+        ));
+        let mut t = Table::new();
+        t.load_preset(UTF8_FULL)
+            .set_content_arrangement(ContentArrangement::Dynamic)
+            .set_header(vec![doctor_hdr_cell("项", color), doctor_hdr_cell("值", color)])
+            .add_row(vec![
+                doctor_key_cell("状态", color),
+                doctor_val_cell(
+                    "未获取（见下方警告/错误）",
+                    DoctorValueTone::Warn,
+                    color,
+                ),
+            ]);
+        out.push_str(&t.to_string());
+        out.push('\n');
+    }
+
+    let ver = as_str(d.get("cli_version"));
+    if !ver.is_empty() {
+        doctor_add_kv_table(
+            &mut out,
+            "── CLI ──",
+            vec![("hf-cli 版本".to_string(), ver, DoctorValueTone::Neutral)],
+            color,
+        );
+    }
+
+    if let Some(warns) = env.get("warnings").and_then(Value::as_array) {
+        if !warns.is_empty() {
+            out.push_str(&doctor_section_line("── 警告 ──", color));
+            let mut wt = Table::new();
+            wt.load_preset(UTF8_FULL)
+                .set_content_arrangement(ContentArrangement::Dynamic)
+                .set_header(vec![
+                    doctor_hdr_cell("#", color),
+                    doctor_hdr_cell("说明", color),
+                ]);
+            for (i, w) in warns.iter().enumerate() {
+                wt.add_row(vec![
+                    doctor_key_cell(&(i + 1).to_string(), color),
+                    doctor_val_cell(&doctor_message_line(w), DoctorValueTone::Warn, color),
+                ]);
+            }
+            out.push_str(&wt.to_string());
+            out.push('\n');
+        }
+    }
+
+    if let Some(errs) = env.get("errors").and_then(Value::as_array) {
+        if !errs.is_empty() {
+            out.push_str(&doctor_section_line("── 错误 ──", color));
+            let mut et = Table::new();
+            et.load_preset(UTF8_FULL)
+                .set_content_arrangement(ContentArrangement::Dynamic)
+                .set_header(vec![
+                    doctor_hdr_cell_error("#", color),
+                    doctor_hdr_cell_error("说明", color),
+                ]);
+            for (i, e) in errs.iter().enumerate() {
+                et.add_row(vec![
+                    doctor_key_cell(&(i + 1).to_string(), color),
+                    doctor_val_cell(&doctor_message_line(e), DoctorValueTone::Error, color),
+                ]);
+            }
+            out.push_str(&et.to_string());
+            out.push('\n');
+        }
+    }
+
+    out
 }

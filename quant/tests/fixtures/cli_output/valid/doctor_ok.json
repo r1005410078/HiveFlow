@@ -1,0 +1,52 @@
+{
+  "schema_version": "1.0.0",
+  "command": "hf doctor",
+  "run_id": "doctor_fixture_ok",
+  "status": "ok",
+  "generated_at": "2026-04-06T12:00:00+00:00",
+  "source": "system",
+  "advice_only": false,
+  "decision_weight": 1,
+  "data": {
+    "config_path": "/Users/example/.hiveflow/config.toml",
+    "config_status": "ok",
+    "probe_skipped": false,
+    "server_url": "http://127.0.0.1:8000",
+    "timeout_ms": 10000,
+    "retry": 1,
+    "server_probe_url": "http://127.0.0.1:8000/openapi.json",
+    "server_reachable": true,
+    "server_http_status": 200,
+    "server_error": null,
+    "cli_version": "0.1.0",
+    "quant": {
+      "producer_version": "quant-system-doctor-v1",
+      "db": { "reachable": true, "error": null },
+      "sync": {
+        "window_days": 7,
+        "runs_returned": 2,
+        "by_status": { "success": 2 },
+        "latest": {
+          "run_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+          "status": "success",
+          "started_at": "2026-04-01T00:00:00+00:00",
+          "finished_at": "2026-04-01T01:00:00+00:00",
+          "timeframe": "1d",
+          "effective_symbols_count": 28,
+          "written_rows": 100,
+          "end_date": "2026-04-01"
+        },
+        "has_running": false
+      },
+      "positions": {
+        "snapshot_as_of": "2026-04-01",
+        "symbol_count": 2,
+        "total_notional": 150000.0,
+        "has_positions": true,
+        "error": null
+      }
+    }
+  },
+  "warnings": [],
+  "errors": []
+}

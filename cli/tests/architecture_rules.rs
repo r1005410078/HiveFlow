@@ -26,6 +26,7 @@ fn cmd_layer_must_not_import_infrastructure() {
     let cmd_files = [
         "cmd/config.rs",
         "cmd/data.rs",
+        "cmd/doctor.rs",
         "cmd/execution.rs",
         "cmd/pipeline.rs",
         "cmd/factor.rs",

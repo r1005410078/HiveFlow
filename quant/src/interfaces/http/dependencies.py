@@ -14,6 +14,8 @@ from application.pretrade.pretrade_service import run_pretrade_check
 from application.risk.risk_gate_service import run_risk_check
 from application.signal.signal_evaluate_service import run_signal_evaluation
 from application.signal.signal_engineering_service import run_signal_snapshot
+from application.contracts.cli_output import ok_output
+from application.system.doctor_service import run_system_doctor
 from application.walk_forward_service import run_walk_forward
 from application.market_data.bars_query_service import BarsQueryService
 from application.market_data.coverage_service import get_coverage
@@ -49,6 +51,7 @@ ExecutionPlanService = Callable[..., dict]
 ExperimentConfigSnapshotFn = Callable[[str], dict]
 ExperimentConfigListFn = Callable[[str | None, int], dict]
 ExperimentConfigGetFn = Callable[[str], dict]
+SystemDoctorEnvelopeFn = Callable[[int], dict]
 
 
 def get_daily_run_service() -> DailyRunService:
@@ -529,6 +532,19 @@ def _try_read_bar_store_optional() -> TimescaleBarStore | None:
 def get_market_data_instruments_list_service() -> MarketDataInstrumentsListService:
     store = _try_read_bar_store_optional()
     return InstrumentsListService(bar_store=store).list_instruments
+
+
+def get_system_doctor_envelope() -> SystemDoctorEnvelopeFn:
+    """Provider: `GET /v1/system/doctor` → full CLI envelope (`data` = quant aggregate)."""
+    from uuid import uuid4
+
+    store = _try_read_bar_store_optional()
+
+    def _envelope(sync_days: int) -> dict:
+        payload = run_system_doctor(bar_store=store, sync_days=sync_days)
+        return ok_output("hf doctor", str(uuid4()), payload)
+
+    return _envelope
 
 
 # ── async sync worker factories ───────────────────────────────

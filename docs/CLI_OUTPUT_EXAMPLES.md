@@ -1015,3 +1015,13 @@ hf config get --config-id a1b2c3d4-e5f6-7890-abcd-ef1234567890
 `hf config list` — `data.configs` 为快照摘要列表（`config_id`、`params_count`、`note`、`created_at`、`layers`）。
 
 `hf config get` — `data.params` 为 `{layer, param_key, param_value}` 数组；未知 `config_id` 时 `status=error`、`errors[].code=CONFIG_NOT_FOUND`。
+
+## hf doctor（本机 + 服务端聚合）
+
+```bash
+hf doctor
+hf doctor --output json
+hf doctor --sync-days 14
+```
+
+`command` 为 `hf doctor`。先检查 `~/.hiveflow/config.toml` 与 `GET {server_url}/openapi.json`；**在 OpenAPI 可达后**再请求 **`GET /v1/system/doctor?sync_days=N`**，将服务端返回的 `data` 合并入 CLI 输出的 **`data.quant`**（`db` / `sync` / `positions` 摘要）。`data.quant` 在跳过探测或聚合失败时可为 `null`，并可能带 `CLI_DOCTOR_AGGREGATE_FAILED`、`CLI_DOCTOR_DB_UNAVAILABLE` 等 `warnings`。配置失败时 `status=error`；仅 OpenAPI 不可达时 `status=warning`。详见 `docs/superpowers/specs/2026-04-06-cli-doctor-design.md`。

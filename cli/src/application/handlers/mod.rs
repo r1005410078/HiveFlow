@@ -5,6 +5,7 @@ pub mod data_coverage;
 pub mod data_market_query;
 pub mod data_sync;
 pub mod data_sync_cancel;
+pub mod doctor;
 pub mod data_sync_retry_failed;
 pub mod data_symbol_names_sync;
 pub mod data_universe_sync;

@@ -546,6 +546,157 @@
     {
       "if": {
         "properties": {
+          "command": { "const": "hf doctor" }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "config_path",
+              "config_status",
+              "probe_skipped",
+              "server_url",
+              "timeout_ms",
+              "retry",
+              "server_probe_url",
+              "server_reachable",
+              "server_http_status",
+              "server_error",
+              "cli_version",
+              "quant"
+            ],
+            "properties": {
+              "config_path": { "type": "string", "minLength": 1 },
+              "config_status": {
+                "type": "string",
+                "enum": ["ok", "missing", "read_error", "parse_error"]
+              },
+              "probe_skipped": { "type": "boolean" },
+              "server_url": {
+                "oneOf": [
+                  { "type": "string", "minLength": 1 },
+                  { "type": "null" }
+                ]
+              },
+              "timeout_ms": {
+                "oneOf": [
+                  { "type": "integer", "minimum": 0 },
+                  { "type": "null" }
+                ]
+              },
+              "retry": {
+                "oneOf": [
+                  { "type": "integer", "minimum": 0 },
+                  { "type": "null" }
+                ]
+              },
+              "server_probe_url": {
+                "oneOf": [
+                  { "type": "string", "minLength": 1 },
+                  { "type": "null" }
+                ]
+              },
+              "server_reachable": { "type": "boolean" },
+              "server_http_status": {
+                "oneOf": [
+                  { "type": "integer", "minimum": 100, "maximum": 599 },
+                  { "type": "null" }
+                ]
+              },
+              "server_error": {
+                "oneOf": [
+                  { "type": "string", "minLength": 1 },
+                  { "type": "null" }
+                ]
+              },
+              "cli_version": { "type": "string", "minLength": 1 },
+              "quant": {
+                "oneOf": [
+                  { "type": "null" },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["producer_version", "db", "sync", "positions"],
+                    "properties": {
+                      "producer_version": { "type": "string", "minLength": 1 },
+                      "db": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["reachable", "error"],
+                        "properties": {
+                          "reachable": { "type": "boolean" },
+                          "error": { "type": ["string", "null"] }
+                        }
+                      },
+                      "sync": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "window_days",
+                          "runs_returned",
+                          "by_status",
+                          "latest",
+                          "has_running"
+                        ],
+                        "properties": {
+                          "window_days": { "type": "integer", "minimum": 0 },
+                          "runs_returned": { "type": "integer", "minimum": 0 },
+                          "by_status": {
+                            "type": "object",
+                            "additionalProperties": { "type": "integer", "minimum": 0 }
+                          },
+                          "latest": {
+                            "oneOf": [
+                              { "type": "null" },
+                              { "type": "object", "additionalProperties": true }
+                            ]
+                          },
+                          "has_running": { "type": "boolean" }
+                        }
+                      },
+                      "positions": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "snapshot_as_of",
+                          "symbol_count",
+                          "total_notional",
+                          "has_positions",
+                          "error"
+                        ],
+                        "properties": {
+                          "snapshot_as_of": {
+                            "oneOf": [
+                              { "type": "string", "minLength": 1 },
+                              { "type": "null" }
+                            ]
+                          },
+                          "symbol_count": { "type": "integer", "minimum": 0 },
+                          "total_notional": { "type": "number" },
+                          "has_positions": { "type": "boolean" },
+                          "error": {
+                            "oneOf": [
+                              { "type": "string", "minLength": 1 },
+                              { "type": "null" }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
           "source": { "enum": ["system", "news_system"] }
         }
       },

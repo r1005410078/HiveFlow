@@ -573,8 +573,8 @@ class TimescaleBarStore:
         has_more = len(sym_rows) > limit
         return sym_rows[:limit], has_more
 
-    def get_positions_snapshot(self, as_of: str) -> dict[str, float]:
-        """Latest snapshot date ``<= as_of`` (table-wide max), then all rows on that date."""
+    def get_positions_detail(self, as_of: str) -> dict:
+        """Latest snapshot date ``<= as_of`` and notionals on that date."""
         cur = self._conn.cursor()
         try:
             cur.execute(
@@ -584,14 +584,20 @@ class TimescaleBarStore:
             row = cur.fetchone()
             snap = row[0] if row else None
             if snap is None:
-                return {}
+                return {"snapshot_as_of": None, "notionals": {}}
+            snap_s = snap.isoformat() if hasattr(snap, "isoformat") else str(snap)
             cur.execute(
                 "select symbol, notional from positions where as_of = %s::date",
                 [snap],
             )
-            return {r[0]: float(r[1]) for r in cur.fetchall()}
+            notionals = {r[0]: float(r[1]) for r in cur.fetchall()}
+            return {"snapshot_as_of": snap_s, "notionals": notionals}
         finally:
             cur.close()
+
+    def get_positions_snapshot(self, as_of: str) -> dict[str, float]:
+        """Latest snapshot date ``<= as_of`` (table-wide max), then all rows on that date."""
+        return dict(self.get_positions_detail(as_of)["notionals"])
 
     def upsert_positions_for_as_of(self, as_of: str, notionals: dict[str, float]) -> None:
         if not notionals:

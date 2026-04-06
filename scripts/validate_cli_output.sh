@@ -97,6 +97,36 @@ jq -e '
         (.data.run_daily_warnings | type == "array")
       end
     )
+  elif .command == "hf doctor" then
+    (.data | type == "object") and
+    (.data | has("config_path")) and
+    (.data | has("config_status")) and
+    (.data | has("probe_skipped")) and
+    (.data | has("server_url")) and
+    (.data | has("timeout_ms")) and
+    (.data | has("retry")) and
+    (.data | has("server_probe_url")) and
+    (.data | has("server_reachable")) and
+    (.data | has("server_http_status")) and
+    (.data | has("server_error")) and
+    (.data | has("cli_version")) and
+    (.data | has("quant")) and
+    (.data.config_status | type == "string" and IN("ok","missing","read_error","parse_error")) and
+    (.data.probe_skipped | type == "boolean") and
+    (.data.server_reachable | type == "boolean") and
+    (
+      (.data.quant == null) or
+      (
+        (.data.quant | type == "object") and
+        (.data.quant | has("producer_version")) and
+        (.data.quant | has("db")) and
+        (.data.quant | has("sync")) and
+        (.data.quant | has("positions")) and
+        (.data.quant.db | has("reachable")) and
+        (.data.quant.sync | has("runs_returned")) and
+        (.data.quant.positions | has("has_positions"))
+      )
+    )
   else
     true
   end

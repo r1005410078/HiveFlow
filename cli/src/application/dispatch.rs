@@ -1,12 +1,9 @@
 use crate::application::handlers::{
     config,
     data_bars, data_coverage, data_market_query, data_sync, data_sync_cancel, data_sync_retry_failed,
-    data_symbol_names_sync, data_universe_sync,     factor_optimize, factor_replay, monitor, pipeline_compare,
-    pipeline_daily,
-    execution_plan, portfolio_optimize, pretrade_check, risk_check, signal_evaluate, signal_snapshot,
-    task_list,
-    task_progress,
-    walk_forward,
+    data_symbol_names_sync, data_universe_sync, doctor, factor_optimize, factor_replay, monitor,
+    pipeline_compare, pipeline_daily, execution_plan, portfolio_optimize, pretrade_check, risk_check,
+    signal_evaluate, signal_snapshot, task_list, task_progress, walk_forward,
 };
 use crate::application::tui_app;
 use crate::application::requests::AppCommand;
@@ -14,6 +11,7 @@ use crate::error::AppError;
 
 pub fn run(command: AppCommand) -> Result<(), AppError> {
     match command {
+        AppCommand::Doctor(args) => doctor::handle(args),
         AppCommand::Tui(_) => tui_app::run_tui_shell(),
         AppCommand::PipelineDaily(args) => pipeline_daily::handle(args),
         AppCommand::PipelineCompare(args) => pipeline_compare::handle(args),

@@ -175,6 +175,7 @@ cd cli && cargo run -- monitor health-report --as-of YYYY-MM-DD --output table
 - `GET /api/v1/experiment/configs/{config_id}`：G2 快照明细（CLI：`hf config get`）
 - `POST /v1/walk-forward/run`：L7 walk-forward 回测（CLI：`hf walk-forward run`）
 - `GET /v1/monitor/health-report`：L8 因子/信号/风控健康报告（CLI：`hf monitor health-report`）
+- `GET /v1/system/doctor`：系统只读自检聚合（DB / sync_runs / positions，CLI：`hf doctor` 在 OpenAPI 探测成功后拉取并写入 `data.quant`）
 
 ### 7.7 当前健康状态
 
@@ -230,23 +231,83 @@ cd cli && cargo run -- monitor health-report --as-of YYYY-MM-DD --output table
 - **L8 健康报告**：`GET /v1/monitor/health-report?as_of=DATE` + `hf monitor health-report --as-of DATE [--output json|table]`；消费 `run_daily` 的 L2~L5 输出聚合 factor/signal/risk 健康度与总评；详见 `docs/CLI_OUTPUT_EXAMPLES.md` 与 `docs/superpowers/specs/2026-04-06-l8-monitor-health-report-design.md`
 - **L1 异步同步**：`hf data sync` 提交→202→**默认** stderr 提示 + stdout JSON（含 run_id）；**`hf task progress`**（别名 `hf task status`）查看运行中进度，**`--watch`** 轮询至终态（与 **`--wait`** 同类）；任务列表 **`hf task list`**（别名 `hf task sync-runs`）；取消/重试 **`hf task cancel` / `hf task retry-failed`**（与 `hf data sync-cancel`、`hf data sync-retry-failed` 等价）；近窗 K 线 **`hf data query`** → `GET /v1/market-data/bars`（默认 TUI 分页）；失败队列自动重试（MAX_SYMBOL_ATTEMPTS=3）+ 审计表 `sync_run_symbol_failures`；startup 孤儿 run 收口为 `interrupted`；Provider 无行返回且无异常时 run 可为 **`success` + `error_code: NO_DATA_RETURNED`**；`sync_runs.effective_symbols_count` finalize 写库 + 读取 **enrich** 与 `progress` 一致；本地仅清 L1 表 **`make db-clear-l1`**（破坏性）
 
-## 8. Superpowers 工作流（指引）
+## 8. Superpowers 开发流程
 
-本仓库使用 Superpowers 技能辅助开发。以下为建议流程，非琐碎修改（typo、单行修复）时参考执行。
+本仓库使用 Superpowers 技能辅助 AI agent 开发。以下是开发流程说明。
 
-### 8.1 建议流程
+### 8.1 流程总览
 
-| 场景 | 建议技能 |
+| 技能名 | 触发时机 | 说明 |
+|---|---|---|
+| `brainstorming` | 新功能、方案未定、需要探索设计空间 | 探索用户意图、需求与设计方案，**必须在写代码之前** |
+| `writing-plans` | 有 spec/需求，需要拆解为多步骤实现 | 生成分步实现计划，含关键文件、依赖关系、检查点 |
+| `executing-plans` | 已有书面计划，开始实现 | 按计划分步执行，含 review checkpoint |
+| `systematic-debugging` | 遇到 bug、测试失败、行为异常 | 先定位根因再修复，**禁止跳过诊断直接改代码** |
+| `test-driven-development` | 实现功能或修复 bug | 先写测试再写实现 |
+| `verification-before-completion` | 即将宣称完成/修好/通过 | 必须运行验证命令并确认输出，**证据先于断言** |
+| `subagent-driven-development` | 计划中有 2+ 独立任务可并行 | 派发子 agent 并行执行无依赖任务 |
+| `dispatching-parallel-agents` | 同上，侧重并行调度 | 当多个任务无共享状态或顺序依赖时使用 |
+| `using-git-worktrees` | 跨多文件/多层较大改动需隔离 | 在 `.worktrees/` 建隔离工作区，避免污染当前分支 |
+| `finishing-a-development-branch` | 实现完成、测试通过、准备合并 | 引导选择 merge/PR/cleanup 路径 |
+| `requesting-code-review` | 完成任务或重大功能、合并前 | 验证工作是否满足需求 |
+| `receiving-code-review` | 收到 code review 反馈 | 技术验证反馈，非盲从实现 |
+| `writing-skills` | 创建/编辑 Superpowers 技能 | 确保技能格式正确、可部署 |
+| `simplify` | 代码变更后 | 审查变更代码的复用、质量、效率 |
+
+### 8.2 标准工作流
+
+典型的功能开发全流程：
+
+```
+用户需求
+  │
+  ▼
+brainstorming          ← 探索需求、确认方案
+  │
+  ▼
+writing-plans          ← 拆解为分步计划
+  │
+  ▼
+[设计 spec]            ← 影响契约/API 时写 spec（见 §8.4）
+  │
+  ▼
+executing-plans        ← 按计划分步实现
+  │  ├─ test-driven-development  ← 每步先测试后实现
+  │  └─ subagent-driven-development  ← 独立任务并行
+  │
+  ▼
+verification-before-completion  ← make check 必须通过
+  │
+  ▼
+finishing-a-development-branch  ← merge / PR / cleanup
+```
+
+简单修复（单文件 bug fix、typo）可跳过 brainstorming/writing-plans，但 `verification-before-completion` 不可跳过。
+
+### 8.3 场景速查
+
+| 场景 | 流程 |
 |---|---|
-| 新功能 / 方案未定 | `brainstorming` → 确认后实现 |
-| 缺陷 / 测试失败 | `systematic-debugging` → 定位根因再改 |
-| 多步骤实现 | 考虑用 `writing-plans` 拆解 |
-| 宣称完成前 | `make check` 门禁必须通过 |
+| 新功能 / 方案未定 | `brainstorming` → `writing-plans` → `executing-plans` → `verification` |
+| 缺陷 / 测试失败 | `systematic-debugging` → 定位根因 → `test-driven-development` → `verification` |
+| 多步骤实现（已有计划） | `executing-plans` → `verification` |
+| 宣称完成前 | `verification-before-completion`（`make check` 门禁必须通过） |
+| 大型跨层改动 | `using-git-worktrees` → 隔离工作区中执行上述流程 |
+| 完成后合并 | `finishing-a-development-branch` |
 
-### 8.2 设计文档
+### 8.4 设计文档
 
 影响契约/存储/对外 API 的**新功能**，建议先写设计 spec 到 `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`，经确认后再编码。
 
-### 8.3 Git worktree
+### 8.5 Git worktree
 
 跨多文件/多层的较大改动，建议在 `.worktrees/` 下建立隔离工作区。单文件修复或用户明确要求在当前 workspace 操作时不需要。
+
+### 8.6 关键纪律
+
+- **技能检查先于一切行动**：收到任务后先判断是否有适用技能，哪怕只有 1% 可能也应调用检查
+- **brainstorming 先于实现**：任何创造性工作（新功能、新组件、行为修改）必须先 brainstorm
+- **debugging 先于修复**：遇到 bug 必须先诊断，禁止"先改改看"
+- **证据先于断言**：宣称"已修复/已通过"前必须有命令输出证据
+- **刚性技能不可变通**：TDD、debugging、verification 是刚性流程，不因"简单"而跳过
+- **柔性技能可适配**：brainstorming、writing-plans 等可根据任务复杂度调整深度

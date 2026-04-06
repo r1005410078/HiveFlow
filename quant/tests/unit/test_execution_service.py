@@ -22,6 +22,12 @@ class _MockBarStore:
         del as_of
         return dict(self.positions)
 
+    def get_positions_detail(self, as_of: str) -> dict:
+        del as_of
+        if not self.positions:
+            return {"snapshot_as_of": None, "notionals": {}}
+        return {"snapshot_as_of": "2026-01-01", "notionals": dict(self.positions)}
+
     def list_bars(self, **kwargs: object) -> list[dict]:
         del kwargs
         return self.rows

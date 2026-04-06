@@ -753,6 +753,31 @@ pub fn post_walk_forward_run(
     parse_json(&body_text)
 }
 
+pub fn get_system_doctor(
+    server_url: &str,
+    sync_days: i32,
+    timeout_ms: u64,
+) -> Result<Value, AppError> {
+    let url = format!("{}/v1/system/doctor", server_url.trim_end_matches('/'));
+    let client = build_client(server_url, timeout_ms)?;
+    let sd = sync_days.to_string();
+    let response = client
+        .get(url)
+        .query(&[("sync_days", sd.as_str())])
+        .send()
+        .map_err(AppError::HttpClient)?;
+
+    let status = response.status();
+    let body_text = response.text().map_err(AppError::HttpClient)?;
+    if !status.is_success() {
+        let body =
+            serde_json::from_str(&body_text).unwrap_or_else(|_| json!({ "raw_body": body_text }));
+        return Err(AppError::Upstream(status.as_u16(), body));
+    }
+
+    parse_json(&body_text)
+}
+
 pub fn get_health_report(
     server_url: &str,
     as_of: &str,
@@ -865,4 +890,47 @@ pub fn get_experiment_config_detail(
         return Ok(v);
     }
     Err(AppError::Upstream(status, v))
+}
+
+/// `GET {server_url}/openapi.json`（FastAPI 默认暴露，用于 CLI 侧轻量连通性探测）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpenapiProbeOutcome {
+    pub reachable: bool,
+    pub http_status: Option<u16>,
+    pub error_message: Option<String>,
+}
+
+pub fn probe_openapi_json(server_url: &str, timeout_ms: u64) -> OpenapiProbeOutcome {
+    let base = server_url.trim_end_matches('/');
+    let url = format!("{base}/openapi.json");
+    let client = match build_client(server_url, timeout_ms) {
+        Ok(c) => c,
+        Err(e) => {
+            return OpenapiProbeOutcome {
+                reachable: false,
+                http_status: None,
+                error_message: Some(format!("http client: {e}")),
+            };
+        }
+    };
+    match client.get(url).send() {
+        Ok(resp) => {
+            let status = resp.status().as_u16();
+            let ok = status == 200;
+            OpenapiProbeOutcome {
+                reachable: ok,
+                http_status: Some(status),
+                error_message: if ok {
+                    None
+                } else {
+                    Some(format!("HTTP {status}"))
+                },
+            }
+        }
+        Err(e) => OpenapiProbeOutcome {
+            reachable: false,
+            http_status: None,
+            error_message: Some(e.to_string()),
+        },
+    }
 }

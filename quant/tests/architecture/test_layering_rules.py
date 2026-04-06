@@ -168,6 +168,19 @@ def test_application_execution_does_not_import_interfaces():
     assert not violations, f"application.execution must not import interfaces: {violations}"
 
 
+def test_application_system_does_not_import_interfaces():
+    """application.system 禁止依赖 interfaces 层"""
+    system_dir = APP_DIR / "system"
+    if not system_dir.exists():
+        return
+    violations: list[str] = []
+    for py in system_dir.rglob("*.py"):
+        imports = _imports(py)
+        if any(name == "interfaces" or name.startswith("interfaces.") for name in imports):
+            violations.append(str(py.relative_to(ROOT)))
+    assert not violations, f"application.system must not import interfaces: {violations}"
+
+
 def test_application_technical_does_not_import_interfaces():
     """application.technical 禁止依赖 interfaces 层"""
     technical_dir = APP_DIR / "technical"
