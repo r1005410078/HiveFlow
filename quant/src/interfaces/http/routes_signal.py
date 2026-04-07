@@ -30,7 +30,7 @@ def post_signal_snapshot(
     req: SignalSnapshotRequest,
     service: SignalSnapshotService = Depends(get_signal_snapshot_service),
 ) -> SignalSnapshotResponse:
-    return SignalSnapshotResponse.model_validate(service(req.as_of))
+    return SignalSnapshotResponse.model_validate(service(req.as_of, req.universes))
 
 
 @router.post(

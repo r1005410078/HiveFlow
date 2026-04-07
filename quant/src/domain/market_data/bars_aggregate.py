@@ -429,6 +429,18 @@ def aggregate_storage_rows(
             return filter_intraday_session_minutes(base, session_date)
         return _trim_to_minute(base)
 
+    if tf == "15m":
+        base = list(rows_1m_asc)
+        if base and all(str(r.get("timeframe")) == "15m" for r in base):
+            if session_date is not None:
+                day_rows = [
+                    r
+                    for r in base
+                    if _shanghai_date_str(_parse_bar_time(str(r["bar_time"]))) == session_date
+                ]
+                return filter_intraday_session_minutes(day_rows, session_date)
+            return _trim_to_minute(base)
+
     if tf in _TIMEFRAME_TO_DELTA:
         delta = _TIMEFRAME_TO_DELTA[tf]
         if session_date is not None:

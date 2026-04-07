@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+import numbers
 import re
 
 from interfaces.adapters.market_data.no_http_proxy_env import disabled_http_proxy_env
@@ -20,6 +22,41 @@ class AkshareUniverseAdapter:
         except ImportError as exc:
             raise RuntimeError("akshare is required for universe sync") from exc
         self._ak = ak
+
+    @staticmethod
+    def _normalize_raw_code_cell(code: object) -> str | None:
+        """Turn akshare/pandas cell into 6-digit A-share code, or None if unusable.
+
+        EM 行情等接口常见 ``600900.0``（float）、或 ``600900.SH`` 字符串；原逻辑只认 6 位数字，会丢行。
+        """
+        if code is None:
+            return None
+        if isinstance(code, bool):
+            return None
+        if isinstance(code, numbers.Integral):
+            n = int(code)
+            if n < 0 or n > 999_999:
+                return None
+            return f"{n:06d}"
+        if isinstance(code, float):
+            if math.isnan(code) or math.isinf(code):
+                return None
+            try:
+                n = int(round(code))
+            except (ValueError, OverflowError):
+                return None
+            if n < 0 or n > 999_999:
+                return None
+            return f"{n:06d}"
+        text = str(code).strip()
+        if not text or text.lower() in ("nan", "none", "nat"):
+            return None
+        text = re.sub(r"\.(SH|SZ|BJ)$", "", text, flags=re.IGNORECASE)
+        if re.fullmatch(r"\d+\.0+", text):
+            text = text.split(".", 1)[0]
+        if re.fullmatch(r"[0-9]{6}", text):
+            return text
+        return None
 
     @staticmethod
     def _to_exchange_symbol(code: str) -> str | None:
@@ -85,7 +122,10 @@ class AkshareUniverseAdapter:
         names = df[name_col].tolist() if name_col else [""] * len(codes)
         pairs: list[tuple[str, str]] = []
         for code, raw_name in zip(codes, names):
-            sym = self._to_exchange_symbol(code)
+            six = self._normalize_raw_code_cell(code)
+            if six is None:
+                continue
+            sym = self._to_exchange_symbol(six)
             if not sym:
                 continue
             name = str(raw_name).strip() if raw_name is not None and str(raw_name).strip() else ""
@@ -129,6 +169,44 @@ class AkshareUniverseAdapter:
             if sym not in seen:
                 seen[sym] = name
         return sorted(seen.items(), key=lambda x: x[0])
+
+    @staticmethod
+    def _extract_name_from_individual_info_df(df) -> str:
+        """Best-effort parse `stock_individual_info_em` DataFrame to a Chinese short name."""
+        if df is None or getattr(df, "empty", False):
+            return ""
+        # Common shape: columns like ["item", "value"] (or Chinese variants)
+        cols = [str(c) for c in getattr(df, "columns", [])]
+        if len(cols) >= 2:
+            key_col = cols[0]
+            val_col = cols[1]
+            try:
+                for _, row in df.iterrows():
+                    k = str(row.get(key_col, "")).strip()
+                    v = str(row.get(val_col, "")).strip()
+                    if not v or v.lower() in ("nan", "none"):
+                        continue
+                    if any(x in k for x in ("简称", "证券简称", "股票简称", "名称", "证券名称", "股票名称")):
+                        return v
+            except Exception:
+                return ""
+        return ""
+
+    def fetch_symbol_name_zh(self, symbol: str) -> str:
+        """Fetch a single A-share Chinese short name by 6-digit or exchange symbol.
+
+        This is a fallback for `symbol-names-sync --universe default` to avoid fetching all_a,
+        which is large and sometimes disconnected by upstream.
+        """
+        with disabled_http_proxy_env():
+            six = self._normalize_raw_code_cell(symbol)
+            if six is None:
+                return ""
+            fn = getattr(self._ak, "stock_individual_info_em", None)
+            if fn is None:
+                return ""
+            df = fn(symbol=six)
+            return self._extract_name_from_individual_info_df(df)
 
     def _fetch_all_a(self) -> list[str]:
         return [s for s, _ in self._fetch_all_a_with_names()]

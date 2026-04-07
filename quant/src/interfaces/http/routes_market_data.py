@@ -164,6 +164,28 @@ def post_sync(
     responses={200: {"description": "任务详情"}, 404: {"description": "任务不存在"}},
 )
 def get_sync_run_detail(run_id: str) -> dict:
+    # #region agent log
+    try:
+        import json
+        import time
+
+        _p = {
+            "sessionId": "e56e61",
+            "timestamp": int(time.time() * 1000),
+            "location": "routes_market_data.py:get_sync_run_detail",
+            "message": "sync_run_detail_enter",
+            "data": {"run_id": run_id[:36]},
+            "hypothesisId": "H1",
+        }
+        with open(
+            "/Users/rongts/strat-flow/.cursor/debug-e56e61.log",
+            "a",
+            encoding="utf-8",
+        ) as _f:
+            _f.write(json.dumps(_p, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+    # #endregion
     bar_store = _get_bar_store_for_read()
     run = bar_store.get_sync_run_by_id(run_id)
     if run is None:
@@ -358,8 +380,9 @@ def post_universe_sync(
     "/universes/symbol-names/sync",
     summary="仅合并 symbol_names.json",
     description=(
-        "从 akshare 拉取指定标的池（或默认 csi300+zz500+all_a）的代码与中文简称，"
+        "从 akshare 拉取指定标的池（或默认 csi300、zz500、all_a 与 default.txt）的代码与中文简称，"
         "合并写入 quant/config/universes/symbol_names.json；不修改各 universe .txt。"
+        "省略 universes 时同上；可显式传 universes 子集或包含 default。"
         "若部分池失败，仍返回 200，JSON 中 status=partial 且含 failed_universes；"
         "仅当全部失败时返回错误。"
     ),
@@ -434,7 +457,7 @@ def get_instruments(
     start_date: str | None = Query(default=None),
     end_date: str | None = Query(default=None),
     min_bars: int = Query(default=1, ge=1, le=10_000_000),
-    storage_timeframe: str = Query(default="1m"),
+    storage_timeframe: str = Query(default="15m"),
     limit: int = Query(default=100, ge=1, le=2000),
     cursor_symbol: str | None = Query(default=None),
     service: MarketDataInstrumentsListService = Depends(get_market_data_instruments_list_service),
@@ -493,7 +516,7 @@ _BAR_BUNDLE_VALUE_ERROR_CODES = frozenset(
     "/bars",
     summary="查询 K 线数据",
     description=(
-        "按输出周期返回 K 线；`timeframe` 为响应桶宽，服务端从存储 1m 聚合。"
+        "按输出周期返回 K 线；`timeframe` 为响应桶宽，服务端从存储 15m（优先）或 1m 聚合。"
         "支持 `session_date` 分时、`cursor_bar_time`/`cursor_symbol` 游标分页。"
     ),
 )

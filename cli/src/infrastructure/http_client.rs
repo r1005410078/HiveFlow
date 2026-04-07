@@ -440,14 +440,21 @@ pub fn get_market_data_coverage(
 pub fn post_signal_snapshot(
     server_url: &str,
     as_of: &str,
+    universes: &[String],
     timeout_ms: u64,
 ) -> Result<Value, AppError> {
     let url = format!("{}/api/v1/signal/snapshot", server_url.trim_end_matches('/'));
     let client = build_client(server_url, timeout_ms)?;
 
+    let body = if universes.is_empty() {
+        json!({ "as_of": as_of })
+    } else {
+        json!({ "as_of": as_of, "universes": universes })
+    };
+
     let response = client
         .post(url)
-        .json(&json!({"as_of": as_of}))
+        .json(&body)
         .send()
         .map_err(AppError::HttpClient)?;
 

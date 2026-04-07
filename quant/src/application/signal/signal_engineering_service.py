@@ -14,7 +14,7 @@ from application.factor.basic_factor_service import (
     compute_basic_factor_snapshot_from_bars,
 )
 from application.technical.ma_cross_service import build_ma_cross_technical
-from domain.universe.universe_loader import load_industry_map
+from domain.universe.universe_loader import load_industry_map, load_universe_merged
 from hiveflow.signal.application.normalize_use_case import winsorize_then_zscore
 
 _SIGNAL_VERSION = "l3-signal-v1.0"
@@ -190,11 +190,18 @@ def compute_signal_matrix(factor_snapshot: dict) -> dict:
     }
 
 
-def run_signal_snapshot(as_of: str, bar_store=None) -> dict:
-    """Standalone signal snapshot (for the independent HTTP endpoint)."""
-    symbols = [
-        "000001.SZ", "600519.SH", "300750.SZ", "601318.SH", "000333.SZ",
-    ]
+def run_signal_snapshot(
+    as_of: str,
+    bar_store=None,
+    *,
+    extra_universes: list[str] | None = None,
+) -> dict:
+    """Standalone signal snapshot (for the independent HTTP endpoint).
+
+    标的池：始终包含 ``default``，再与 ``extra_universes`` 中的名称逐一合并（去重）。
+    """
+    extras = [u.strip() for u in (extra_universes or []) if u and u.strip()]
+    symbols = load_universe_merged("default", extras)
     factor_snapshot = compute_basic_factor_snapshot(as_of=as_of, symbols=symbols)
     bar_rows_real: list[dict] | None = None
     if bar_store is not None:

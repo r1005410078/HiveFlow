@@ -37,11 +37,11 @@ fn data_symbol_names_sync_omits_universes_when_empty() {
         })))
         .with_status(200)
         .with_header("content-type", "application/json")
-        .with_body(r#"{"provider":"akshare","universes":["csi300","zz500","all_a"],"per_universe_symbols":{},"symbol_names_path":null,"updated_at":"2026-04-04T00:00:00+00:00"}"#)
+        .with_body(r#"{"provider":"akshare","universes":["csi300","zz500","all_a","default"],"per_universe_symbols":{},"symbol_names_path":null,"updated_at":"2026-04-04T00:00:00+00:00"}"#)
         .create();
 
     let out = post_symbol_names_sync(&server.url(), &[], "akshare", 1000).expect("ok");
-    assert_eq!(out["universes"], serde_json::json!(["csi300", "zz500", "all_a"]));
+    assert_eq!(out["universes"], serde_json::json!(["csi300", "zz500", "all_a", "default"]));
 }
 
 #[test]

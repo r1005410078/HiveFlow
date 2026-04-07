@@ -11,11 +11,10 @@ from application.contracts.cli_output import ok_output
 from application.portfolio.covariance_service import compute_covariance_matrix
 from application.portfolio.optimizer_service import solve_portfolio
 from application.signal.signal_engineering_service import run_signal_snapshot
+from domain.universe.universe_loader import load_universe
 
 _OPTIMIZE_VERSION = "l4-optimize-v1.0"
-_DEFAULT_SYMBOLS = [
-    "000001.SZ", "600519.SH", "300750.SZ", "601318.SH", "000333.SZ",
-]
+_DEFAULT_SYMBOLS = load_universe("default")
 _DIAGONAL_VAR = 0.04  # fallback annual variance when bar_store unavailable
 
 _logger = logging.getLogger(__name__)

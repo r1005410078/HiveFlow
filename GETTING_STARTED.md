@@ -9,21 +9,72 @@
 - 用 Rust CLI 调用服务端命令
 - 跑一遍项目校验
 
-## 2. 前置依赖
+## 2. 使用场景（故事化）
+
+下面按「我今天想干什么」组织，命令均需在 **quant 已启动**、**`~/.hiveflow/config.toml` 已配置**（见第 7 节）的前提下使用；示例里的日期请换成你的交易日 `YYYY-MM-DD`。仓库内执行 CLI 时可在 `cli/` 下用 `cargo run -- …`，与文档其他处的 `hf …` 等价。
+
+**推荐 / 信号 / 日频管线用到的标的池（L0）**与 `make run-pipeline`、`hf signal snapshot`、以及缺省 alpha 的 `hf portfolio optimize` / `hf risk check` 等一致：来自仓库内 **`quant/config/universes/default.txt`**（`default` universe）。调整自选池时编辑该文件（一行一个代码，支持 `#` 注释）后**重启** quant 服务即可生效。
+
+1. **想看今天（或某个交易日）更看好哪些标的**  
+   早上开盘后，你想在 **default.txt 精选池**里看一眼横截面信号强弱：用 L3 信号快照。  
+   `cargo run -- signal snapshot --as-of 2026-04-01 --output table`  
+   若希望连同 L2～L6 一串结果一次落盘/查看，可先跑日频管线（同样基于 `default.txt`）：  
+   `make run-pipeline AS_OF=2026-04-01`（等价于调 `hf pipeline daily`）。
+
+2. **手里有仓，想查组合会不会触风控**  
+   模型给出目标权重后，你想知道波动率、单票/行业集中度、换手等是否过线：  
+   `cargo run -- risk check --as-of 2026-04-01 --output table`  
+   （CLI 会先走 L4 优化再调 L5 门控。）
+
+3. **下单前想估计冲击和能不能在给定参与度内吃完**  
+   大资金或在意滑点时，看预交易估计：  
+   `cargo run -- pretrade check --as-of 2026-04-01`  
+   若还要生成 limit 日单级别的执行草案（数量、限价、开平方向）：  
+   `cargo run -- execution plan --as-of 2026-04-01 --output table`
+
+4. **只想看目标权重、不关心门控细节**  
+   单独拉 L4 组合优化结果（不传 alpha 时会从 L3 快照取 composite，标的范围同 **`default.txt`**）：  
+   `cargo run -- portfolio optimize --as-of 2026-04-01 --output table`
+
+5. **某几只票最近走得怎样、和沪深300比一下**  
+   近窗浏览：`cargo run -- data query --days 14 --symbols 600519.SH --timeframe 1d --output tui`  
+   固定区间或要更长的历史：`cargo run -- data bars --symbols 600519.SH --timeframe 1d --start-date 2026-03-01 --end-date 2026-04-01 --output tui`
+
+6. **行情/同步任务卡住了，或要补一段历史 K 线**  
+   提交异步同步并可选等待：`cargo run -- data sync --days 30 --end-date 2026-04-01 --wait`  
+   看跑批进度：`cargo run -- task progress --watch`  
+   近期任务列表：`cargo run -- task list --days 7 --output table`
+
+7. **怀疑数据或链路有问题，做一次体检**  
+   聚合健康度（消费 `run_daily` 等）：`cargo run -- monitor health-report --as-of 2026-04-01`  
+   只读自检（DB / sync_runs / 持仓等）：`cargo run -- doctor --output table`
+
+8. **做研究：一段时间里信号稳不稳、因子回放、滚动验证**  
+   信号 IC / 漂移：`cargo run -- signal evaluate --start-date 2026-03-01 --end-date 2026-04-01`  
+   管线版本对比：`cargo run -- pipeline compare --start-date 2026-03-01 --end-date 2026-04-01`  
+   因子回放：`cargo run -- factor replay --start-date 2026-03-01 --end-date 2026-04-01`  
+   Walk-forward：`cargo run -- walk-forward --start-date 2026-01-01 --end-date 2026-04-01`（可选 `--warm-up-days` / `--test-window-days` / `--step-days` / `--cost-bp` 等，见 `--help`）
+
+9. **想冻结一版参数便于复盘**  
+   `cargo run -- config snapshot`（G2 审计快照；无 DB 时会有告警，属预期行为之一）
+
+更细的参数与输出格式见下文「CLI 命令使用」与 [docs/BEGINNER_QUICKSTART.md](docs/BEGINNER_QUICKSTART.md)。
+
+## 3. 前置依赖
 
 - Python 3.11+
 - `uv`
 - Rust（含 `cargo`）
 - Docker（含 `docker compose`）
 
-## 3. 一次性初始化
+## 4. 一次性初始化
 
 ```bash
 make sync
 make db-init-env
 ```
 
-## 4. 启动数据库
+## 5. 启动数据库
 
 ```bash
 make db-up
@@ -35,7 +86,7 @@ make db-up
 make db-logs
 ```
 
-## 4.1 应用数据库迁移（首次或有新迁移时）
+### 5.1 应用数据库迁移（首次或有新迁移时）
 
 在**第一次**本地联调、或拉取代码后出现新的 `quant/db/migrations/*.sql` 时执行：
 
@@ -45,7 +96,7 @@ make db-migrate
 
 未迁移时，行情同步等依赖表结构的接口可能报错或行为异常。
 
-### 4.2 仅清空 L1 行情数据（联调重跑，破坏性）
+### 5.2 仅清空 L1 行情数据（联调重跑，破坏性）
 
 需要**保留库与迁移**、只删掉 bars / sync 相关表做同步回归时：
 
@@ -55,7 +106,7 @@ make db-clear-l1
 
 会 `TRUNCATE` L1 相关表（含外键顺序，见 `scripts/db_clear_l1_stock_data.sql`）。**不**替代 `make db-reset-db-volume`（整卷清空）。清表后请**重启** `make run-server`，确保加载的是当前代码。
 
-## 5. 启动 quant 服务端
+## 6. 启动 quant 服务端
 
 ```bash
 make run-server
@@ -63,7 +114,7 @@ make run-server
 
 默认地址：`http://127.0.0.1:8000`
 
-## 6. 配置 CLI
+## 7. 配置 CLI
 
 创建 `~/.hiveflow/config.toml`：
 
@@ -73,13 +124,13 @@ timeout_ms = 10000
 retry = 1
 ```
 
-## 7. 运行一次命令
+## 8. 运行一次命令
 
 ```bash
 make run-pipeline AS_OF=2026-04-01
 ```
 
-## 8. CLI 命令使用
+## 9. CLI 命令使用
 
 CLI 二进制命令为 `hf`，在仓库内可用：
 
@@ -88,13 +139,13 @@ cd cli
 cargo run -- --help
 ```
 
-### 8.1 日频管线
+### 9.1 日频管线
 
 ```bash
 cargo run -- pipeline daily --as-of 2026-04-01
 ```
 
-### 8.2 数据同步（异步任务；默认只返回 run_id）
+### 9.2 数据同步（异步任务；默认只返回 run_id）
 
 服务端对 `POST /v1/market-data/sync` 采用**异步执行**：先返回 `run_id`，后台拉数写库。Rust CLI **默认不轮询**：stderr 提示「任务已提交」并给出 `run_id`，stdout 打印受理 JSON（便于脚本解析）。需要在本终端**等到终态**时加 **`--wait`**，此时会轮询 `GET /v1/market-data/sync-runs/{run_id}` 直至 `success` / `failed` / `cancelled` / `interrupted` 等，再打印最终 JSON。
 
@@ -148,7 +199,7 @@ cargo run -- data sync-retry-failed --from-run-id <run_id>
 cargo run -- data sync-retry-failed --from-run-id <run_id> --wait
 ```
 
-### 8.3 同步任务列表（`hf task list`）
+### 9.3 同步任务列表（`hf task list`）
 
 JSON 输出（默认，适合 AI）：
 
@@ -180,7 +231,7 @@ cargo run -- task progress --run-id <run_id> --output json
 cargo run -- task progress --run-id <run_id> --watch
 ```
 
-### 8.3.1 按窗口查 K 线（`hf data query`）
+### 9.3.1 按窗口查 K 线（`hf data query`）
 
 便捷入口：在**近 N 天**窗口内查 bars（`GET /v1/market-data/bars`），支持 `--symbols` 与 `--universe`（并集）。默认 **`--output tui`** 为分页表格；脚本用 `--output json`。
 
@@ -189,7 +240,7 @@ cargo run -- data query --days 7 --symbols 600519.SH --output tui
 cargo run -- data query --days 14 --universe self_select --timeframe 1d --output json
 ```
 
-显式 `start_date`/`end_date`、交互走势图（`--output tui`）等仍用 **8.4 `data bars`**。
+显式 `start_date`/`end_date`、交互走势图（`--output tui`）等仍用 **9.4 `data bars`**。
 - `data query`：`--output json|tui|table`；`task list`：`--output json|table`，过滤参数含 `--timeframe`、`--status`、`--request-id`、`--limit`；`task progress`：`--output json|table`，另支持 `--watch`、`--poll-interval-ms`。
 
 查询任务列表时可临时覆盖超时：
@@ -198,7 +249,7 @@ cargo run -- data query --days 14 --universe self_select --timeframe 1d --output
 cargo run -- task list --days 30 --output table --timeout-ms 120000
 ```
 
-### 8.4 K 线查询（data bars）
+### 9.4 K 线查询（data bars）
 
 **中文简称**：`hf data universe-sync --universe csi300`（需 quant 服务与 akshare）会更新 `quant/config/universes/{universe}.txt`，并把代码→简称合并进 `quant/config/universes/symbol_names.json`。此后各 HTTP JSON 响应里带 `symbol`（形如 `600519.SH`）的对象会多一个 **`symbol_name_zh`** 字段（无映射时为空字符串）；`data bars` / `data query` 的 **table** 在响应含该字段时会多一列「名称」。
 
@@ -238,13 +289,13 @@ cargo run -- data bars --symbols 600519.SH --timeframe 1d --output tui
 cargo run -- data sync --days 5 --end-date 2026-04-01 --timeframe 1m --symbols 000300.SH
 ```
 
-## 9. 项目校验
+## 10. 项目校验
 
 ```bash
 make check
 ```
 
-## 10. 常用命令速查
+## 11. 常用命令速查
 
 ```bash
 make db-up
@@ -256,10 +307,10 @@ make rust-test
 make test
 ```
 
-## 11. 常见问题
+## 12. 常见问题
 
 - 数据库拉镜像失败：通常是网络问题，重试 `make db-up`。
-- 表不存在 / 同步异常：确认已执行 `make db-migrate`（见 4.1）。
+- 表不存在 / 同步异常：确认已执行 `make db-migrate`（见 5.1）。
 - CLI 报配置缺失：确认 `~/.hiveflow/config.toml` 已创建。
 - 端口冲突：修改 `.env.db` 的 `HF_DB_PORT`，或释放占用端口。
 - 同步提示「已有任务在跑」：使用 **`hf task cancel --run-id ...`**（或 `data sync-cancel`）或等待该 `run_id` 结束后再发 `data sync`。
@@ -267,6 +318,6 @@ make test
 - 改了 Python 同步逻辑但行为仍像旧版：**重启** `quant` 进程后再测。
 - `task list` 里 **`effective_symbols_count`** 与详情里 **`progress.total_symbols`** 应一致；若曾见历史数据不一致，升级后读取路径会 **enrich**；仍异常时核对是否连错环境或旧 run。
 
-## 12. 场景化手册（推荐阅读）
+## 13. 场景化手册（推荐阅读）
 
 更偏「按场景照做」的说明见 [docs/BEGINNER_QUICKSTART.md](docs/BEGINNER_QUICKSTART.md)。

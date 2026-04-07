@@ -40,7 +40,7 @@ MarketDataBarsQueryService = Callable[..., dict]
 MarketDataBarsBundleQueryService = Callable[..., dict]
 MarketDataInstrumentsListService = Callable[..., dict]
 MarketDataCoverageQuery = Callable[..., dict]
-SignalSnapshotService = Callable[[str], dict]
+SignalSnapshotService = Callable[[str, list[str]], dict]
 SignalEvaluateService = Callable[[str, str, int], dict]
 PortfolioOptimizeService = Callable[..., dict]
 RiskCheckService = Callable[..., dict]
@@ -106,7 +106,11 @@ def get_signal_snapshot_service() -> SignalSnapshotService:
             bar_store = TimescaleBarStore(open_db_connection_from_env())
         except Exception:
             bar_store = None
-    return lambda as_of: run_signal_snapshot(as_of=as_of, bar_store=bar_store)
+    return lambda as_of, universes: run_signal_snapshot(
+        as_of=as_of,
+        bar_store=bar_store,
+        extra_universes=list(universes or []),
+    )
 
 
 def get_signal_evaluate_service() -> SignalEvaluateService:
@@ -276,32 +280,38 @@ class _FallbackQuoteRepo:
         self._secondary = secondary
 
     def fetch(self, symbols, as_of, timeframe):
-        primary_error = None
+        # 1m: Tencent only returns a recent intraday chunk and filters by as_of — historical
+        # calendar days get zero rows. AkShare (Eastmoney) requests that calendar day and
+        # is the correct primary for backfills. 1d: keep Tencent first, AkShare fallback.
+        if timeframe in ("1m", "15m"):
+            first, second = self._secondary, self._primary
+        else:
+            first, second = self._primary, self._secondary
+
+        first_error = None
         try:
-            rows = self._primary.fetch(symbols=symbols, as_of=as_of, timeframe=timeframe)
+            rows = first.fetch(symbols=symbols, as_of=as_of, timeframe=timeframe)
             if rows:
                 return rows
         except Exception as exc:  # noqa: BLE001 - source-specific failures should degrade.
-            primary_error = exc
+            first_error = exc
 
         try:
-            rows = self._secondary.fetch(symbols=symbols, as_of=as_of, timeframe=timeframe)
+            rows = second.fetch(symbols=symbols, as_of=as_of, timeframe=timeframe)
             if rows:
                 return rows
-        except Exception as secondary_exc:  # noqa: BLE001 - source-specific failures should degrade.
-            if primary_error is not None:
+        except Exception as second_exc:  # noqa: BLE001 - source-specific failures should degrade.
+            if first_error is not None:
                 raise RuntimeError(
-                    f"both market data sources failed: primary={primary_error}; secondary={secondary_exc}"
-                ) from secondary_exc
-            # Primary returned empty: this can be a valid non-trading slice.
-            # If secondary also fails here, degrade to empty rows and let upper
-            # layers decide whether the full sync window is acceptable.
+                    f"both market data sources failed: primary={first_error}; secondary={second_exc}"
+                ) from second_exc
+            # First returned empty: valid non-trading slice, or first failed and second threw.
             return []
 
-        if primary_error is not None:
+        if first_error is not None:
             raise RuntimeError(
-                f"primary market data source failed and secondary returned empty: {primary_error}"
-            ) from primary_error
+                f"primary market data source failed and secondary returned empty: {first_error}"
+            ) from first_error
 
         return []
 
@@ -374,7 +384,7 @@ class _InMemoryBarStore:
     def list_storage_bars(
         self,
         symbols=None,
-        storage_timeframe="1m",
+        storage_timeframe="15m",
         start_date=None,
         end_date=None,
         limit=None,

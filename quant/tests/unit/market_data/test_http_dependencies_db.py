@@ -89,6 +89,65 @@ def test_build_quote_repo_falls_back_to_akshare_when_tencent_unavailable(monkeyp
     assert repo is dummy
 
 
+def test_fallback_quote_repo_1m_prefers_akshare_before_tencent() -> None:
+    calls: list[str] = []
+
+    class _Tencent:
+        def fetch(self, symbols, as_of, timeframe):
+            del symbols, as_of, timeframe
+            calls.append("tencent")
+            return []
+
+    class _Akshare:
+        def fetch(self, symbols, as_of, timeframe):
+            del as_of, timeframe
+            calls.append("akshare")
+            return [{"symbol": symbols[0], "bar_time": "2026-03-04T10:00:00+08:00"}]
+
+    repo = deps._FallbackQuoteRepo(primary=_Tencent(), secondary=_Akshare())
+    out = repo.fetch(symbols=["600519.SH"], as_of="2026-03-04", timeframe="1m")
+    assert calls == ["akshare"]
+    assert len(out) == 1
+
+
+def test_fallback_quote_repo_15m_prefers_akshare_before_tencent() -> None:
+    calls: list[str] = []
+
+    class _Tencent:
+        def fetch(self, symbols, as_of, timeframe):
+            del symbols, as_of, timeframe
+            calls.append("tencent")
+            return []
+
+    class _Akshare:
+        def fetch(self, symbols, as_of, timeframe):
+            del as_of, timeframe
+            calls.append("akshare")
+            return [{"symbol": symbols[0], "bar_time": "2026-03-04T10:15:00+08:00"}]
+
+    repo = deps._FallbackQuoteRepo(primary=_Tencent(), secondary=_Akshare())
+    out = repo.fetch(symbols=["600519.SH"], as_of="2026-03-04", timeframe="15m")
+    assert calls == ["akshare"]
+    assert len(out) == 1
+
+
+def test_fallback_quote_repo_1m_falls_back_to_tencent_when_akshare_empty() -> None:
+    class _Tencent:
+        def fetch(self, symbols, as_of, timeframe):
+            del as_of, timeframe
+            return [{"symbol": symbols[0]}]
+
+    class _Akshare:
+        def fetch(self, symbols, as_of, timeframe):
+            del symbols, as_of, timeframe
+            return []
+
+    repo = deps._FallbackQuoteRepo(primary=_Tencent(), secondary=_Akshare())
+    out = repo.fetch(symbols=["600519.SH"], as_of="2026-04-07", timeframe="1m")
+    assert len(out) == 1
+    assert out[0]["symbol"] == "600519.SH"
+
+
 def test_fallback_quote_repo_uses_secondary_when_primary_returns_empty() -> None:
     class _Primary:
         def fetch(self, symbols, as_of, timeframe):
@@ -191,5 +250,6 @@ def test_fallback_quote_repo_returns_empty_when_primary_empty_and_secondary_fail
             raise RuntimeError("secondary down")
 
     repo = deps._FallbackQuoteRepo(primary=_Primary(), secondary=_Secondary())
-    out = repo.fetch(symbols=["600519.SH"], as_of="2026-04-01", timeframe="1m")
+    # 1d keeps Tencent-first order: empty primary then failing secondary degrades to [].
+    out = repo.fetch(symbols=["600519.SH"], as_of="2026-04-01", timeframe="1d")
     assert out == []

@@ -157,6 +157,8 @@ pub struct DataBarsRequest {
 pub struct SignalSnapshotRequest {
     pub as_of: String,
     pub output: String,
+    /// 与 `default` 合并的额外标的池名（服务端 `quant/config/universes/{name}.txt`）
+    pub universes: Vec<String>,
 }
 
 #[derive(Debug, Clone)]

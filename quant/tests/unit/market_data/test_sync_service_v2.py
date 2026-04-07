@@ -237,6 +237,24 @@ def test_sync_service_writes_rows_for_1m_timeframe() -> None:
     assert repo.calls[0]["timeframe"] == "1m"
 
 
+def test_sync_service_writes_rows_for_15m_timeframe() -> None:
+    repo = _FakeQuoteRepo()
+    store = _FakeBarStore()
+    svc = SyncService(quote_repo=repo, bar_store=store)
+
+    out = svc.sync(
+        days=1,
+        end_date="2026-04-01",
+        timeframe="15m",
+        symbols=["600519.SH", "000001.SZ"],
+    )
+
+    assert out["status"] == "success"
+    assert out["timeframe"] == "15m"
+    assert out["written_rows"] == 2
+    assert repo.calls[0]["timeframe"] == "15m"
+
+
 def test_sync_service_uses_checkpoint_to_reduce_fetch_window() -> None:
     """验证 checkpoint 会把抓取窗口缩到缺失区间。"""
     repo = _FakeQuoteRepo()
@@ -423,6 +441,59 @@ def test_merge_symbol_names_only_updates_json_without_txt(tmp_path: Path) -> Non
     assert names["600519.SH"] == "贵州茅台"
     assert names["000001.SZ"] == "平安银行"
     assert not (quant_root / "config" / "universes" / "csi300.txt").exists()
+
+
+def test_merge_symbol_names_only_default_includes_default_txt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """省略 universes 时在 csi300/zz500/all_a 之后合并 default.txt（名称来自 all_a 映射）。"""
+
+    class _FakeNamesRepo:
+        def fetch_universe_symbols_with_names(self, universe: str):
+            if universe == "csi300":
+                return [("600519.SH", "贵州茅台")]
+            if universe == "zz500":
+                return [("000001.SZ", "平安银行")]
+            if universe == "all_a":
+                return [
+                    ("600519.SH", "贵州茅台"),
+                    ("000001.SZ", "平安银行"),
+                    ("300750.SZ", "宁德时代"),
+                ]
+            return []
+
+    class _TestableSyncService(SyncService):
+        def __init__(self, quant_root: Path, **kw):
+            self._quant_root = quant_root
+            super().__init__(**kw)
+
+        def _config_root(self) -> Path:
+            return self._quant_root
+
+    quant_root = tmp_path / "quant"
+    uni_dir = quant_root / "config" / "universes"
+    uni_dir.mkdir(parents=True)
+    monkeypatch.setattr(
+        "domain.universe.universe_loader._UNIVERSES_DIR",
+        uni_dir,
+    )
+    (uni_dir / "default.txt").write_text(
+        "# L0 default\n300750.SZ\n",
+        encoding="utf-8",
+    )
+    svc = _TestableSyncService(
+        quant_root,
+        quote_repo=_FakeQuoteRepo(),
+        bar_store=_FakeBarStore(),
+        universe_source_repo=_FakeNamesRepo(),
+    )
+    out = svc.merge_symbol_names_only(universes=None, provider="akshare")
+    assert out["universes"] == ["csi300", "zz500", "all_a", "default"]
+    assert out["per_universe_symbols"]["default"] == 1
+    p = quant_root / "config" / "universes" / "symbol_names.json"
+    names = json.loads(p.read_text(encoding="utf-8"))
+    assert names["300750.SZ"] == "宁德时代"
+    assert names["600519.SH"] == "贵州茅台"
 
 
 def test_merge_symbol_names_only_partial_keeps_successful_universes(tmp_path: Path) -> None:

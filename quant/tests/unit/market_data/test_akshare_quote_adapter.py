@@ -26,20 +26,35 @@ class _FakeAkClient:
 
     def stock_zh_a_hist_min_em(self, symbol, period, start_date, end_date, adjust):
         assert symbol == "600519"
-        assert period == "1"
-        assert start_date == "2026-04-01 09:30:00"
-        assert end_date == "2026-04-01 15:00:00"
         assert adjust == "qfq"
+        if period == "1":
+            assert start_date == "2026-04-01 09:30:00"
+            assert end_date == "2026-04-01 15:00:00"
+            return pd.DataFrame(
+                [
+                    {
+                        "时间": "2026-04-01 09:31:00",
+                        "开盘": 100.0,
+                        "收盘": 101.0,
+                        "最高": 102.0,
+                        "最低": 99.5,
+                        "成交量": 300.0,
+                        "成交额": 30100.0,
+                    }
+                ]
+            )
+        assert period == "15"
+        assert "2026-04-01" in start_date
         return pd.DataFrame(
             [
                 {
-                    "时间": "2026-04-01 09:31:00",
-                    "开盘": 100.0,
-                    "收盘": 101.0,
-                    "最高": 102.0,
-                    "最低": 99.5,
-                    "成交量": 300.0,
-                    "成交额": 30100.0,
+                    "时间": "2026-04-01 10:15:00",
+                    "开盘": 99.0,
+                    "收盘": 100.5,
+                    "最高": 101.0,
+                    "最低": 98.0,
+                    "成交量": 400.0,
+                    "成交额": 40000.0,
                 }
             ]
         )
@@ -54,6 +69,18 @@ def test_akshare_quote_adapter_fetch_1d_maps_required_fields() -> None:
     assert rows[0]["timeframe"] == "1d"
     assert rows[0]["bar_time"] == "2026-04-01T15:00:00+08:00"
     assert rows[0]["close"] == 101.0
+    assert rows[0]["data_source"] == "akshare"
+
+
+def test_akshare_quote_adapter_fetch_15m_maps_required_fields() -> None:
+    adapter = AkshareQuoteAdapter(client=_FakeAkClient())
+    rows = adapter.fetch(symbols=["600519.SH"], as_of="2026-04-01", timeframe="15m")
+
+    assert len(rows) == 1
+    assert rows[0]["symbol"] == "600519.SH"
+    assert rows[0]["timeframe"] == "15m"
+    assert rows[0]["bar_time"] == "2026-04-01T10:15:00+08:00"
+    assert rows[0]["close"] == 100.5
     assert rows[0]["data_source"] == "akshare"
 
 

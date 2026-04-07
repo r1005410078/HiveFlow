@@ -118,6 +118,26 @@ def test_aggregate_daily_to_weekly_iso_week_boundary_splits_groups() -> None:
     assert anchors[1] == "2025-12-31T15:00:00+08:00"
 
 
+def test_aggregate_storage_rows_15m_native_pass_through() -> None:
+    rows = [
+        {
+            "symbol": "600519.SH",
+            "timeframe": "15m",
+            "bar_time": "2026-01-05T10:15:00+08:00",
+            "open": 1.0,
+            "high": 1.1,
+            "low": 0.9,
+            "close": 1.05,
+            "volume": 10.0,
+            "amount": 100.0,
+            "adj_factor": 1.0,
+        }
+    ]
+    got = aggregate_storage_rows("15m", rows)
+    assert len(got) == 1
+    assert got[0]["close"] == 1.05
+
+
 def test_aggregate_storage_rows_1q_not_implemented() -> None:
     with pytest.raises(NotImplementedError):
         aggregate_storage_rows("1Q", [])

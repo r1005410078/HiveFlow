@@ -15,7 +15,7 @@ pub fn handle(args: DataSymbolNamesSyncRequest) -> Result<(), AppError> {
             .unwrap_or_else(|_| ProgressStyle::default_spinner()),
     );
     let msg = if args.universes.is_empty() {
-        "正在合并 symbol_names.json（服务端默认 csi300 / zz500 / all_a，可能较久）…".to_string()
+        "正在合并 symbol_names.json（服务端默认 csi300 / zz500 / all_a + default.txt，可能较久）…".to_string()
     } else {
         format!(
             "正在合并 symbol_names.json（{}）…",

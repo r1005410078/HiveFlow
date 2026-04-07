@@ -1,6 +1,7 @@
 import math
 
 from application.factor.basic_factor_service import compute_basic_factor_snapshot
+from domain.universe.universe_loader import load_universe
 
 
 def _snapshot_5symbols() -> dict:
@@ -9,6 +10,25 @@ def _snapshot_5symbols() -> dict:
         as_of="2026-04-01",
         symbols=["000001.SZ", "600519.SH", "300750.SZ", "601318.SH", "000333.SZ"],
     )
+
+
+def test_run_signal_snapshot_extra_universe_merges_symbols(tmp_path, monkeypatch):
+    """extra_universes 与 default 合并后标的数增加（domain load_universe_merged）。"""
+    import domain.universe.universe_loader as uloader
+    from application.signal.signal_engineering_service import run_signal_snapshot
+
+    monkeypatch.setattr(uloader, "_UNIVERSES_DIR", tmp_path)
+    (tmp_path / "default.txt").write_text("000001.SZ\n", encoding="utf-8")
+    (tmp_path / "more.txt").write_text("600519.SH\n", encoding="utf-8")
+
+    out = run_signal_snapshot(
+        as_of="2026-04-01",
+        bar_store=None,
+        extra_universes=["more"],
+    )
+    data = out["data"]
+    sm = data["signal_matrix"]
+    assert len(sm["rows"]) == 2 * 6
 
 
 def test_run_signal_snapshot_data_envelope():
@@ -22,7 +42,8 @@ def test_run_signal_snapshot_data_envelope():
     assert "technical" in data
     sm = data["signal_matrix"]
     assert sm["signal_version"] == "l3-signal-v1.0"
-    assert len(sm["rows"]) == 30
+    n_sym = len(load_universe("default"))
+    assert len(sm["rows"]) == n_sym * 6
     # 无 bar_store 时不计算 MA 块
     assert data["technical"] is None
 

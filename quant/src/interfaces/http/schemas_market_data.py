@@ -18,7 +18,10 @@ class MarketDataUniverseSyncRequest(BaseModel):
 class MarketDataSymbolNamesSyncRequest(BaseModel):
     universes: list[str] | None = Field(
         default=None,
-        description="要拉取中文简称的标的池；省略则 csi300 + zz500 + all_a",
+        description=(
+            "要拉取中文简称的标的池；省略则 csi300、zz500、all_a，并追加 **default**（"
+            "`default.txt` 标的从全 A 映射取简称）。可显式传入 ``default``。"
+        ),
     )
     provider: str = Field(default="akshare", description="第三方来源，当前仅支持 akshare")
 

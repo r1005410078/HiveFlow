@@ -6,8 +6,17 @@ from application.market_data.bars_query_service import BarsQueryService
 
 
 class _FakeBarStore:
-    def __init__(self, storage_rows: list[dict] | None = None):
-        self.storage_rows = storage_rows or []
+    def __init__(
+        self,
+        storage_rows: list[dict] | None = None,
+        *,
+        by_timeframe: dict[str, list[dict]] | None = None,
+    ):
+        self.by_tf: dict[str, list[dict]] = {}
+        if storage_rows is not None:
+            self.by_tf["1m"] = storage_rows
+        if by_timeframe:
+            self.by_tf.update(by_timeframe)
         self.list_storage_calls: list[dict] = []
 
     def list_storage_bars(
@@ -29,7 +38,7 @@ class _FakeBarStore:
                 "order": order,
             }
         )
-        return list(self.storage_rows)
+        return list(self.by_tf.get(storage_timeframe, []))
 
 
 def _two_minutes_600519() -> list[dict]:
@@ -75,8 +84,10 @@ def test_query_bundle_single_list_storage_multiple_timeframes() -> None:
         limit_per_timeframe=100,
     )
 
-    assert len(store.list_storage_calls) == 1
-    assert store.list_storage_calls[0]["symbols"] == ["600519.SH"]
+    assert len(store.list_storage_calls) == 2
+    tfs = {c["storage_timeframe"] for c in store.list_storage_calls}
+    assert tfs == {"1m", "15m"}
+    assert all(c["symbols"] == ["600519.SH"] for c in store.list_storage_calls)
     assert out["schema_version"] == "1.0.0"
     assert "generated_at" in out
     assert out["producer_version"] == "hiveflow-quant-bars-bundle-1.0.0"

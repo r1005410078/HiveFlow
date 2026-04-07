@@ -36,7 +36,7 @@ pub enum TaskSubcommand {
 pub struct TaskListArgs {
     #[arg(long)]
     pub days: i32,
-    #[arg(long, default_value = "1m")]
+    #[arg(long, default_value = "15m")]
     pub timeframe: String,
     #[arg(long)]
     pub status: Option<String>,

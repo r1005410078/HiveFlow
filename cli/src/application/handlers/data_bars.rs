@@ -26,7 +26,7 @@ fn warn_if_no_bars_rows(payload: &Value, timeframe: &str, server_url: &str, symb
         symbol_count
     );
     eprintln!(
-        "  Often the DB has data under a different timeframe than the query (e.g. sync used --timeframe 1m but this command uses 1d). Match --timeframe to the sync, or re-sync with 1d."
+        "  Often the DB has data under a different timeframe than the query (e.g. sync used --timeframe 15m but this command uses 1d). Match --timeframe to the sync, or re-sync."
     );
     eprintln!(
         "  Also check date range, ~/.hiveflow/config.toml server_url points at the server using that DB, and try: hf data bars ... --output json"

@@ -216,7 +216,7 @@ def test_list_storage_bars_filters_timeframe_and_orders_asc():
     store.list_storage_bars(order="asc")
     sql_text, params = conn.cursor_obj.executed[-1]
     assert "timeframe = %s" in sql_text
-    assert params[0] == "1m"
+    assert params[0] == "15m"
     assert "order by bar_time asc" in sql_text.lower()
     assert "symbol asc" in sql_text.lower()
     assert params[-1] == 5000

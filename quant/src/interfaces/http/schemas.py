@@ -113,6 +113,13 @@ class L2Decision(BaseModel):
 
 class SignalSnapshotRequest(BaseModel):
     as_of: str = Field(description="计算基准日期，格式 YYYY-MM-DD（PIT 语义）")
+    universes: list[str] = Field(
+        default_factory=list,
+        description=(
+            "与 default 合并的额外标的池名称（对应 quant/config/universes/{name}.txt）；"
+            "未传或空列表时仅使用 default"
+        ),
+    )
 
 
 class SignalRowSchema(BaseModel):

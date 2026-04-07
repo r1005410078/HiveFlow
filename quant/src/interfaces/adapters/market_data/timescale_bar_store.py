@@ -480,7 +480,7 @@ class TimescaleBarStore:
     def list_storage_bars(
         self,
         symbols: list[str] | None = None,
-        storage_timeframe: str = "1m",
+        storage_timeframe: str = "15m",
         start_date: str | None = None,
         end_date: str | None = None,
         limit: int | None = None,

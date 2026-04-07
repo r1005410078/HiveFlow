@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from domain.universe.universe_loader import load_industry_map, load_universe
+from domain.universe.universe_loader import load_industry_map, load_universe, load_universe_merged
 
 
 def test_load_universe_returns_symbols():
@@ -36,6 +36,29 @@ def test_load_universe_raises_on_missing_file(tmp_path, monkeypatch):
     monkeypatch.setattr(loader, "_UNIVERSES_DIR", tmp_path)
     with pytest.raises(FileNotFoundError):
         load_universe("nonexistent")
+
+
+def test_load_universe_merged_default_then_extra(tmp_path, monkeypatch):
+    """先 base 再追加额外表；标的去重且 base 顺序优先。"""
+    import domain.universe.universe_loader as loader
+
+    monkeypatch.setattr(loader, "_UNIVERSES_DIR", tmp_path)
+    (tmp_path / "default.txt").write_text("AAA.SH\nBBB.SH\n", encoding="utf-8")
+    (tmp_path / "extra.txt").write_text("BBB.SH\nCCC.SH\n", encoding="utf-8")
+
+    merged = load_universe_merged("default", ["extra"])
+    assert merged == ["AAA.SH", "BBB.SH", "CCC.SH"]
+
+
+def test_load_universe_merged_skips_duplicate_universe_names(tmp_path, monkeypatch):
+    import domain.universe.universe_loader as loader
+
+    monkeypatch.setattr(loader, "_UNIVERSES_DIR", tmp_path)
+    (tmp_path / "default.txt").write_text("A\n", encoding="utf-8")
+    (tmp_path / "u2.txt").write_text("B\n", encoding="utf-8")
+
+    merged = load_universe_merged("default", ["default", "u2", "u2"])
+    assert merged == ["A", "B"]
 
 
 def test_load_industry_map_returns_dict():

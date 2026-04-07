@@ -6,8 +6,13 @@ use serde_json::Value;
 
 use crate::error::AppError;
 
-fn doctor_use_color() -> bool {
+/// 终端表格/CLI 着色：TTY 且未设置 `NO_COLOR` 时启用（与 doctor 一致）。
+fn cli_stdout_color_enabled() -> bool {
     std::env::var_os("NO_COLOR").is_none() && io::stdout().is_terminal()
+}
+
+fn doctor_use_color() -> bool {
+    cli_stdout_color_enabled()
 }
 
 #[derive(Clone, Copy)]
@@ -115,6 +120,51 @@ fn doctor_section_line(title: &str, color: bool) -> String {
     format!("{CYAN}{title}{RESET}\n")
 }
 
+fn pipeline_hdr_cell(label: &str, color: bool) -> Cell {
+    let c = Cell::new(label);
+    if color {
+        c.fg(Color::Cyan).add_attribute(Attribute::Bold)
+    } else {
+        c
+    }
+}
+
+fn pipeline_status_cell(status: &str, color: bool) -> Cell {
+    let c = Cell::new(status);
+    if !color {
+        return c;
+    }
+    match status {
+        "ok" => c.fg(Color::Green),
+        "warning" => c.fg(Color::Yellow),
+        "error" => c.fg(Color::Red),
+        _ => c.fg(Color::DarkGrey),
+    }
+}
+
+/// `when_true`: 为 `是` 时的前景色；`否` 时为暗灰。
+fn pipeline_yes_no_cell(v: Option<&Value>, color: bool, when_true: Color) -> Cell {
+    let text = json_bool_label(v);
+    let c = Cell::new(text);
+    if !color {
+        return c;
+    }
+    match v.and_then(Value::as_bool) {
+        Some(true) => c.fg(when_true),
+        Some(false) => c.fg(Color::DarkGrey),
+        None => c,
+    }
+}
+
+fn pipeline_rank_cell(rank: &str, color: bool) -> Cell {
+    let c = Cell::new(rank);
+    if color && rank == "1" {
+        c.fg(Color::Yellow).add_attribute(Attribute::Bold)
+    } else {
+        c
+    }
+}
+
 fn truncate_middle(s: &str, head: usize, tail: usize) -> String {
     if s.len() <= head + tail + 1 {
         return s.to_string();
@@ -144,14 +194,24 @@ fn as_bool(v: Option<&Value>) -> String {
         .unwrap_or_else(|| "".to_string())
 }
 
-fn first_top_candidate_symbol(item: Option<&Value>) -> String {
-    item.and_then(|version| version.get("top_candidates"))
+/// First top candidate cell: `symbol`, or `symbol 中文简称` when `symbol_name_zh` is set.
+fn first_top_candidate_label(item: Option<&Value>) -> String {
+    let candidate = item
+        .and_then(|version| version.get("top_candidates"))
         .and_then(Value::as_array)
-        .and_then(|items| items.first())
-        .and_then(|candidate| candidate.get("symbol"))
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_string()
+        .and_then(|items| items.first());
+    match candidate {
+        Some(c) => {
+            let sym = c.get("symbol").and_then(Value::as_str).unwrap_or("");
+            let name = c.get("symbol_name_zh").and_then(Value::as_str).unwrap_or("");
+            if name.is_empty() {
+                sym.to_string()
+            } else {
+                format!("{sym} {name}")
+            }
+        }
+        None => String::new(),
+    }
 }
 
 fn value_display(v: Option<&Value>) -> String {
@@ -419,16 +479,18 @@ pub fn render_market_data_bars_table(payload: &Value, verbose: bool) -> String {
 }
 
 pub fn render_pipeline_daily_table(payload: &Value) -> String {
+    let color = cli_stdout_color_enabled();
+
     let mut summary = Table::new();
     summary
         .load_preset(UTF8_FULL)
         .set_content_arrangement(ContentArrangement::Dynamic)
         .set_header(vec![
-            Cell::new("交易日"),
-            Cell::new("状态"),
-            Cell::new("评分版本"),
-            Cell::new("样本数"),
-            Cell::new("因子覆盖率"),
+            pipeline_hdr_cell("交易日", color),
+            pipeline_hdr_cell("状态", color),
+            pipeline_hdr_cell("评分版本", color),
+            pipeline_hdr_cell("样本数", color),
+            pipeline_hdr_cell("因子覆盖率", color),
         ]);
 
     let as_of = as_str(payload.get("data").and_then(|d| d.get("as_of")));
@@ -452,20 +514,21 @@ pub fn render_pipeline_daily_table(payload: &Value) -> String {
             .and_then(|x| x.get("coverage_rate")),
     );
     summary.add_row(vec![
-        as_of,
-        status,
-        score_version,
-        universe_size,
-        factor_coverage,
+        Cell::new(as_of),
+        pipeline_status_cell(&status, color),
+        Cell::new(score_version),
+        Cell::new(universe_size),
+        Cell::new(factor_coverage),
     ]);
 
     let mut top = Table::new();
     top.load_preset(UTF8_FULL)
         .set_content_arrangement(ContentArrangement::Dynamic)
         .set_header(vec![
-            Cell::new("排名"),
-            Cell::new("标的"),
-            Cell::new("得分"),
+            pipeline_hdr_cell("排名", color),
+            pipeline_hdr_cell("代码", color),
+            pipeline_hdr_cell("名称", color),
+            pipeline_hdr_cell("得分", color),
         ]);
     if let Some(items) = payload
         .get("data")
@@ -474,10 +537,21 @@ pub fn render_pipeline_daily_table(payload: &Value) -> String {
         .and_then(Value::as_array)
     {
         for item in items {
+            let rank = as_i64(item.get("rank"));
+            let score_txt = as_f64(item.get("score"));
+            let score_cell = {
+                let c = Cell::new(score_txt);
+                if color && rank == "1" {
+                    c.fg(Color::Green).add_attribute(Attribute::Bold)
+                } else {
+                    c
+                }
+            };
             top.add_row(vec![
-                as_i64(item.get("rank")),
-                as_str(item.get("symbol")),
-                as_f64(item.get("score")),
+                pipeline_rank_cell(&rank, color),
+                Cell::new(as_str(item.get("symbol"))),
+                Cell::new(as_str(item.get("symbol_name_zh"))),
+                score_cell,
             ]);
         }
     }
@@ -487,10 +561,10 @@ pub fn render_pipeline_daily_table(payload: &Value) -> String {
         .load_preset(UTF8_FULL)
         .set_content_arrangement(ContentArrangement::Dynamic)
         .set_header(vec![
-            Cell::new("因子名"),
-            Cell::new("有效数"),
-            Cell::new("缺失数"),
-            Cell::new("可用率"),
+            pipeline_hdr_cell("因子名", color),
+            pipeline_hdr_cell("有效数", color),
+            pipeline_hdr_cell("缺失数", color),
+            pipeline_hdr_cell("可用率", color),
         ]);
     if let Some(items) = payload
         .get("data")
@@ -499,11 +573,24 @@ pub fn render_pipeline_daily_table(payload: &Value) -> String {
         .and_then(Value::as_array)
     {
         for item in items {
+            let rate = item
+                .get("availability_rate")
+                .and_then(Value::as_f64)
+                .unwrap_or(0.0);
+            let rate_s = as_f64(item.get("availability_rate"));
+            let rate_cell = {
+                let c = Cell::new(rate_s);
+                if color && rate < 0.8 {
+                    c.fg(Color::Yellow)
+                } else {
+                    c
+                }
+            };
             availability.add_row(vec![
-                as_str(item.get("factor_name")),
-                as_i64(item.get("present_count")),
-                as_i64(item.get("missing_count")),
-                as_f64(item.get("availability_rate")),
+                Cell::new(as_str(item.get("factor_name"))),
+                Cell::new(as_i64(item.get("present_count"))),
+                Cell::new(as_i64(item.get("missing_count"))),
+                rate_cell,
             ]);
         }
     }
@@ -513,12 +600,12 @@ pub fn render_pipeline_daily_table(payload: &Value) -> String {
         .load_preset(UTF8_FULL)
         .set_content_arrangement(ContentArrangement::Dynamic)
         .set_header(vec![
-            Cell::new("标的"),
-            Cell::new("金叉"),
-            Cell::new("死叉"),
-            Cell::new("SMA5"),
-            Cell::new("SMA10"),
-            Cell::new("可用"),
+            pipeline_hdr_cell("标的", color),
+            pipeline_hdr_cell("金叉", color),
+            pipeline_hdr_cell("死叉", color),
+            pipeline_hdr_cell("SMA5", color),
+            pipeline_hdr_cell("SMA10", color),
+            pipeline_hdr_cell("可用", color),
         ]);
     if let Some(by) = payload
         .get("data")
@@ -532,20 +619,27 @@ pub fn render_pipeline_daily_table(payload: &Value) -> String {
         for sym in keys {
             if let Some(v) = by.get(sym) {
                 ma_cross.add_row(vec![
-                    sym.clone(),
-                    json_bool_label(v.get("golden_cross")),
-                    json_bool_label(v.get("death_cross")),
-                    as_f64(v.get("sma5")),
-                    as_f64(v.get("sma10")),
-                    json_bool_label(v.get("available")),
+                    Cell::new(sym.clone()),
+                    pipeline_yes_no_cell(v.get("golden_cross"), color, Color::Green),
+                    pipeline_yes_no_cell(v.get("death_cross"), color, Color::Red),
+                    Cell::new(as_f64(v.get("sma5"))),
+                    Cell::new(as_f64(v.get("sma10"))),
+                    pipeline_yes_no_cell(v.get("available"), color, Color::Green),
                 ]);
             }
         }
     }
 
     format!(
-        "日频管线摘要\n{}\n候选标的（最多5）\n{}\n因子可用性\n{}\nMA5/MA10\n{}\n",
-        summary, top, availability, ma_cross
+        "{}{}\n{}{}\n{}{}\n{}{}\n",
+        doctor_section_line("日频管线摘要", color),
+        summary,
+        doctor_section_line("候选标的（最多5）", color),
+        top,
+        doctor_section_line("因子可用性", color),
+        availability,
+        doctor_section_line("MA5/MA10", color),
+        ma_cross,
     )
 }
 
@@ -627,8 +721,8 @@ pub fn render_pipeline_compare_table(payload: &Value) -> String {
 
             daily.add_row(vec![
                 as_str(item.get("as_of")),
-                first_top_candidate_symbol(v1),
-                first_top_candidate_symbol(v1_1),
+                first_top_candidate_label(v1),
+                first_top_candidate_label(v1_1),
                 v1_warn,
                 v1_1_warn,
                 v1_min_avail,

@@ -15,6 +15,8 @@ from domain.market_data.value_objects import validate_timeframe
 from domain.universe.universe_loader import load_universe
 # Universes that akshare can fetch with optional Chinese names (symbol_names.json merge).
 _AKSHARE_SYMBOL_NAME_UNIVERSES = ("csi300", "zz500", "all_a")
+# `default` = local default.txt symbols, names resolved from the same all_a map (one fetch, reused).
+_SYMBOL_NAMES_SYNC_SUPPORTED = frozenset((*_AKSHARE_SYMBOL_NAME_UNIVERSES, "default"))
 _UNIVERSE_FILE_EXT = ".txt"
 _SYMBOL_NAMES_JSON = "symbol_names.json"
 
@@ -302,19 +304,46 @@ class SyncService:
         updates = {s: "" for s in symbols}
         return symbols, updates
 
+    @staticmethod
+    def _retry_call(fn: Callable[[], tuple[list[str], dict[str, str]]], *, attempts: int = 3) -> tuple[list[str], dict[str, str]]:
+        last: Exception | None = None
+        for i in range(attempts):
+            try:
+                return fn()
+            except Exception as exc:
+                last = exc
+                if i < attempts - 1:
+                    time.sleep(RETRY_BACKOFF_SECONDS)
+        assert last is not None
+        raise last
+
+    @staticmethod
+    def _order_symbol_names_sync_targets(targets: list[str]) -> list[str]:
+        """Run csi300 → zz500 → all_a before ``default`` so all_a names can be reused for default.txt."""
+        pref = _AKSHARE_SYMBOL_NAME_UNIVERSES
+        head = [u for u in pref if u in targets]
+        tail = ["default"] if "default" in targets else []
+        return head + tail
+
     def merge_symbol_names_only(
         self,
         *,
         universes: list[str] | None = None,
         provider: str = "akshare",
     ) -> dict:
-        """Merge ``symbol_names.json`` from akshare for given universes (default: csi300, zz500, all_a).
+        """Merge ``symbol_names.json`` from akshare for given universes.
+
+        Default targets: csi300, zz500, all_a, plus **default** (``default.txt`` 标的从全 A 映射取简称).
 
         Does not modify ``quant/config/universes/*.txt``.
         """
         if provider != "akshare":
             raise ValueError(f"unsupported provider: {provider}")
-        raw_targets = list(universes) if universes else list(_AKSHARE_SYMBOL_NAME_UNIVERSES)
+        raw_targets = (
+            list(universes)
+            if universes
+            else list(_AKSHARE_SYMBOL_NAME_UNIVERSES) + ["default"]
+        )
         seen: set[str] = set()
         targets: list[str] = []
         for u in raw_targets:
@@ -324,20 +353,49 @@ class SyncService:
             seen.add(u)
             targets.append(u)
         if not targets:
-            targets = list(_AKSHARE_SYMBOL_NAME_UNIVERSES)
-        allowed = set(_AKSHARE_SYMBOL_NAME_UNIVERSES)
+            targets = list(_AKSHARE_SYMBOL_NAME_UNIVERSES) + ["default"]
         for u in targets:
-            if u not in allowed:
+            if u not in _SYMBOL_NAMES_SYNC_SUPPORTED:
                 raise ValueError(
                     "universe does not support symbol-name sync via akshare: "
-                    f"{u} (allowed: {', '.join(_AKSHARE_SYMBOL_NAME_UNIVERSES)})"
+                    f"{u} (allowed: {', '.join(sorted(_SYMBOL_NAMES_SYNC_SUPPORTED))})"
                 )
+        targets = self._order_symbol_names_sync_targets(targets)
         names_path: Path | None = None
         per_universe: dict[str, int] = {}
         failed: list[dict[str, str]] = []
+        all_a_name_map: dict[str, str] | None = None
         for u in targets:
             try:
-                _symbols, updates = self._fetch_universe_symbol_name_updates(u)
+                if u == "default":
+                    symbols = self._parse_universe_file("default")
+                    # If user explicitly asked only `default`, prefer per-symbol info to avoid large all_a fetch.
+                    if targets == ["default"]:
+                        fetch_one = getattr(self.universe_source_repo, "fetch_symbol_name_zh", None)
+                        if callable(fetch_one):
+                            updates: dict[str, str] = {}
+                            for sym in symbols:
+                                # fetch by 6-digit or exchange symbol; keep failures as empty string
+                                try:
+                                    name = str(fetch_one(sym)).strip()
+                                except Exception:
+                                    name = ""
+                                updates[sym] = name
+                        else:
+                            _s, all_a_name_map = self._retry_call(
+                                lambda: self._fetch_universe_symbol_name_updates("all_a"),
+                            )
+                            updates = {s: (all_a_name_map or {}).get(s, "") for s in symbols}
+                    else:
+                        if all_a_name_map is None:
+                            _s, all_a_name_map = self._retry_call(
+                                lambda: self._fetch_universe_symbol_name_updates("all_a"),
+                            )
+                        updates = {s: (all_a_name_map or {}).get(s, "") for s in symbols}
+                else:
+                    _symbols, updates = self._retry_call(lambda: self._fetch_universe_symbol_name_updates(u))
+                    if u == "all_a":
+                        all_a_name_map = dict(updates)
                 merged = self._merge_symbol_names_json(updates)
                 if merged is not None:
                     names_path = merged

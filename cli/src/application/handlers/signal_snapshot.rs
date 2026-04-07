@@ -6,7 +6,12 @@ use crate::infrastructure::table_renderer::render_signal_snapshot_table;
 
 pub fn handle(args: SignalSnapshotRequest) -> Result<(), AppError> {
     let cfg = load_default_config()?;
-    let out = http_client::post_signal_snapshot(&cfg.server_url, &args.as_of, cfg.timeout_ms)?;
+    let out = http_client::post_signal_snapshot(
+        &cfg.server_url,
+        &args.as_of,
+        &args.universes,
+        cfg.timeout_ms,
+    )?;
     match args.output.as_str() {
         "json" => print!("{out}"),
         "table" => {

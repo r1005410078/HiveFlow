@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 
-ALLOWED_TIMEFRAMES = {"1d", "1m"}
+ALLOWED_TIMEFRAMES = {"1d", "1m", "15m"}
 
 
 def validate_timeframe(timeframe: str) -> str:

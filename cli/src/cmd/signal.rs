@@ -15,6 +15,7 @@ pub enum SignalSubcommand {
     #[command(
         about = "请求服务端计算指定日期的标准化信号矩阵，并打印 JSON 或表格",
         long_about = "调用 POST /api/v1/signal/snapshot。\
+标的池始终包含服务端 `quant/config/universes/default.txt`，可用多次 `--universe NAME` 合并其它池。\
 data 为对象：signal_matrix（rows、composite_scores、transform_stats）\
 与可选 technical.ma5_ma10（服务端有 bar 时）。\
 l2_decision / 排序逻辑不受影响，本命令仅用于观测与联调。"
@@ -34,6 +35,9 @@ const SNAPSHOT_AFTER_HELP: &str = "\
 示例:
   hf signal snapshot --as-of 2026-04-01
   hf signal snapshot --as-of 2026-04-01 --output table
+  hf signal snapshot --as-of 2026-04-01 --universe self_select --universe follow
+
+  标的池：始终包含 quant/config/universes/default.txt，可用多次 --universe 追加合并。
 
   仓库内开发（包名 hf-cli）:
   cargo run -p hf-cli -- signal snapshot --as-of 2026-04-01
@@ -51,6 +55,12 @@ pub struct SnapshotArgs {
         help = "截面日期（PIT：只使用该日及之前已发布/可得的数据）"
     )]
     pub as_of: String,
+    #[arg(
+        long = "universe",
+        value_name = "NAME",
+        help = "与 default 合并的额外标的池（可多次指定；仅服务端 quant/config/universes/{name}.txt）"
+    )]
+    pub universes: Vec<String>,
     #[arg(
         long,
         default_value = "json",
@@ -90,6 +100,7 @@ impl From<SnapshotArgs> for SignalSnapshotRequest {
         Self {
             as_of: args.as_of,
             output: args.output,
+            universes: args.universes,
         }
     }
 }

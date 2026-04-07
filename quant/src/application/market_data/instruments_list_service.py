@@ -35,7 +35,7 @@ class InstrumentsListService:
         start_date: str | None = None,
         end_date: str | None = None,
         min_bars: int = 1,
-        storage_timeframe: str = "1m",
+        storage_timeframe: str = "15m",
         limit: int = 100,
         cursor_symbol: str | None = None,
     ) -> dict:

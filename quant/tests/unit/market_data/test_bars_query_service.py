@@ -6,8 +6,17 @@ from application.market_data.bars_query_service import BarsQueryService
 
 
 class _FakeBarStore:
-    def __init__(self, storage_rows: list[dict] | None = None):
-        self.storage_rows = storage_rows or []
+    def __init__(
+        self,
+        storage_rows: list[dict] | None = None,
+        *,
+        by_timeframe: dict[str, list[dict]] | None = None,
+    ):
+        self.by_tf: dict[str, list[dict]] = {}
+        if storage_rows is not None:
+            self.by_tf["1m"] = storage_rows
+        if by_timeframe:
+            self.by_tf.update(by_timeframe)
         self.list_bars_calls: list[dict] = []
         self.list_storage_calls: list[dict] = []
 
@@ -42,7 +51,7 @@ class _FakeBarStore:
                 "order": order,
             }
         )
-        return list(self.storage_rows)
+        return list(self.by_tf.get(storage_timeframe, []))
 
     def list_symbols_with_min_bars_in_window(
         self,
@@ -101,9 +110,10 @@ def test_query_1d_uses_list_storage_1m_and_aggregates() -> None:
         limit=200,
     )
 
-    assert len(store.list_storage_calls) == 1
-    sc = store.list_storage_calls[0]
-    assert sc["storage_timeframe"] == "1m"
+    assert len(store.list_storage_calls) == 2
+    assert store.list_storage_calls[0]["storage_timeframe"] == "15m"
+    assert store.list_storage_calls[1]["storage_timeframe"] == "1m"
+    sc = store.list_storage_calls[1]
     assert sc["order"] == "asc"
     assert sc["symbols"] == ["600519.SH"]
     assert "items" in out
@@ -148,6 +158,8 @@ def test_next_cursor_when_more_rows_than_limit_1m_desc() -> None:
         end_date=day,
         limit=2,
     )
+    assert len(store.list_storage_calls) == 1
+    assert store.list_storage_calls[0]["storage_timeframe"] == "1m"
     assert len(out["items"]) == 2
     assert "09:33" in out["items"][0]["bar_time"]
     assert out["next_cursor_bar_time"] == out["items"][-1]["bar_time"]
@@ -194,6 +206,8 @@ def test_session_date_intraday_1m_sorted_asc() -> None:
         limit=50,
     )
 
+    assert len(store.list_storage_calls) == 1
+    assert store.list_storage_calls[0]["storage_timeframe"] == "1m"
     assert store.list_storage_calls[0]["start_date"] == day
     assert store.list_storage_calls[0]["end_date"] == day
     times = [r["bar_time"] for r in out["items"]]
@@ -260,3 +274,32 @@ def test_cursor_symbol_mismatch_raises() -> None:
             cursor_bar_time="2026-04-01T15:00:00+08:00",
             cursor_symbol="000001.SZ",
         )
+
+
+def test_query_defaults_to_15m_reads_native_15m_storage() -> None:
+    row = {
+        "symbol": "600519.SH",
+        "timeframe": "15m",
+        "bar_time": "2026-01-05T10:15:00+08:00",
+        "open": 1.0,
+        "high": 1.2,
+        "low": 0.9,
+        "close": 1.1,
+        "volume": 100.0,
+        "amount": 110.0,
+        "adj_factor": 1.0,
+        "data_source": "demo",
+    }
+    store = _FakeBarStore(by_timeframe={"15m": [row]})
+    svc = BarsQueryService(bar_store=store)
+    out = svc.query(
+        symbols=["600519.SH"],
+        timeframe=None,
+        start_date="2026-01-05",
+        end_date="2026-01-05",
+        limit=50,
+    )
+    assert len(store.list_storage_calls) == 1
+    assert store.list_storage_calls[0]["storage_timeframe"] == "15m"
+    assert len(out["items"]) == 1
+    assert out["items"][0]["timeframe"] == "15m"

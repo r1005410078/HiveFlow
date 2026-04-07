@@ -42,6 +42,7 @@ const DATA_SYNC_AFTER_LONG_HELP: &str = "\
   cargo run -- data sync --days 7 --end-date 2026-04-01 --symbols 600519.SH,000001.SZ\n  \
   cargo run -- data sync --days 30 --end-date 2026-04-01 --universe csi300\n  \
   cargo run -- data sync --days 90 --end-date 2026-04-01 --timeframe 1d\n  \
+  cargo run -- data sync --days 30 --end-date 2026-04-01 --timeframe 15m\n  \
   cargo run -- data sync --days 30 --end-date 2026-04-01 --wait --poll-interval-ms 2000\n  \
   cargo run -- data sync --days 30 --end-date 2026-04-01 --timeout-ms 120000\n  \
   hf data sync --days 30 --end-date 2026-04-01\n\
@@ -60,8 +61,8 @@ pub struct DataSyncArgs {
     /// 窗口结束日，格式 YYYY-MM-DD
     #[arg(long)]
     pub end_date: String,
-    /// K 线周期，如 1m / 1d
-    #[arg(long, default_value = "1m")]
+    /// K 线周期，如 15m / 1m / 1d
+    #[arg(long, default_value = "15m")]
     pub timeframe: String,
     /// 逗号分隔标的，如 600519.SH,000001.SZ（与 --universe 二选一场景下按服务端规则）
     #[arg(long)]
@@ -146,8 +147,8 @@ pub struct DataUniverseSyncArgs {
 }
 
 const DATA_SYMBOL_NAMES_SYNC_LONG: &str = "从 akshare 拉取代码与中文简称，**仅**合并服务端 `quant/config/universes/symbol_names.json`。\n\
-不修改各 universe 的 `.txt` 列表；默认拉取 csi300、zz500、all_a（可用多次 `--universe` 指定子集）。\n\
-请求在服务端同步执行，数据量大时可能较慢。";
+不修改各 universe 的 `.txt` 列表；默认包含 csi300、zz500、all_a，并合并 **default**（`default.txt` 标的简称，来自全 A 映射）。\n\
+可用多次 `--universe` 指定子集；亦支持 `--universe default`。请求在服务端同步执行，数据量大时可能较慢。";
 
 #[derive(Debug, Args)]
 #[command(
@@ -156,7 +157,7 @@ const DATA_SYMBOL_NAMES_SYNC_LONG: &str = "从 akshare 拉取代码与中文简�
     after_long_help = "示例:\n  cargo run -- data symbol-names-sync\n  cargo run -- data symbol-names-sync --universe csi300 --universe zz500\n  hf data symbol-names-sync --universe csi300\n"
 )]
 pub struct DataSymbolNamesSyncArgs {
-    /// 可重复指定；省略则由服务端默认处理 csi300、zz500、all_a
+    /// 可重复指定；省略则由服务端默认处理 csi300、zz500、all_a 与 default.txt（简称）
     #[arg(long = "universe")]
     pub universes: Vec<String>,
     #[arg(long, default_value = "akshare")]
@@ -202,7 +203,7 @@ pub struct DataMarketQueryArgs {
     /// 标的池名称（读 quant/config/universes/{name}.txt）
     #[arg(long)]
     pub universe: Option<String>,
-    #[arg(long, default_value = "1m")]
+    #[arg(long, default_value = "15m")]
     pub timeframe: String,
     #[arg(long)]
     pub limit: Option<i32>,
@@ -262,8 +263,8 @@ pub struct DataBarsArgs {
     /// 标的池名称（读 quant/config/universes/{name}.txt），与 --symbols 并集去重
     #[arg(long)]
     pub universe: Option<String>,
-    /// K 线周期，如 1m / 1d（默认 1m）
-    #[arg(long, default_value = "1m")]
+    /// K 线周期，如 15m / 1m / 1d（默认 15m）
+    #[arg(long, default_value = "15m")]
     pub timeframe: String,
     /// 区间起始日 YYYY-MM-DD（与 end-date 同用可固定窗口）
     #[arg(long)]
